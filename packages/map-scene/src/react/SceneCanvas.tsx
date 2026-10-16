@@ -118,9 +118,10 @@ function Controls({ extent, reducedMotion }: { extent: number; reducedMotion: bo
     controls.maxPolarAngle = Math.PI / 2.1;
     controls.minDistance = 5;
     controls.maxDistance = extent * 6;
-    controls.addEventListener("change", invalidate);
+    const onChange = () => invalidate();
+    controls.addEventListener("change", onChange);
     return () => {
-      controls.removeEventListener("change", invalidate);
+      controls.removeEventListener("change", onChange);
       controls.dispose();
     };
   }, [camera, gl, extent, reducedMotion, invalidate]);

@@ -1,7 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "@playwright/test";
 import { API, randomCoords, signIn, tokens, unique } from "./helpers";
 
-async function createFarmWithPlan(request: import("@playwright/test").APIRequestContext) {
+async function createFarmWithPlan(request: APIRequestContext) {
   const auth = { authorization: `Bearer ${tokens().owner}` };
   const me = await (await request.get(`${API}/v1/me`, { headers: auth })).json();
   const tenantId = me.tenants.find((t: { slug: string }) => t.slug === "demo").tenantId;

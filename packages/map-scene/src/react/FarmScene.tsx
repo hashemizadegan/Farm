@@ -158,7 +158,7 @@ export function FarmScene({ scene, forceFallback, onStatus }: FarmSceneProps) {
         </div>
       )}
 
-      {(!showCanvas || mode === "list") && <SceneEntityList scene={scene} selectedId={selectedId} onSelect={select} />}
+      {!showCanvas && <SceneEntityList scene={scene} selectedId={selectedId} onSelect={select} />}
 
       <div className="mf-visually-hidden" role="status" aria-live="polite" data-testid="scene-status">
         {status}

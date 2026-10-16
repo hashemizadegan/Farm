@@ -1,3 +1,4 @@
+/// <reference types="geojson" />
 /**
  * Offline mock basemap: background colour plus a 1° graticule generated
  * locally. It contains no imagery, roads or labels and is clearly marked as a

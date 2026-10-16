@@ -1,3 +1,4 @@
+/// <reference types="geojson" />
 import type { BoundaryGeometry } from "@metafarm/domain/geometry";
 import type { BasemapConfig, MapAdapter, MapHandle } from "./adapter";
 import { MOCK_ATTRIBUTION, mockStyle } from "./mock-style";
