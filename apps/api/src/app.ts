@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import type { Deps } from "./deps";
 import { contextPlugin } from "./plugins/context";
 import { securityPlugin } from "./plugins/security";
@@ -21,7 +21,9 @@ export interface BuildOptions {
 
 export async function buildApp({ deps, isDraining = () => false, docs }: BuildOptions): Promise<FastifyInstance> {
   const app = Fastify({
-    loggerInstance: deps.logger,
+    // pino's Logger is runtime-compatible with Fastify's logger; the cast keeps the
+    // instance typed as the default FastifyInstance used by plugins and tests.
+    loggerInstance: deps.logger as unknown as FastifyBaseLogger,
     bodyLimit: deps.env.BODY_LIMIT_BYTES,
     trustProxy: deps.env.TRUST_PROXY,
     requestIdHeader: "x-request-id",
