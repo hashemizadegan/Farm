@@ -7,3 +7,10 @@ packages:
 onlyBuiltDependencies:
   - esbuild
   - sharp
+
+# Security floors for transitive dependencies (see `pnpm audit`):
+# - postcss: GHSA-6g55-p6wh-862q, GHSA-r28c-9q8g-f849 (via next)
+# - @fastify/static: GHSA-83w8-p2f5-377r (via @fastify/swagger-ui)
+overrides:
+  postcss: "^8.5.18"
+  "@fastify/static": "^10.1.1"

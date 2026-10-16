@@ -11,7 +11,8 @@ export function createMapLibreAdapter(config: BasemapConfig = {}): MapAdapter {
   return {
     name: "maplibre",
     async mount(container, opts): Promise<MapHandle> {
-      const maplibre = (await import("maplibre-gl")).default;
+      // MapLibre 6 is ESM-only with no default export.
+      const maplibre = await import("maplibre-gl");
       const map = new maplibre.Map({
         container,
         style: (config.styleUrl || mockStyle()) as never,
