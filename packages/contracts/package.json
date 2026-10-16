@@ -1,0 +1,28 @@
+{
+  "name": "@metafarm/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./openapi.yaml": "./openapi.yaml",
+    "./nft-metadata.schema.json": "./nft-metadata.schema.json",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "generate": "openapi-typescript ./openapi.yaml -o ./src/generated/api.ts",
+    "typecheck": "pnpm generate && tsc --noEmit -p tsconfig.json",
+    "lint:openapi": "redocly lint ./openapi.yaml"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.14.0"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^1.34.4",
+    "openapi-typescript": "^7.8.0",
+    "yaml": "^2.8.0",
+    "@metafarm/domain": "workspace:*"
+  }
+}

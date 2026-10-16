@@ -1,0 +1,41 @@
+{
+  "name": "metafarm",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Multi-tenant farm planning SaaS with a 2D map, an immersive local 3D scene and optional digital collectibles.",
+  "packageManager": "pnpm@10.12.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm -r build",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "pnpm -r --filter \"!@metafarm/e2e\" typecheck",
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "pnpm --filter @metafarm/e2e test",
+    "test:contracts": "pnpm --filter @metafarm/nft-contracts test",
+    "contracts:openapi": "pnpm --filter @metafarm/contracts generate",
+    "db:migrate": "pnpm --filter @metafarm/db migrate",
+    "db:seed": "pnpm --filter @metafarm/db seed",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "postinstall": "pnpm --filter @metafarm/contracts generate"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "@types/node": "^22.15.0",
+    "eslint": "^9.30.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.3.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.35.1",
+    "vitest": "^3.2.4"
+  }
+}

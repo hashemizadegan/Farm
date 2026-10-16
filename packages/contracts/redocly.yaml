@@ -1,0 +1,8 @@
+extends:
+  - recommended
+rules:
+  # Summaries are present on every operation; long descriptions are optional.
+  operation-description: off
+  info-license-url: off
+  no-server-example.com: off
+  operation-4xx-response: warn

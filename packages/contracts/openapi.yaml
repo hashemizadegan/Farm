@@ -1,0 +1,1064 @@
+openapi: 3.1.0
+info:
+  title: Metafarm API
+  version: 0.1.0
+  summary: Multi-tenant farm planning API.
+  description: |
+    All tenant-scoped routes live under `/v1/tenants/{tenantId}` and require the
+    caller to hold a membership in that tenant. Requests for another tenant's
+    resources return `404` (not `403`) so resource existence is not disclosed.
+
+    **Provenance.** Every boundary, observation, plan and scene element carries a
+    `provenance` label: `illustrative`, `user-entered`, `provider-observation`,
+    `sensor-reported`, or `independently-verified` (only with evidence).
+
+    **Scenarios** are simulations computed from user-entered figures. They are not
+    forecasts and not realised income.
+
+    **NFTs** are digital collectibles or in-app utility only. They do not convey
+    land title, crop ownership, profit share or any promise of value.
+  license:
+    name: Proprietary
+servers:
+  - url: http://localhost:4000
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: health
+  - name: identity
+  - name: farms
+  - name: boundaries
+  - name: planning
+  - name: assets
+  - name: observations
+  - name: alerts
+  - name: media
+  - name: audit
+  - name: wallet
+  - name: nft
+  - name: webhooks
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      security: []
+      summary: Liveness probe
+      operationId: getHealth
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+  /readyz:
+    get:
+      tags: [health]
+      security: []
+      summary: Readiness probe (database and queue reachable)
+      operationId: getReadiness
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthReport" }
+        "503":
+          description: Not ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthReport" }
+
+  /v1/me:
+    get:
+      tags: [identity]
+      summary: Current user and tenant memberships
+      operationId: getMe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/tenants/{tenantId}/farms:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [farms]
+      summary: List farms
+      operationId: listFarms
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Farm" } }
+                  nextCursor: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [farms]
+      summary: Create a farm project
+      operationId: createFarm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFarm" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Farm" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [farms]
+      summary: Get a farm
+      operationId: getFarm
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Farm" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/boundaries:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [boundaries]
+      summary: List boundary versions
+      operationId: listBoundaries
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/BoundaryVersion" } }
+    post:
+      tags: [boundaries]
+      summary: Submit a boundary
+      description: |
+        Accepts a GeoJSON Polygon, MultiPolygon, Feature or single-feature
+        FeatureCollection in WGS 84 lon/lat. The geometry is pre-validated
+        synchronously; authoritative PostGIS validation runs as a background job.
+        The new version is labelled `user-entered`.
+      operationId: submitBoundary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitBoundary" }
+      responses:
+        "202":
+          description: Accepted; validation queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoundaryVersion" }
+        "409":
+          description: Identical boundary already exists in this tenant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GeometryRejected" }
+        "422":
+          description: Geometry rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GeometryRejected" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/boundaries/{boundaryId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: boundaryId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [boundaries]
+      summary: Get a boundary version and its validation status
+      operationId: getBoundary
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoundaryVersion" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/boundaries/{boundaryId}/evidence:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: boundaryId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [boundaries]
+      summary: Attach verification evidence (verifier role)
+      description: |
+        Attaches an uploaded `verification-evidence` document and marks the
+        boundary `independently-verified`. Without evidence the label cannot be set;
+        the database enforces this independently of the API.
+      operationId: addBoundaryEvidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, mediaObjectId]
+              properties:
+                kind: { type: string, enum: [survey-document, registry-extract, field-inspection, other] }
+                mediaObjectId: { type: string, format: uuid }
+                note: { type: string, maxLength: 2000 }
+      responses:
+        "201":
+          description: Verified
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoundaryVersion" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/plan:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [planning]
+      summary: Get the latest farm plan
+      operationId: getFarmPlan
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FarmPlan" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [planning]
+      summary: Save a farm plan (creates a new revision)
+      operationId: putFarmPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FarmPlanInput" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FarmPlan" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/scenarios:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [planning]
+      summary: List crop scenarios
+      operationId: listScenarios
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/CropScenario" } }
+    post:
+      tags: [planning]
+      summary: Run and store a simulated crop scenario
+      description: Computes low/base/high cases from user-entered figures only. Output is always `kind = simulated`.
+      operationId: createScenario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CropScenarioInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CropScenario" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/scene:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [assets]
+      summary: Deterministic scene description for the 3D view
+      description: Positions are metres in a local east-north frame centred on the farm origin. All scene elements are illustrative.
+      operationId: getScene
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SceneDescription" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/assets:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [assets]
+      summary: Asset catalogue (global + tenant)
+      operationId: listAssets
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, enum: [plant, equipment, structure, decoration] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Asset" } }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/observations:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [observations]
+      summary: List normalised observations
+      operationId: listObservations
+      parameters:
+        - { name: metric, in: query, schema: { type: string } }
+        - { name: since, in: query, schema: { type: string, format: date-time } }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Observation" } }
+    post:
+      tags: [observations]
+      summary: Record an observation (queued for normalisation)
+      operationId: createObservation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObservationInput" }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rawObservationId, provenance]
+                properties:
+                  rawObservationId: { type: string, format: uuid }
+                  provenance: { $ref: "#/components/schemas/ProvenanceLabel" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/alerts:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [alerts]
+      summary: List alerts
+      operationId: listAlerts
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [open, acknowledged, resolved] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Alert" } }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/alerts/{alertId}/ack:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: alertId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [alerts]
+      summary: Acknowledge an alert
+      operationId: ackAlert
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, maxLength: 1000 }
+      responses:
+        "200":
+          description: Acknowledged
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Alert" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/uploads:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    post:
+      tags: [media]
+      summary: Request a signed upload URL
+      description: |
+        Returns a short-lived pre-signed PUT URL. The client uploads directly to
+        object storage, then calls `/complete`. The API never proxies file bytes.
+      operationId: createUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UploadRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadTicket" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/uploads/{mediaId}/complete:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: mediaId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [media]
+      summary: Confirm an upload (size and content type are checked against the stored object)
+      operationId: completeUpload
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaObject" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/audit-events:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [audit]
+      summary: List audit events (admin/owner)
+      operationId: listAuditEvents
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { name: before, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AuditEvent" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/nft/metadata/validate:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    post:
+      tags: [nft]
+      summary: Validate NFT metadata against schema and content rules
+      operationId: validateNftMetadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NftMetadata" }
+      responses:
+        "200":
+          description: Result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid, issues]
+                properties:
+                  valid: { type: boolean }
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      required: [field, message]
+                      properties:
+                        field: { type: string }
+                        message: { type: string }
+
+  /v1/wallet/nonce:
+    post:
+      tags: [wallet]
+      summary: Issue a single-use sign-in nonce and the exact message to sign
+      operationId: createWalletNonce
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address, chainId]
+              properties:
+                address: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
+                chainId: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nonce, message, expiresAt]
+                properties:
+                  nonce: { type: string }
+                  message: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/wallet/verify:
+    post:
+      tags: [wallet]
+      summary: Verify a signed message and link the wallet to the current user
+      operationId: verifyWallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, signature]
+              properties:
+                message: { type: string, maxLength: 2000 }
+                signature: { type: string, pattern: "^0x[0-9a-fA-F]{130}$" }
+      responses:
+        "200":
+          description: Linked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [address, chainId]
+                properties:
+                  address: { type: string }
+                  chainId: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/webhooks/{provider}:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { type: string, pattern: "^[a-z0-9-]{1,40}$" }
+    post:
+      tags: [webhooks]
+      security: []
+      summary: Receive a signed provider webhook
+      description: Requires `x-webhook-signature` (`t=<unix>,v1=<hex HMAC-SHA256 of "t.body">`) and an `id` in the body for de-duplication.
+      operationId: receiveWebhook
+      parameters:
+        - name: x-webhook-signature
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, type]
+              properties:
+                id: { type: string, maxLength: 200 }
+                type: { type: string, maxLength: 100 }
+                data: { type: object }
+      responses:
+        "202": { description: Accepted }
+        "200": { description: Duplicate delivery ignored }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    FarmId:
+      name: farmId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Authenticated but not permitted
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found (also returned for resources in other tenants)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string }
+        message: { type: string }
+        requestId: { type: string }
+        details: {}
+
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok, draining] }
+
+    HealthReport:
+      type: object
+      required: [status, checks]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        checks:
+          type: object
+          additionalProperties: { type: string, enum: [ok, fail] }
+
+    ProvenanceLabel:
+      type: string
+      enum: [illustrative, user-entered, provider-observation, sensor-reported, independently-verified]
+
+    Role:
+      type: string
+      enum: [owner, admin, manager, verifier, viewer]
+
+    Me:
+      type: object
+      required: [userId, tenants]
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: [string, "null"] }
+        tenants:
+          type: array
+          items:
+            type: object
+            required: [tenantId, slug, name, role]
+            properties:
+              tenantId: { type: string, format: uuid }
+              slug: { type: string }
+              name: { type: string }
+              role: { $ref: "#/components/schemas/Role" }
+
+    LonLat:
+      type: object
+      required: [lon, lat]
+      properties:
+        lon: { type: number, minimum: -180, maximum: 180 }
+        lat: { type: number, minimum: -90, maximum: 90 }
+
+    CreateFarm:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        origin: { $ref: "#/components/schemas/LonLat" }
+        timezone: { type: string, default: UTC }
+
+    Farm:
+      type: object
+      required: [id, name, timezone, origin, originProvenance, currentBoundaryVersionId, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        timezone: { type: string }
+        origin:
+          oneOf:
+            - { $ref: "#/components/schemas/LonLat" }
+            - { type: "null" }
+        originProvenance: { $ref: "#/components/schemas/ProvenanceLabel" }
+        currentBoundaryVersionId: { type: [string, "null"], format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    SubmitBoundary:
+      type: object
+      required: [geojson, source]
+      properties:
+        geojson:
+          description: GeoJSON Polygon/MultiPolygon/Feature/FeatureCollection (one feature). WGS 84 lon/lat.
+          type: object
+        source: { type: string, enum: [drawn, imported, coordinates] }
+        note: { type: string, maxLength: 1000 }
+
+    GeometryIssue:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_STRUCTURE
+            - UNSUPPORTED_GEOMETRY_TYPE
+            - UNSUPPORTED_CRS
+            - INPUT_TOO_DEEP
+            - INVALID_COORDINATE
+            - RING_NOT_CLOSED
+            - RING_TOO_FEW_POSITIONS
+            - RING_DEGENERATE
+            - TOO_MANY_VERTICES
+            - TOO_MANY_RINGS
+            - TOO_MANY_POLYGONS
+            - SELF_INTERSECTION
+            - RINGS_INTERSECT
+            - HOLE_OUTSIDE_SHELL
+            - ANTIMERIDIAN_CROSSING
+            - AREA_TOO_SMALL
+            - AREA_TOO_LARGE
+            - DUPLICATE_GEOMETRY
+            - POSTGIS_INVALID
+        message: { type: string }
+        path: { type: array, items: { type: integer } }
+
+    GeometryRejected:
+      type: object
+      required: [error, message, issues]
+      properties:
+        error: { type: string, enum: [geometry_rejected, duplicate_geometry] }
+        message: { type: string }
+        issues: { type: array, items: { $ref: "#/components/schemas/GeometryIssue" } }
+
+    BoundaryVersion:
+      type: object
+      required: [id, farmId, version, geojson, crs, source, provenance, areaM2, vertexCount, validationStatus, validationIssues, submittedAt]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: string, format: uuid }
+        version: { type: integer }
+        geojson: { type: object, description: GeoJSON MultiPolygon }
+        crs: { type: string, enum: ["OGC:CRS84"] }
+        source: { type: string, enum: [drawn, imported, coordinates] }
+        provenance:
+          type: string
+          enum: [user-entered, independently-verified]
+        areaM2: { type: number, description: Geodesic area computed from the submitted geometry; not a survey. }
+        vertexCount: { type: integer }
+        validationStatus: { type: string, enum: [pending, valid, invalid] }
+        validationIssues: { type: array, items: { $ref: "#/components/schemas/GeometryIssue" } }
+        overlaps:
+          type: array
+          items:
+            type: object
+            required: [farmId, overlapM2]
+            properties:
+              farmId: { type: string, format: uuid }
+              overlapM2: { type: number }
+        note: { type: [string, "null"] }
+        submittedAt: { type: string, format: date-time }
+        validatedAt: { type: [string, "null"], format: date-time }
+
+    PlanParcel:
+      type: object
+      required: [label, grid]
+      properties:
+        label: { type: string, maxLength: 80 }
+        cropName: { type: string, maxLength: 120 }
+        grid:
+          type: object
+          required: [rows, cols, spacingM]
+          properties:
+            rows: { type: integer, minimum: 1, maximum: 500 }
+            cols: { type: integer, minimum: 1, maximum: 500 }
+            spacingM: { type: number, exclusiveMinimum: 0, maximum: 50 }
+        assetCatalogId: { type: string, format: uuid }
+
+    FarmPlanInput:
+      type: object
+      required: [name, parcels]
+      properties:
+        name: { type: string, maxLength: 120 }
+        season: { type: string, maxLength: 64 }
+        parcels: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/PlanParcel" } }
+
+    FarmPlan:
+      allOf:
+        - { $ref: "#/components/schemas/FarmPlanInput" }
+        - type: object
+          required: [id, farmId, provenance, createdAt]
+          properties:
+            id: { type: string, format: uuid }
+            farmId: { type: string, format: uuid }
+            provenance: { type: string, enum: [user-entered] }
+            createdAt: { type: string, format: date-time }
+
+    ScenarioRange:
+      type: object
+      required: [low, base, high]
+      properties:
+        low: { type: number, minimum: 0 }
+        base: { type: number, minimum: 0 }
+        high: { type: number, minimum: 0 }
+
+    CropScenarioInput:
+      type: object
+      required: [cropName, yieldPerHa, yieldUnit, pricePerUnit, costs, currency]
+      properties:
+        cropName: { type: string, maxLength: 120 }
+        plantedAreaHa: { type: number, exclusiveMinimum: 0, description: Defaults to the current boundary area. }
+        yieldPerHa: { $ref: "#/components/schemas/ScenarioRange" }
+        yieldUnit: { type: string, maxLength: 32 }
+        pricePerUnit: { $ref: "#/components/schemas/ScenarioRange" }
+        costs: { $ref: "#/components/schemas/ScenarioRange" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        assumptionsNote: { type: string, maxLength: 2000 }
+
+    ScenarioCase:
+      type: object
+      required: [production, grossRevenue, costs, net]
+      properties:
+        production: { type: number }
+        grossRevenue: { type: number }
+        costs: { type: number }
+        net: { type: number }
+
+    CropScenario:
+      type: object
+      required: [id, farmId, kind, input, result, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: string, format: uuid }
+        kind: { type: string, enum: [simulated] }
+        input: { $ref: "#/components/schemas/CropScenarioInput" }
+        result:
+          type: object
+          required: [kind, provenance, disclaimer, currency, yieldUnit, cases]
+          properties:
+            kind: { type: string, enum: [simulated] }
+            provenance: { type: string, enum: [user-entered] }
+            disclaimer: { type: string }
+            currency: { type: string }
+            yieldUnit: { type: string }
+            cases:
+              type: object
+              required: [low, base, high]
+              properties:
+                low: { $ref: "#/components/schemas/ScenarioCase" }
+                base: { $ref: "#/components/schemas/ScenarioCase" }
+                high: { $ref: "#/components/schemas/ScenarioCase" }
+        createdAt: { type: string, format: date-time }
+
+    Asset:
+      type: object
+      required: [id, kind, name, license, provenance]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [plant, equipment, structure, decoration] }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        procedural: { type: [object, "null"] }
+        modelMediaId: { type: [string, "null"], format: uuid }
+        license: { type: string }
+        provenance: { type: string, enum: [illustrative] }
+        scope: { type: string, enum: [global, tenant] }
+
+    SceneEntity:
+      type: object
+      required: [id, kind, assetId, x, z, rotation, scale, provenance]
+      properties:
+        id: { type: string, description: Stable entity id (unchanged across reloads for the same plan). }
+        kind: { type: string, enum: [plant, equipment, structure, decoration, sensor] }
+        assetId: { type: string }
+        label: { type: string }
+        x: { type: number, description: Metres east of origin }
+        z: { type: number, description: Metres south of origin (three.js convention) }
+        rotation: { type: number }
+        scale: { type: number }
+        provenance: { $ref: "#/components/schemas/ProvenanceLabel" }
+
+    SceneDescription:
+      type: object
+      required: [farmId, seed, origin, boundaryLocal, entities, disclaimer]
+      properties:
+        farmId: { type: string, format: uuid }
+        seed: { type: integer }
+        origin:
+          oneOf:
+            - { $ref: "#/components/schemas/LonLat" }
+            - { type: "null" }
+        boundaryLocal:
+          description: Exterior rings in local metres [x, z].
+          type: array
+          items:
+            type: array
+            items: { type: array, items: { type: number }, minItems: 2, maxItems: 2 }
+        entities: { type: array, items: { $ref: "#/components/schemas/SceneEntity" } }
+        disclaimer: { type: string }
+
+    ObservationInput:
+      type: object
+      required: [metric, value, unit, observedAt]
+      properties:
+        metric:
+          type: string
+          enum: [soil_moisture, air_temperature, soil_temperature, rainfall, relative_humidity, ndvi, note]
+        value:
+          oneOf:
+            - { type: number }
+            - { type: string, maxLength: 4000 }
+        unit: { type: string, maxLength: 32 }
+        observedAt: { type: string, format: date-time }
+        sensorId: { type: string, format: uuid }
+
+    Observation:
+      type: object
+      required: [id, farmId, metric, value, unit, observedAt, provenance, qualityFlags]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: string, format: uuid }
+        sensorId: { type: [string, "null"], format: uuid }
+        metric: { type: string }
+        value: { type: [number, "null"] }
+        text: { type: [string, "null"] }
+        unit: { type: string }
+        observedAt: { type: string, format: date-time }
+        provenance: { $ref: "#/components/schemas/ProvenanceLabel" }
+        qualityFlags: { type: array, items: { type: string } }
+
+    Alert:
+      type: object
+      required: [id, farmId, severity, message, status, evidenceObservationIds, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: string, format: uuid }
+        ruleId: { type: [string, "null"], format: uuid }
+        severity: { type: string, enum: [info, warning, critical] }
+        message: { type: string }
+        status: { type: string, enum: [open, acknowledged, resolved] }
+        evidenceObservationIds: { type: array, items: { type: string, format: uuid } }
+        acknowledgedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    UploadRequest:
+      type: object
+      required: [filename, contentType, byteSize, purpose, sha256]
+      properties:
+        filename: { type: string, maxLength: 200 }
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp, application/pdf, application/geo+json, model/gltf-binary]
+        byteSize: { type: integer, minimum: 1 }
+        purpose: { type: string, enum: [boundary-import, observation-photo, verification-evidence, asset-model] }
+        farmId: { type: string, format: uuid }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+
+    UploadTicket:
+      type: object
+      required: [mediaId, uploadUrl, method, headers, expiresAt]
+      properties:
+        mediaId: { type: string, format: uuid }
+        uploadUrl: { type: string, format: uri }
+        method: { type: string, enum: [PUT] }
+        headers:
+          type: object
+          additionalProperties: { type: string }
+        expiresAt: { type: string, format: date-time }
+
+    MediaObject:
+      type: object
+      required: [id, filename, contentType, byteSize, purpose, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: [string, "null"], format: uuid }
+        filename: { type: string }
+        contentType: { type: string }
+        byteSize: { type: integer }
+        purpose: { type: string }
+        status: { type: string, enum: [pending, uploaded, rejected, deleted] }
+        createdAt: { type: string, format: date-time }
+
+    AuditEvent:
+      type: object
+      required: [id, actorType, action, outcome, createdAt]
+      properties:
+        id: { type: string }
+        actorUserId: { type: [string, "null"], format: uuid }
+        actorType: { type: string, enum: [user, system, webhook, job] }
+        action: { type: string }
+        targetType: { type: [string, "null"] }
+        targetId: { type: [string, "null"] }
+        outcome: { type: string, enum: [success, denied, failure] }
+        requestId: { type: [string, "null"] }
+        metadata: { type: object }
+        createdAt: { type: string, format: date-time }
+
+    NftMetadata:
+      $ref: "./nft-metadata.schema.json"

@@ -1,0 +1,79 @@
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--mf-surface);
+  border-bottom: 1px solid var(--mf-border);
+}
+.app-header nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.app-header a[aria-current="page"] {
+  font-weight: 700;
+  text-decoration-thickness: 3px;
+}
+.app-brand {
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: var(--mf-text);
+  text-decoration: none;
+}
+main {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+main:focus {
+  outline: none;
+}
+.farm-tabs ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+}
+.farm-tabs a {
+  display: inline-block;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--mf-border);
+  border-radius: var(--mf-radius);
+}
+.farm-tabs a[aria-current="page"] {
+  background: var(--mf-primary);
+  color: var(--mf-primary-text);
+  border-color: var(--mf-primary);
+}
+.grid-2 {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+.card {
+  background: var(--mf-surface);
+  border: 1px solid var(--mf-border);
+  border-radius: var(--mf-radius);
+  padding: 1rem;
+}
+.range-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.range-row legend {
+  grid-column: 1 / -1;
+}
+fieldset {
+  border: 1px solid var(--mf-border);
+  border-radius: var(--mf-radius);
+  margin: 0 0 1rem;
+}

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metafarm.invalid/schemas/nft-metadata/1.0.0.json",
+  "title": "Metafarm NFT metadata",
+  "description": "Metadata for digital collectibles and in-app utility items. These tokens do not convey land title, crop ownership, profit share, or any real-world right, and carry no promise of value. Metadata must never contain precise coordinates, personal data, deeds, sensor credentials or identity mappings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "asset_type",
+    "name",
+    "description",
+    "application_utility",
+    "provenance_label",
+    "source_timestamp",
+    "license_reference",
+    "terms_url",
+    "disclosure"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "asset_type": { "enum": ["project-collectible", "scene-item", "badge"] },
+    "name": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Display name." },
+    "description": { "type": "string", "maxLength": 1000 },
+    "image": { "type": "string", "format": "uri" },
+    "application_utility": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["display-in-3d-scene", "profile-badge", "unlock-cosmetic-theme", "commemorative"] }
+    },
+    "provenance_label": {
+      "description": "Provenance of the depicted content. On-chain metadata may not claim independent verification.",
+      "enum": ["illustrative", "user-entered", "provider-observation", "sensor-reported"]
+    },
+    "source_timestamp": { "type": "string", "format": "date-time" },
+    "license_reference": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "terms_url": { "type": "string", "format": "uri" },
+    "disclosure": {
+      "const": "Digital collectible for use within the application only. Does not convey land title, crop ownership, profit share, or any real-world right, and carries no promise of value."
+    },
+    "attributes": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trait_type", "value"],
+        "properties": {
+          "trait_type": {
+            "type": "string",
+            "maxLength": 64,
+            "not": {
+              "pattern": "^(lat|lon|lng|latitude|longitude|coordinates?|geometry|boundary|gps|address|owner_?name|email|phone|deed|parcel_?id|sensor_?(id|key|token|secret)|wallet_?owner|user_?id)$"
+            }
+          },
+          "value": { "type": ["string", "number"] }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0.0",
+      "asset_type": "scene-item",
+      "name": "Copper Weather Vane",
+      "description": "A decorative weather vane you can place in your 3D farm scene.",
+      "application_utility": ["display-in-3d-scene"],
+      "provenance_label": "illustrative",
+      "source_timestamp": "2026-01-01T00:00:00Z",
+      "license_reference": "CC-BY-4.0",
+      "terms_url": "https://example.com/terms",
+      "disclosure": "Digital collectible for use within the application only. Does not convey land title, crop ownership, profit share, or any real-world right, and carries no promise of value."
+    }
+  ]
+}

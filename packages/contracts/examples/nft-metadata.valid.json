@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "asset_type": "scene-item",
+  "name": "Copper Weather Vane",
+  "description": "A decorative weather vane you can place in your 3D farm scene.",
+  "image": "https://example.invalid/items/weather-vane.png",
+  "application_utility": ["display-in-3d-scene"],
+  "provenance_label": "illustrative",
+  "source_timestamp": "2026-01-01T00:00:00Z",
+  "license_reference": "CC-BY-4.0",
+  "terms_url": "https://example.invalid/terms",
+  "disclosure": "Digital collectible for use within the application only. Does not convey land title, crop ownership, profit share, or any real-world right, and carries no promise of value.",
+  "attributes": [{ "trait_type": "Finish", "value": "Copper" }]
+}

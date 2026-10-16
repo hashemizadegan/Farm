@@ -1,0 +1,18 @@
+{
+  "_comment": "Synthetic test fixture. The coordinates are arbitrary and do not describe any real farm.",
+  "farmId": "00000000-0000-4000-8000-000000000001",
+  "origin": { "lon": 10.0, "lat": 45.0 },
+  "boundary": {
+    "type": "Polygon",
+    "coordinates": [[[9.9995, 44.9997], [10.0005, 44.9997], [10.0005, 45.0003], [9.9995, 45.0003], [9.9995, 44.9997]]]
+  },
+  "parcels": [
+    { "label": "North A", "cropName": "Example crop", "grid": { "rows": 4, "cols": 5, "spacingM": 3 } },
+    { "label": "South B", "grid": { "rows": 2, "cols": 3, "spacingM": 5 } }
+  ],
+  "catalog": [
+    { "id": "b-plant", "kind": "plant", "name": "Shrub" },
+    { "id": "a-plant", "kind": "plant", "name": "Row crop" },
+    { "id": "c-tractor", "kind": "equipment", "name": "Tractor" }
+  ]
+}

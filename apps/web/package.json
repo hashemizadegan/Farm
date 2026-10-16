@@ -1,0 +1,30 @@
+{
+  "name": "@metafarm/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port ${PORT:-3000}",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@metafarm/contracts": "workspace:*",
+    "@metafarm/domain": "workspace:*",
+    "@metafarm/map-scene": "workspace:*",
+    "@metafarm/ui": "workspace:*",
+    "@react-three/fiber": "^9.2.0",
+    "maplibre-gl": "^5.6.0",
+    "next": "^15.5.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "three": "^0.178.0"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@types/three": "^0.178.1"
+  }
+}

@@ -1,0 +1,55 @@
+"use client";
+import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { api, unwrap, useQuery, type Schemas } from "./api";
+import { devSession } from "./auth";
+
+interface TenantState {
+  me: Schemas["Me"] | undefined;
+  tenantId: string | undefined;
+  setTenantId: (id: string) => void;
+  signedIn: boolean;
+  loading: boolean;
+  error: Error | undefined;
+}
+
+const TenantContext = createContext<TenantState | null>(null);
+const TENANT_KEY = "metafarm.tenantId";
+
+export function TenantProvider({ children }: { children: ReactNode }) {
+  const token = useSyncExternalStore(devSession.subscribe, devSession.getToken, () => undefined);
+  const me = useQuery(token ? `me:${token.slice(-12)}` : null, () => unwrap(api.GET("/v1/me")));
+  const [tenantId, setTenantIdState] = useState<string | undefined>();
+
+  useEffect(() => {
+    if (!me.data) return;
+    let stored: string | null = null;
+    try {
+      stored = window.localStorage.getItem(TENANT_KEY);
+    } catch {
+      /* ignore */
+    }
+    const ids = me.data.tenants.map((t) => t.tenantId);
+    setTenantIdState(stored && ids.includes(stored) ? stored : ids[0]);
+  }, [me.data]);
+
+  const setTenantId = (id: string) => {
+    setTenantIdState(id);
+    try {
+      window.localStorage.setItem(TENANT_KEY, id);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <TenantContext.Provider value={{ me: me.data, tenantId, setTenantId, signedIn: !!token, loading: me.loading, error: me.error }}>
+      {children}
+    </TenantContext.Provider>
+  );
+}
+
+export function useTenant() {
+  const ctx = useContext(TenantContext);
+  if (!ctx) throw new Error("useTenant must be used inside TenantProvider");
+  return ctx;
+}

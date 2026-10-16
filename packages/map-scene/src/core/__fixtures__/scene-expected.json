@@ -1,0 +1,321 @@
+{
+  "farmId": "00000000-0000-4000-8000-000000000001",
+  "seed": 3480239522,
+  "origin": {
+    "lon": 10,
+    "lat": 45
+  },
+  "boundaryLocal": [
+    [
+      [
+        -39.358,
+        33.396
+      ],
+      [
+        39.358,
+        33.396
+      ],
+      [
+        39.358,
+        -33.396
+      ],
+      [
+        -39.358,
+        -33.396
+      ],
+      [
+        -39.358,
+        33.396
+      ]
+    ]
+  ],
+  "entities": [
+    {
+      "id": "north-a:r0c0",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 1, column 1)",
+      "x": -12.838,
+      "z": -4.57,
+      "rotation": 0.384,
+      "scale": 1.123,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r0c1",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 1, column 2)",
+      "x": -10.161,
+      "z": -4.601,
+      "rotation": 0.282,
+      "scale": 0.997,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r0c2",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 1, column 3)",
+      "x": -7.091,
+      "z": -4.366,
+      "rotation": 2.191,
+      "scale": 0.959,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r0c3",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 1, column 4)",
+      "x": -3.959,
+      "z": -4.751,
+      "rotation": 4.974,
+      "scale": 0.891,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r0c4",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 1, column 5)",
+      "x": -0.861,
+      "z": -4.759,
+      "rotation": 2.674,
+      "scale": 1.073,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r1c0",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 2, column 1)",
+      "x": -13.269,
+      "z": -1.423,
+      "rotation": 4.778,
+      "scale": 1.097,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r1c1",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 2, column 2)",
+      "x": -10.071,
+      "z": -1.794,
+      "rotation": 3.817,
+      "scale": 1.088,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r1c2",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 2, column 3)",
+      "x": -7.187,
+      "z": -1.741,
+      "rotation": 0.988,
+      "scale": 1.14,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r1c3",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 2, column 4)",
+      "x": -3.874,
+      "z": -1.467,
+      "rotation": 3.847,
+      "scale": 0.918,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r1c4",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 2, column 5)",
+      "x": -1.216,
+      "z": -1.32,
+      "rotation": 6.098,
+      "scale": 0.934,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r2c0",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 3, column 1)",
+      "x": -12.796,
+      "z": 1.593,
+      "rotation": 2.192,
+      "scale": 1.094,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r2c1",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 3, column 2)",
+      "x": -9.835,
+      "z": 1.445,
+      "rotation": 5.778,
+      "scale": 0.979,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r2c2",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 3, column 3)",
+      "x": -6.778,
+      "z": 1.713,
+      "rotation": 5.389,
+      "scale": 0.983,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r2c3",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 3, column 4)",
+      "x": -4.287,
+      "z": 1.261,
+      "rotation": 6.125,
+      "scale": 0.952,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r2c4",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 3, column 5)",
+      "x": -1.056,
+      "z": 1.353,
+      "rotation": 2.464,
+      "scale": 1.082,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r3c0",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 4, column 1)",
+      "x": -12.979,
+      "z": 4.744,
+      "rotation": 1.488,
+      "scale": 1.068,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r3c1",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 4, column 2)",
+      "x": -10.052,
+      "z": 4.699,
+      "rotation": 4.402,
+      "scale": 1.037,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r3c2",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 4, column 3)",
+      "x": -7.085,
+      "z": 4.508,
+      "rotation": 1.323,
+      "scale": 1.101,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r3c3",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 4, column 4)",
+      "x": -4.054,
+      "z": 4.707,
+      "rotation": 3.384,
+      "scale": 0.943,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "north-a:r3c4",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "Example crop (North A, row 4, column 5)",
+      "x": -1.186,
+      "z": 4.263,
+      "rotation": 5.501,
+      "scale": 0.991,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "south-b:r0c0",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "South B, row 1, column 1",
+      "x": 2.829,
+      "z": -2.993,
+      "rotation": 4.789,
+      "scale": 0.861,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "south-b:r0c1",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "South B, row 1, column 2",
+      "x": 7.767,
+      "z": -2.149,
+      "rotation": 4.497,
+      "scale": 1.103,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "south-b:r0c2",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "South B, row 1, column 3",
+      "x": 12.546,
+      "z": -2.493,
+      "rotation": 6.012,
+      "scale": 1.076,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "south-b:r1c0",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "South B, row 2, column 1",
+      "x": 3.272,
+      "z": 2.203,
+      "rotation": 4.402,
+      "scale": 0.991,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "south-b:r1c1",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "South B, row 2, column 2",
+      "x": 8.443,
+      "z": 2.902,
+      "rotation": 2.796,
+      "scale": 1.037,
+      "provenance": "illustrative"
+    },
+    {
+      "id": "south-b:r1c2",
+      "kind": "plant",
+      "assetId": "a-plant",
+      "label": "South B, row 2, column 3",
+      "x": 13.047,
+      "z": 2.348,
+      "rotation": 0.801,
+      "scale": 0.909,
+      "provenance": "illustrative"
+    }
+  ],
+  "disclaimer": "Illustrative 3D visualisation. Plant positions, sizes and equipment are generated for display and are not a survey, an inventory, or evidence of real-world conditions."
+}
