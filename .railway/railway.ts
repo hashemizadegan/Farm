@@ -15,8 +15,8 @@
  */
 import { defineRailway, github, image, preserve, project, redis, service, volume, bucket } from "railway/iac";
 
-// TODO(provider-config): your GitHub repository and deployment branch.
-const REPO = "OWNER/REPO";
+// GitHub repository; staging deploys from the `staging` branch, production from `main`.
+const REPO = "hashemizadegan/Farm";
 
 export default defineRailway((ctx) => {
   const prod = ctx.isEnvironment("production");
