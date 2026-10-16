@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 import { AnnouncerProvider, SkipLink } from "@metafarm/ui";
-import { devSession } from "@/lib/auth";
+import { session } from "@/lib/auth";
 import { TenantProvider, useTenant } from "@/lib/tenant";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -73,7 +73,7 @@ function Header() {
           </>
         )}
         {signedIn ? (
-          <button type="button" className="mf-button" onClick={() => devSession.signOut()}>
+          <button type="button" className="mf-button" onClick={() => void session.signOut()}>
             Sign out
           </button>
         ) : (

@@ -1,5 +1,7 @@
 # Deploying to Railway
 
+> For a click-by-click first deployment (Auth0 + Railway bucket), see [railway-staging-setup.md](railway-staging-setup.md).
+
 Four application services plus three data services, per environment:
 
 | Service | Source | Public? | Health check | Notes |
@@ -56,6 +58,7 @@ Full list with local defaults: `.env.example`. Required when deployed:
 | `AUDIT_IP_SALT` | api | Random string |
 | `NEXT_PUBLIC_API_URL` | web (**build time**) | The API's **public** URL; browsers cannot reach `*.railway.internal` |
 | `NEXT_PUBLIC_MAP_*` | web (build time) | Basemap style/attribution and CSP hosts |
+| `NEXT_PUBLIC_OIDC_AUTHORITY`, `NEXT_PUBLIC_OIDC_CLIENT_ID`, `NEXT_PUBLIC_OIDC_AUDIENCE` | web (build time) | Browser sign-in (Authorization Code + PKCE) |
 | `CHAIN_RPC_URL`, `CHAIN_ID`, `CHAIN_INDEX_CONTRACTS` | worker, scheduler | Optional; indexing is skipped without an RPC URL |
 | `RAILWAY_DOCKERFILE_PATH` | each app | e.g. `apps/api/Dockerfile` |
 

@@ -75,7 +75,7 @@ pnpm lint && pnpm typecheck
 
 Everything external sits behind an interface (see [`docs/architecture.md`](docs/architecture.md)). Search for `TODO(provider-config)` and `TODO(legal-review)`:
 
-- **Identity:** a development HS256 provider; plug in your OIDC issuer/audience (`apps/api/src/auth/oidc.ts`, `apps/web/src/lib/auth.ts`).
+- **Identity:** OIDC in both API and web (Authorization Code + PKCE in the browser); a development token provider when no OIDC provider is configured.
 - **Basemap:** an offline placeholder style (background + graticule); set `NEXT_PUBLIC_MAP_STYLE_URL` for a real provider.
 - **Imagery:** provider `none` (ingests nothing).
 - **Globe/3D Tiles:** Cesium adapter disabled by default; no paid provider needed.
@@ -94,4 +94,4 @@ Separate Railway services for web, API, worker and scheduler, plus PostGIS, Redi
 - [Threat model](docs/threat-model.md)
 - [Data provenance and legal disclosures](docs/data-provenance-and-legal.md)
 - [Accessibility](docs/accessibility.md)
-- [Deployment on Railway](docs/deployment-railway.md)
+- [Deployment on Railway](docs/deployment-railway.md) · [step-by-step staging setup](docs/railway-staging-setup.md)

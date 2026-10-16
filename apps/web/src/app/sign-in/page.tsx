@@ -2,13 +2,42 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button, Notice, TextField } from "@metafarm/ui";
-import { devSession } from "@/lib/auth";
+import { devSession, getUserManager, oidcConfigured } from "@/lib/auth";
 
-/**
- * Development sign-in. Paste a token from `pnpm --filter @metafarm/api dev-token`.
- * TODO(provider-config): replace with a redirect to your OIDC provider.
- */
 export default function SignInPage() {
+  return <>{oidcConfigured ? <OidcSignIn /> : <DevSignIn />}</>;
+}
+
+function OidcSignIn() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const start = async () => {
+    setBusy(true);
+    try {
+      await getUserManager().signinRedirect();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <h1>Sign in</h1>
+      <p>You will be sent to your organisation&apos;s sign-in page and returned here afterwards.</p>
+      {error && (
+        <Notice tone="error" title="Could not start sign-in.">
+          {error}
+        </Notice>
+      )}
+      <Button variant="primary" onClick={start} busy={busy}>
+        Continue to sign in
+      </Button>
+    </>
+  );
+}
+
+/** Development sign-in: paste a token from `pnpm --filter @metafarm/api dev-token`. */
+function DevSignIn() {
   const router = useRouter();
   const [token, setToken] = useState("");
   const [error, setError] = useState<string>();
@@ -27,7 +56,7 @@ export default function SignInPage() {
     <>
       <h1>Sign in</h1>
       <Notice tone="warning" title="Development sign-in.">
-        This screen exists only for local development. Production deployments use your OpenID Connect provider.
+        This screen appears only when no OpenID Connect provider is configured. Deployed environments require one.
       </Notice>
       <form onSubmit={submit} noValidate>
         <TextField

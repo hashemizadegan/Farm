@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { api, unwrap, useQuery, type Schemas } from "./api";
-import { devSession } from "./auth";
+import { session } from "./auth";
 
 interface TenantState {
   me: Schemas["Me"] | undefined;
@@ -16,7 +16,7 @@ const TenantContext = createContext<TenantState | null>(null);
 const TENANT_KEY = "metafarm.tenantId";
 
 export function TenantProvider({ children }: { children: ReactNode }) {
-  const token = useSyncExternalStore(devSession.subscribe, devSession.getToken, () => undefined);
+  const token = useSyncExternalStore(session.subscribe, session.getToken, () => undefined);
   const me = useQuery(token ? `me:${token.slice(-12)}` : null, () => unwrap(api.GET("/v1/me")));
   const [tenantId, setTenantIdState] = useState<string | undefined>();
 

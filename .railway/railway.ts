@@ -38,7 +38,7 @@ export default defineRailway((ctx) => {
     },
   });
   const cache = redis("redis");
-  const uploads = bucket("uploads", { region: "iad" }); // TODO(provider-config): pick a region; it cannot change later.
+  const uploads = bucket("uploads", { region: "iad" }); // Region cannot change after creation; pick the one nearest your users.
 
   const dbUrl = "postgres://metafarm:${{postgres.POSTGRES_PASSWORD}}@postgres.railway.internal:5432/metafarm";
 
@@ -51,15 +51,16 @@ export default defineRailway((ctx) => {
     QUEUE_PREFIX: "metafarm",
   };
 
+  // Railway bucket credentials (variables exposed by the "uploads" bucket). Railway buckets use
+  // virtual-hosted-style addressing; if the bucket's Credentials tab says path-style, set "true".
   const storageEnv = {
     STORAGE_DRIVER: "s3",
-    // TODO(provider-config): map these to the bucket's credentials as exposed by Railway
-    // (or to an external S3-compatible provider). Keep the bucket private.
-    S3_ENDPOINT: preserve(),
-    S3_REGION: preserve(),
-    S3_BUCKET: preserve(),
-    S3_ACCESS_KEY_ID: preserve(),
-    S3_SECRET_ACCESS_KEY: preserve(),
+    S3_ENDPOINT: "${{uploads.ENDPOINT}}",
+    S3_REGION: "${{uploads.REGION}}",
+    S3_BUCKET: "${{uploads.BUCKET}}",
+    S3_ACCESS_KEY_ID: "${{uploads.ACCESS_KEY_ID}}",
+    S3_SECRET_ACCESS_KEY: "${{uploads.SECRET_ACCESS_KEY}}",
+    S3_FORCE_PATH_STYLE: "false",
   };
 
   const api = service("api", {
@@ -126,6 +127,10 @@ export default defineRailway((ctx) => {
       NEXT_PUBLIC_MAP_ATTRIBUTION: preserve(),
       NEXT_PUBLIC_MAP_CONNECT_SRC: preserve(),
       NEXT_PUBLIC_WALLET_CHAIN_ID: preserve(),
+      // OIDC browser sign-in (e.g. Auth0 single-page application).
+      NEXT_PUBLIC_OIDC_AUTHORITY: preserve(),
+      NEXT_PUBLIC_OIDC_CLIENT_ID: preserve(),
+      NEXT_PUBLIC_OIDC_AUDIENCE: preserve(),
     },
   });
 

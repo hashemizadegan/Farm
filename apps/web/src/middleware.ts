@@ -12,6 +12,8 @@ export function middleware(req: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
   const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
   const mapHosts = (process.env.NEXT_PUBLIC_MAP_CONNECT_SRC ?? "").split(/\s+/).filter(Boolean);
+  // The browser fetches OIDC discovery, JWKS and the token endpoint from the provider.
+  const oidc = process.env.NEXT_PUBLIC_OIDC_AUTHORITY ? new URL(process.env.NEXT_PUBLIC_OIDC_AUTHORITY).origin : "";
   const dev = process.env.NODE_ENV !== "production";
 
   const csp = [
@@ -21,7 +23,7 @@ export function middleware(req: NextRequest) {
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data: blob: ${mapHosts.join(" ")}`.trim(),
     `font-src 'self' data:`,
-    `connect-src 'self' ${api} ${mapHosts.join(" ")} ${dev ? "ws:" : ""}`.trim(),
+    `connect-src 'self' ${api} ${oidc} ${mapHosts.join(" ")} ${dev ? "ws:" : ""}`.replace(/\s+/g, " ").trim(),
     // MapLibre runs its tile parsing in blob: workers.
     `worker-src 'self' blob:`,
     `child-src blob:`,

@@ -1,11 +1,11 @@
 "use client";
 import { createApiClient, type Schemas } from "@metafarm/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { devSession } from "./auth";
+import { session } from "./auth";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export const api = createApiClient({ baseUrl: API_URL, getToken: () => devSession.getToken() });
+export const api = createApiClient({ baseUrl: API_URL, getToken: () => session.getToken() });
 
 export type { Schemas };
 
