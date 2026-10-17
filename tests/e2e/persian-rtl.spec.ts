@@ -28,7 +28,8 @@ test.describe("Persian (فارسی) and right-to-left layout", () => {
 
     await page.goto("/farms");
     await expect(page.getByRole("heading", { level: 1, name: "مزرعه‌ها" })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "اصلی" })).toBeAttached();
+    // CSS selector: on phones the navigation is in the closed (hidden) drawer.
+    await expect(page.locator('nav[aria-label="اصلی"]')).toBeAttached();
     const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
     expect(axe.violations).toEqual([]);
 
