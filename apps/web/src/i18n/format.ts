@@ -10,12 +10,22 @@ export function makeFormat(locale: Locale) {
   const date = new Intl.DateTimeFormat(tag, { dateStyle: "medium" });
   const dateTime = new Intl.DateTimeFormat(tag, { dateStyle: "medium", timeStyle: "short" });
   const nf = (o?: Intl.NumberFormatOptions) => new Intl.NumberFormat(tag, o);
+  // Calendar days ("YYYY-MM-DD") are formatted at UTC midnight so no time zone shifts them to a neighbouring day.
+  const day = new Intl.DateTimeFormat(tag, { dateStyle: "medium", timeZone: "UTC" });
+  const weekday = new Intl.DateTimeFormat(tag, { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" });
+  const dayAt = (d: string) => new Date(`${d}T00:00:00Z`);
   const unit = locale === "fa" ? { ha: "هکتار", m2: "متر مربع", bytes: "بایت", kb: "کیلوبایت", mb: "مگابایت" } : { ha: "ha", m2: "m²", bytes: "bytes", kb: "KB", mb: "MB" };
 
   return {
     tag,
     unitHa: unit.ha,
     date: (iso: string) => date.format(new Date(iso)),
+    /** A calendar day such as a task's due date. */
+    day: (d: string) => day.format(dayAt(d)),
+    /** "Saturday 25 Oct" style heading for a calendar day. */
+    weekday: (d: string) => weekday.format(dayAt(d)),
+    /** First day of the week: Saturday for Persian, Monday for English. */
+    weekStartsOn: locale === "fa" ? 6 : 1,
     dateTime: (iso: string) => dateTime.format(new Date(iso)),
     number: (n: number, o?: Intl.NumberFormatOptions) => nf(o).format(n),
     /** Fixed decimals, localised digits. */
