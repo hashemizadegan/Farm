@@ -23,6 +23,7 @@ function row(over: Partial<HarvestRow> = {}): HarvestRow {
     quality_grade: null,
     notes: null,
     task_id: null,
+    season_id: null,
     public_record: {} as HarvestRow["public_record"],
     record_hash: HASH,
     anchor_status: "pending",

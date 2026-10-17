@@ -2,7 +2,9 @@ import type { FastifyInstance } from "fastify";
 import {
   getFarm,
   getHarvest,
+  findActiveSeason,
   getHarvestByCode,
+  getSeason,
   getTask,
   insertHarvest,
   listHarvests,
@@ -57,6 +59,7 @@ export async function harvestRoutes(app: FastifyInstance) {
     qualityGrade: h.quality_grade,
     notes: h.notes,
     taskId: h.task_id,
+    seasonId: h.season_id,
     publicRecord: h.public_record,
     recordHash: h.record_hash,
     anchor: { ...anchorInfo(h, env.CHAIN_EXPLORER_TX_URL, env.CHAIN_NAME), error: h.anchor_error },
@@ -84,6 +87,9 @@ export async function harvestRoutes(app: FastifyInstance) {
       if (!farm) throw notFound("farm");
       if (farm.archived_at) throw new HttpError(409, "farm_archived", "restore the farm before recording harvests");
       if (body.taskId && !(await getTask(tx, farmId, body.taskId))) throw new HttpError(400, "invalid_task", "the task must belong to this farm");
+      let seasonId = body.seasonId ?? null;
+      if (seasonId && !(await getSeason(tx, farmId, seasonId))) throw new HttpError(400, "invalid_season", "the season must belong to this farm");
+      if (body.seasonId === undefined) seasonId = (await findActiveSeason(tx, farmId, body.parcelLabel || null, body.cropName)) ?? null;
       const producer = await tenantName(tx);
       // Codes are random; a collision is astronomically unlikely, but retry rather than fail.
       for (let i = 0; ; i++) {
@@ -92,7 +98,7 @@ export async function harvestRoutes(app: FastifyInstance) {
         const hash = await harvestRecordHash(record);
         try {
           await tx.query("SAVEPOINT harvest_code");
-          const id = await insertHarvest(tx, farmId, { ...body, code, record, hash, anchorStatus: status, userId: req.user!.id });
+          const id = await insertHarvest(tx, farmId, { ...body, code, record, hash, anchorStatus: status, userId: req.user!.id, seasonId });
           await app.audit(req, tx, { action: "harvest.recorded", targetType: "harvest_batch", targetId: id, metadata: { farmId, code, hash } });
           return (await getHarvest(tx, id))!;
         } catch (err) {
