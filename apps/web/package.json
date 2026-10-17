@@ -20,12 +20,14 @@
     "maplibre-gl": "^6.4.1",
     "next": "^15.5.0",
     "oidc-client-ts": "^3.5.0",
+    "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "three": "^0.178.0"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/three": "^0.178.1"

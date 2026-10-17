@@ -11,6 +11,11 @@ export interface JobProducer {
   close(): Promise<void>;
 }
 
+/** Read access to the HarvestRegistry contract, for live checks on the public page. */
+export interface HarvestChainReader {
+  entryOf(batchId: `0x${string}`): Promise<{ recordHash: string; recordedAt: bigint; voidedAt: bigint }>;
+}
+
 export interface Deps {
   env: ApiEnv;
   logger: Logger;
@@ -21,4 +26,6 @@ export interface Deps {
   /** Recovers the signer of an EIP-191 personal message. Injected for testability. */
   recoverMessageAddress: (message: string, signature: `0x${string}`) => Promise<string>;
   now: () => Date;
+  /** Present when CHAIN_RPC_URL and HARVEST_REGISTRY_ADDRESS are configured. */
+  harvestChain?: HarvestChainReader;
 }

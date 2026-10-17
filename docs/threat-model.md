@@ -124,3 +124,13 @@ Trust boundaries: **browser ↔ API** (untrusted input), **provider ↔ webhook 
 - **Transport and headers:** helmet on the API (CSP `default-src 'none'`), nonce-based CSP and frame-ancestors `none` on the web app, HSTS when deployed, `no-store` on API responses.
 - **Abuse:** per-IP rate limiting (back it with Redis when running multiple API replicas — `TODO(provider-config)` in `security.ts`).
 - **Logging:** pino redaction of authorization headers, cookies, secrets, signatures and emails; IP addresses are salted hashes in audit records.
+
+## Harvest registry signer key
+
+**Asset:** the worker's `CHAIN_SIGNER_PRIVATE_KEY` (holds `RECORDER_ROLE` on `HarvestRegistry` and gas money).
+
+**Threats:** key theft lets an attacker register fingerprints for batch ids that do not exist yet, void registered batches, or drain the gas balance.
+
+**Controls:** the key holds only `RECORDER_ROLE` (the admin role is a different key); existing fingerprints can never be overwritten; batch ids are random UUIDs the attacker cannot predict in advance for real batches; the public page reports any on-chain mismatch instead of hiding it; the key lives only in the worker's secret store and is never logged.
+
+**Operator:** keep the minimum gas on the key; on suspected theft, revoke `RECORDER_ROLE` from the old address with the admin key, grant it to a new key, and update the worker setting.
