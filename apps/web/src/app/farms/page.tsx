@@ -6,18 +6,21 @@ import { PlotOutline } from "@/components/PlotOutline";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
+import { useI18n } from "@/i18n/provider";
 
 export default function FarmsPage() {
   const can = useCan();
+  const { m: msgs } = useI18n();
+  const t = msgs.farms;
   return (
     <>
       <PageHeader
-        title="Farms"
-        description="Every farm project in this workspace."
+        title={t.title}
+        description={t.description}
         actions={
           can("farm:write") ? (
             <Link href="/farms/new" className="mf-button mf-button--primary">
-              Create a farm project
+              {msgs.overview.createFarm}
             </Link>
           ) : undefined
         }
@@ -29,6 +32,8 @@ export default function FarmsPage() {
 
 function FarmList({ tenantId }: { tenantId: string }) {
   const [status, setStatus] = useState<"active" | "archived">("active");
+  const { m, fmt } = useI18n();
+  const t = m.farms;
   const farms = useQuery(`farms:${tenantId}:${status}`, () =>
     unwrap(api.GET("/v1/tenants/{tenantId}/farms", { params: { path: { tenantId }, query: { limit: 100, status } } })),
   );
@@ -36,32 +41,32 @@ function FarmList({ tenantId }: { tenantId: string }) {
 
   return (
     <>
-      <div className="mf-toolbar" role="group" aria-label="Show">
+      <div className="mf-toolbar" role="group" aria-label={t.show}>
         <button type="button" className="mf-button mf-button--small" aria-pressed={status === "active"} onClick={() => setStatus("active")}>
-          Active
+          {t.active}
         </button>
         <button type="button" className="mf-button mf-button--small" aria-pressed={status === "archived"} onClick={() => setStatus("archived")}>
-          Archived
+          {t.archived}
         </button>
       </div>
-      {farms.loading && !farms.data && <p role="status">Loading farms…</p>}
-      {farms.error && <Notice tone="error" title="Could not load farms.">{farms.error.message}</Notice>}
+      {farms.loading && !farms.data && <p role="status">{t.loading}</p>}
+      {farms.error && <Notice tone="error" title={m.overview.couldNotLoad}>{farms.error.message}</Notice>}
       {farms.data && items.length === 0 &&
         (status === "active" ? (
-          <EmptyState title="No farm projects yet">Create a farm project to set its boundary, plan plantings and record observations.</EmptyState>
+          <EmptyState title={t.emptyTitle}>{t.emptyText}</EmptyState>
         ) : (
-          <p>No archived farm projects. Archive a farm from its Settings tab to hide it here without deleting its data.</p>
+          <p>{t.noArchived}</p>
         ))}
       {items.length > 0 && (
         <div className="table-wrap">
           <table>
-            <caption className="mf-visually-hidden">{status === "active" ? "Active farm projects" : "Archived farm projects"}</caption>
+            <caption className="mf-visually-hidden">{status === "active" ? t.captionActive : t.captionArchived}</caption>
             <thead>
               <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Boundary</th>
-                <th scope="col">Time zone</th>
-                <th scope="col">Created</th>
+                <th scope="col">{t.colName}</th>
+                <th scope="col">{t.colBoundary}</th>
+                <th scope="col">{t.colTimezone}</th>
+                <th scope="col">{t.colCreated}</th>
               </tr>
             </thead>
             <tbody>
@@ -76,10 +81,10 @@ function FarmList({ tenantId }: { tenantId: string }) {
                       </div>
                     </div>
                   </th>
-                  <td>{f.currentBoundaryVersionId ? <StatusPill tone="ok">Validated</StatusPill> : <StatusPill tone="pending">Needs a boundary</StatusPill>}</td>
-                  <td>{f.timezone}</td>
+                  <td>{f.currentBoundaryVersionId ? <StatusPill tone="ok">{t.validated}</StatusPill> : <StatusPill tone="pending">{t.needsBoundary}</StatusPill>}</td>
+                  <td className="ltr">{f.timezone.replace(/_/g, " ")}</td>
                   <td>
-                    <time dateTime={f.createdAt}>{new Date(f.createdAt).toLocaleDateString()}</time>
+                    <time dateTime={f.createdAt}>{fmt.date(f.createdAt)}</time>
                   </td>
                 </tr>
               ))}

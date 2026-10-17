@@ -4,13 +4,15 @@ import { Button, ErrorSummary, Notice, PageHeader, SelectField, TextField, useAn
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
-import { ROLE_LABELS, ROLE_ORDER, type Role } from "@/lib/roles";
+import { ROLE_ORDER, type Role } from "@/lib/roles";
 import { useTenant } from "@/lib/tenant";
+import { useI18n } from "@/i18n/provider";
 
 export default function TeamPage() {
+  const t = useI18n().m.team;
   return (
     <>
-      <PageHeader title="Team" description="People in this workspace and what each of them can do." />
+      <PageHeader title={t.title} description={t.description} />
       <RequireTenant>{(tenantId) => <Team tenantId={tenantId} />}</RequireTenant>
     </>
   );
@@ -19,6 +21,7 @@ export default function TeamPage() {
 function Team({ tenantId }: { tenantId: string }) {
   const can = useCan();
   const manage = can("member:manage");
+  const { m } = useI18n();
   const [invitesKey, setInvitesKey] = useState(0);
   return (
     <>
@@ -30,12 +33,12 @@ function Team({ tenantId }: { tenantId: string }) {
         </>
       )}
       <details className="card" style={{ marginTop: "1.5rem" }}>
-        <summary>What each role can do</summary>
+        <summary>{m.team.rolesSummary}</summary>
         <dl>
           {ROLE_ORDER.map((r) => (
             <div key={r}>
-              <dt>{ROLE_LABELS[r].label}</dt>
-              <dd>{ROLE_LABELS[r].summary}</dd>
+              <dt>{m.roles[r].label}</dt>
+              <dd>{m.roles[r].summary}</dd>
             </div>
           ))}
         </dl>
@@ -47,6 +50,8 @@ function Team({ tenantId }: { tenantId: string }) {
 function Members({ tenantId, manage }: { tenantId: string; manage: boolean }) {
   const { me, tenantId: current, reloadMe } = useTenant();
   const announce = useAnnounce();
+  const { m: msgs, fmt } = useI18n();
+  const t = msgs.team;
   const myRole = me?.tenants.find((t) => t.tenantId === current)?.role;
   const members = useQuery(`members:${tenantId}`, () => unwrap(api.GET("/v1/tenants/{tenantId}/members", { params: { path: { tenantId } } })));
   const [error, setError] = useState<string>();
@@ -57,7 +62,7 @@ function Members({ tenantId, manage }: { tenantId: string; manage: boolean }) {
     setError(undefined);
     try {
       await unwrap(api.PATCH("/v1/tenants/{tenantId}/members/{userId}", { params: { path: { tenantId, userId } }, body: { role } }));
-      announce(`${name} is now ${ROLE_LABELS[role].label}.`);
+      announce(t.changed(name, msgs.roles[role].label));
       members.reload();
       if (userId === me?.userId) reloadMe();
     } catch (err) {
@@ -69,13 +74,13 @@ function Members({ tenantId, manage }: { tenantId: string; manage: boolean }) {
   }
 
   async function remove(userId: string, name: string, self: boolean) {
-    const question = self ? "Leave this workspace? You will lose access to its farms." : `Remove ${name} from this workspace?`;
+    const question = self ? t.leaveConfirm : t.removeConfirm(name);
     if (!window.confirm(question)) return;
     setBusy(userId);
     setError(undefined);
     try {
       await unwrap(api.DELETE("/v1/tenants/{tenantId}/members/{userId}", { params: { path: { tenantId, userId } } }));
-      announce(self ? "You left the workspace." : `${name} removed.`);
+      announce(self ? t.left : t.removed(name));
       if (self) reloadMe();
       else members.reload();
     } catch (err) {
@@ -85,41 +90,41 @@ function Members({ tenantId, manage }: { tenantId: string; manage: boolean }) {
     }
   }
 
-  if (members.loading && !members.data) return <p role="status">Loading members…</p>;
-  if (members.error) return <Notice tone="error" title="Could not load members.">{members.error.message}</Notice>;
+  if (members.loading && !members.data) return <p role="status">{t.loading}</p>;
+  if (members.error) return <Notice tone="error" title={t.couldNotLoad}>{members.error.message}</Notice>;
   const items = members.data?.items ?? [];
 
   return (
     <section aria-labelledby="members-heading">
-      <h2 id="members-heading">Members ({items.length})</h2>
+      <h2 id="members-heading">{t.members(items.length)}</h2>
       {error && <Notice tone="error">{error}</Notice>}
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Role</th>
-              <th scope="col">Joined</th>
+              <th scope="col">{t.colName}</th>
+              <th scope="col">{t.colRole}</th>
+              <th scope="col">{t.colJoined}</th>
               <th scope="col">
-                <span className="mf-visually-hidden">Actions</span>
+                <span className="mf-visually-hidden">{t.colActions}</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {items.map((m) => {
               const self = m.userId === me?.userId;
-              const name = m.displayName || m.email || "Unnamed member";
+              const name = m.displayName || m.email || t.unnamed;
               // Only owners may change or grant the owner role; the API enforces this too.
               const editable = manage && !self && (m.role !== "owner" || myRole === "owner");
               return (
                 <tr key={m.userId}>
                   <td>
                     {name}
-                    {self && " (you)"}
+                    {self && t.you}
                     {m.email && m.displayName && (
                       <>
                         <br />
-                        <span className="mf-hint">{m.email}</span>
+                        <span className="mf-hint ltr">{m.email}</span>
                       </>
                     )}
                   </td>
@@ -127,7 +132,7 @@ function Members({ tenantId, manage }: { tenantId: string; manage: boolean }) {
                     {editable ? (
                       <>
                         <label htmlFor={`role-${m.userId}`} className="mf-visually-hidden">
-                          Role for {name}
+                          {t.roleFor(name)}
                         </label>
                         <select
                           id={`role-${m.userId}`}
@@ -138,22 +143,22 @@ function Members({ tenantId, manage }: { tenantId: string; manage: boolean }) {
                         >
                           {ROLE_ORDER.filter((r) => r !== "owner" || myRole === "owner").map((r) => (
                             <option key={r} value={r}>
-                              {ROLE_LABELS[r].label}
+                              {msgs.roles[r].label}
                             </option>
                           ))}
                         </select>
                       </>
                     ) : (
-                      ROLE_LABELS[m.role].label
+                      msgs.roles[m.role].label
                     )}
                   </td>
                   <td>
-                    <time dateTime={m.joinedAt}>{new Date(m.joinedAt).toLocaleDateString()}</time>
+                    <time dateTime={m.joinedAt}>{fmt.date(m.joinedAt)}</time>
                   </td>
                   <td>
                     {(editable || self) && (
                       <Button variant={self ? "secondary" : "danger"} busy={busy === m.userId} onClick={() => remove(m.userId, name, self)}>
-                        {self ? "Leave" : "Remove"}
+                        {self ? t.leave : t.remove}
                         {!self && <span className="mf-visually-hidden"> {name}</span>}
                       </Button>
                     )}
@@ -171,6 +176,8 @@ function Members({ tenantId, manage }: { tenantId: string; manage: boolean }) {
 function Invite({ tenantId, onCreated }: { tenantId: string; onCreated: () => void }) {
   const { me, tenantId: current } = useTenant();
   const announce = useAnnounce();
+  const { m, fmt } = useI18n();
+  const t = m.team.invite;
   const myRole = me?.tenants.find((t) => t.tenantId === current)?.role;
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("viewer");
@@ -182,7 +189,7 @@ function Invite({ tenantId, onCreated }: { tenantId: string; onCreated: () => vo
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-      setErrors([{ field: "invite-email", message: "Enter the email address of the person you are inviting." }]);
+      setErrors([{ field: "invite-email", message: t.emailRequired }]);
       return;
     }
     setBusy(true);
@@ -193,7 +200,7 @@ function Invite({ tenantId, onCreated }: { tenantId: string; onCreated: () => vo
       // The token travels in the URL fragment, which browsers never send to servers or in Referer headers.
       setLink({ url: `${window.location.origin}/invite#token=${inv.token}`, email: inv.email, expiresAt: inv.expiresAt });
       setEmail("");
-      announce("Invitation link created. Copy it and send it to the person.");
+      announce(t.created);
       onCreated();
     } catch (err) {
       setErrors([{ message: (err as Error).message }]);
@@ -207,7 +214,7 @@ function Invite({ tenantId, onCreated }: { tenantId: string; onCreated: () => vo
     try {
       await navigator.clipboard.writeText(link.url);
       setCopied(true);
-      announce("Link copied.");
+      announce(t.copiedAnnounce);
     } catch {
       setCopied(false);
     }
@@ -215,44 +222,42 @@ function Invite({ tenantId, onCreated }: { tenantId: string; onCreated: () => vo
 
   return (
     <section className="card" aria-labelledby="invite-heading" style={{ marginTop: "1.5rem" }}>
-      <h2 id="invite-heading">Invite someone</h2>
-      <p className="mf-hint">
-        This creates a single-use link valid for 7 days. Nothing is emailed: send the link yourself. Whoever opens it and
-        signs in joins with the role you choose, so share it only with that person.
-      </p>
+      <h2 id="invite-heading">{t.heading}</h2>
+      <p className="mf-hint">{t.intro}</p>
       <ErrorSummary errors={errors} />
       <form onSubmit={submit} noValidate>
         <TextField
           id="invite-email"
-          label="Their email address"
+          label={t.email}
           type="email"
           autoComplete="off"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={errors.find((x) => x.field === "invite-email")?.message}
         />
-        <SelectField label="Role" value={role} onChange={(e) => setRole(e.target.value as Role)} hint={ROLE_LABELS[role].summary}>
+        <SelectField label={t.role} value={role} onChange={(e) => setRole(e.target.value as Role)} hint={m.roles[role].summary}>
           {ROLE_ORDER.filter((r) => r !== "owner" || myRole === "owner").map((r) => (
             <option key={r} value={r}>
-              {ROLE_LABELS[r].label}
+              {m.roles[r].label}
             </option>
           ))}
         </SelectField>
         <Button type="submit" variant="primary" busy={busy}>
-          Create invitation link
+          {t.create}
         </Button>
       </form>
       {link && (
         <div style={{ marginTop: "1rem" }}>
           <p>
-            <strong>Link for {link.email}</strong> — shown only now. Expires {new Date(link.expiresAt).toLocaleString()}.
+            <strong>{t.linkFor(link.email)}</strong>
+            {t.shownOnce(fmt.dateTime(link.expiresAt))}
           </p>
           <div className="copy-field">
             <label htmlFor="invite-link" className="mf-visually-hidden">
-              Invitation link
+              {t.link}
             </label>
             <input id="invite-link" readOnly value={link.url} onFocus={(e) => e.currentTarget.select()} />
-            <Button onClick={copy}>{copied ? "Copied" : "Copy link"}</Button>
+            <Button onClick={copy}>{copied ? t.copied : t.copy}</Button>
           </div>
         </div>
       )}
@@ -262,6 +267,8 @@ function Invite({ tenantId, onCreated }: { tenantId: string; onCreated: () => vo
 
 function PendingInvitations({ tenantId, reloadKey }: { tenantId: string; reloadKey: number }) {
   const announce = useAnnounce();
+  const { m, fmt } = useI18n();
+  const t = m.team.pending;
   const invites = useQuery(`invites:${tenantId}:${reloadKey}`, () =>
     unwrap(api.GET("/v1/tenants/{tenantId}/invitations", { params: { path: { tenantId } } })),
   );
@@ -271,7 +278,7 @@ function PendingInvitations({ tenantId, reloadKey }: { tenantId: string; reloadK
     setBusy(id);
     try {
       await unwrap(api.DELETE("/v1/tenants/{tenantId}/invitations/{invitationId}", { params: { path: { tenantId, invitationId: id } } }));
-      announce(`Invitation for ${email} revoked.`);
+      announce(t.revoked(email));
       invites.reload();
     } finally {
       setBusy(undefined);
@@ -282,19 +289,22 @@ function PendingInvitations({ tenantId, reloadKey }: { tenantId: string; reloadK
   if (items.length === 0) return null;
   return (
     <section aria-labelledby="pending-heading" style={{ marginTop: "1.5rem" }}>
-      <h2 id="pending-heading">Pending invitations</h2>
+      <h2 id="pending-heading">{t.heading}</h2>
       <ul className="files">
         {items.map((i) => (
           <li key={i.id}>
             <span>
-              <strong>{i.email}</strong> as {ROLE_LABELS[i.role as Role]?.label ?? i.role}
+              <strong className="ltr">{i.email}</strong>
+              {t.as(m.roles[i.role as Role]?.label ?? i.role)}
               <br />
               <span className="mf-hint">
-                {i.invitedBy ? `Invited by ${i.invitedBy}. ` : ""}Expires {new Date(i.expiresAt).toLocaleString()}.
+                {i.invitedBy ? t.invitedBy(i.invitedBy) : ""}
+                {t.expires(fmt.dateTime(i.expiresAt))}
               </span>
             </span>
             <Button busy={busy === i.id} onClick={() => revoke(i.id, i.email)}>
-              Revoke<span className="mf-visually-hidden"> invitation for {i.email}</span>
+              {t.revoke}
+              <span className="mf-visually-hidden">{t.revokeHidden(i.email)}</span>
             </Button>
           </li>
         ))}

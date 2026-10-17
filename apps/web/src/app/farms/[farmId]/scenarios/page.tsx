@@ -4,15 +4,16 @@ import { useState, type FormEvent } from "react";
 import { Button, ErrorSummary, Notice, TextField, useAnnounce } from "@metafarm/ui";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery, type Schemas } from "@/lib/api";
+import { useI18n } from "@/i18n/provider";
 
 export default function ScenariosPage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const t = useI18n().m.scenarios;
   return (
     <>
-      <h1>Crop scenarios</h1>
-      <Notice tone="warning" title="Simulation only.">
-        Scenarios calculate low, base and high cases from the figures <em>you</em> enter. The application provides no yield, price or cost
-        data. Results are not forecasts, not realised income, and not an offer or promise of any return.
+      <h1>{t.title}</h1>
+      <Notice tone="warning" title={t.simOnlyTitle}>
+        {t.simOnly((x) => <em>{x}</em>)}
       </Notice>
       <RequireTenant>{(tenantId) => <Scenarios tenantId={tenantId} farmId={farmId} />}</RequireTenant>
     </>
@@ -24,6 +25,8 @@ const emptyRange = (): Range => ({ low: "", base: "", high: "" });
 
 function Scenarios({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   const announce = useAnnounce();
+  const { m } = useI18n();
+  const t = m.scenarios;
   const list = useQuery(`scenarios:${farmId}`, () =>
     unwrap(api.GET("/v1/tenants/{tenantId}/farms/{farmId}/scenarios", { params: { path: { tenantId, farmId } } })),
   );
@@ -43,18 +46,18 @@ function Scenarios({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const problems: { message: string }[] = [];
-    if (!cropName.trim()) problems.push({ message: "Enter a crop name." });
-    for (const [label, r] of [["Yield", yieldR], ["Price", priceR], ["Costs", costR]] as const) {
+    if (!cropName.trim()) problems.push({ message: t.errCrop });
+    for (const [label, r] of [[t.yieldName, yieldR], [t.priceName, priceR], [t.costsName, costR]] as const) {
       const v = toRange(r);
       if ([r.low, r.base, r.high].some((x) => x === "") || Object.values(v).some((n) => !Number.isFinite(n) || n < 0)) {
-        problems.push({ message: `${label}: enter non-negative numbers for low, base and high.` });
+        problems.push({ message: t.errNumbers(label) });
       } else if (!(v.low <= v.base && v.base <= v.high)) {
-        problems.push({ message: `${label}: low must not exceed base, and base must not exceed high.` });
+        problems.push({ message: t.errOrder(label) });
       }
     }
-    if (!/^[A-Z]{3}$/.test(currency)) problems.push({ message: "Currency must be a three-letter ISO code such as USD." });
+    if (!/^[A-Z]{3}$/.test(currency)) problems.push({ message: t.errCurrency });
     setErrors(problems);
-    if (problems.length) return announce(`${problems.length} problem(s) found.`, "assertive");
+    if (problems.length) return announce(m.common.problems(problems.length), "assertive");
 
     setBusy(true);
     try {
@@ -73,7 +76,7 @@ function Scenarios({ tenantId, farmId }: { tenantId: string; farmId: string }) {
           },
         }),
       );
-      announce("Simulation saved.");
+      announce(t.saved);
       list.reload();
     } catch (err) {
       setErrors([{ message: (err as Error).message }]);
@@ -85,25 +88,25 @@ function Scenarios({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   return (
     <div className="grid-2">
       <form onSubmit={submit} noValidate className="card" aria-labelledby="new-scenario">
-        <h2 id="new-scenario">New simulation</h2>
+        <h2 id="new-scenario">{t.newHeading}</h2>
         <ErrorSummary errors={errors} />
-        <TextField label="Crop name" value={cropName} onChange={(e) => setCropName(e.target.value)} required />
-        <TextField label="Planted area (ha)" hint="Leave blank to use the validated boundary area." inputMode="decimal" value={area} onChange={(e) => setArea(e.target.value)} />
-        <TextField label="Yield unit" hint="e.g. t, kg, bushel" value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)} />
-        <TextField label="Currency (ISO 4217)" value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} maxLength={3} />
-        <RangeInputs legend="Yield per hectare (your estimate)" value={yieldR} onChange={setYield} />
-        <RangeInputs legend="Price per yield unit (your estimate)" value={priceR} onChange={setPrice} />
-        <RangeInputs legend="Total season costs (your estimate)" value={costR} onChange={setCost} />
-        <TextField label="Where do these figures come from?" hint="Optional note, stored with the scenario." value={note} onChange={(e) => setNote(e.target.value)} />
+        <TextField label={t.crop} value={cropName} onChange={(e) => setCropName(e.target.value)} required />
+        <TextField label={t.area} hint={t.areaHint} inputMode="decimal" value={area} onChange={(e) => setArea(e.target.value)} />
+        <TextField label={t.yieldUnit} hint={t.yieldUnitHint} value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)} />
+        <TextField label={t.currency} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} maxLength={3} />
+        <RangeInputs legend={t.yieldLegend} value={yieldR} onChange={setYield} />
+        <RangeInputs legend={t.priceLegend} value={priceR} onChange={setPrice} />
+        <RangeInputs legend={t.costLegend} value={costR} onChange={setCost} />
+        <TextField label={t.note} hint={t.noteHint} value={note} onChange={(e) => setNote(e.target.value)} />
         <Button type="submit" variant="primary" busy={busy}>
-          Run simulation
+          {t.run}
         </Button>
       </form>
 
       <section aria-labelledby="saved-scenarios">
-        <h2 id="saved-scenarios">Saved simulations</h2>
-        {list.loading && <p role="status">Loading…</p>}
-        {list.data?.items.length === 0 && <p>No simulations yet.</p>}
+        <h2 id="saved-scenarios">{t.savedHeading}</h2>
+        {list.loading && <p role="status">{m.common.loading}</p>}
+        {list.data?.items.length === 0 && <p>{t.none}</p>}
         {list.data?.items.map((s) => <ScenarioResult key={s.id} s={s} />)}
       </section>
     </div>
@@ -111,49 +114,52 @@ function Scenarios({ tenantId, farmId }: { tenantId: string; farmId: string }) {
 }
 
 function RangeInputs({ legend, value, onChange }: { legend: string; value: Range; onChange: (r: Range) => void }) {
+  const cases = useI18n().m.scenarios.cases;
   return (
     <fieldset className="range-row">
       <legend>{legend}</legend>
       {(["low", "base", "high"] as const).map((k) => (
-        <TextField key={k} label={k[0]!.toUpperCase() + k.slice(1)} inputMode="decimal" value={value[k]} onChange={(e) => onChange({ ...value, [k]: e.target.value })} />
+        <TextField key={k} label={cases[k]} inputMode="decimal" value={value[k]} onChange={(e) => onChange({ ...value, [k]: e.target.value })} />
       ))}
     </fieldset>
   );
 }
 
 function ScenarioResult({ s }: { s: Schemas["CropScenario"] }) {
-  const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: s.result.currency, maximumFractionDigits: 0 });
+  const { m, fmt } = useI18n();
+  const t = m.scenarios;
+  const money = (n: number) => fmt.currency(n, s.result.currency);
   return (
     <article className="card" style={{ marginBottom: "1rem" }}>
       <h3>
-        {s.input.cropName} — <span className="mf-badge">Simulated</span>
+        {s.input.cropName} — <span className="mf-badge">{t.simulated}</span>
       </h3>
       <table>
         <caption>
-          Simulated cases for {s.input.plantedAreaHa?.toFixed(2)} ha, {new Date(s.createdAt).toLocaleDateString()}
+          {t.caption(s.input.plantedAreaHa != null ? `${fmt.fixed(s.input.plantedAreaHa, 2)} ${fmt.unitHa}` : "—", fmt.date(s.createdAt))}
         </caption>
         <thead>
           <tr>
-            <th scope="col">Case</th>
-            <th scope="col">Production ({s.result.yieldUnit})</th>
-            <th scope="col">Gross (simulated)</th>
-            <th scope="col">Costs</th>
-            <th scope="col">Net (simulated)</th>
+            <th scope="col">{t.colCase}</th>
+            <th scope="col">{t.colProduction(s.result.yieldUnit)}</th>
+            <th scope="col">{t.colGross}</th>
+            <th scope="col">{t.colCosts}</th>
+            <th scope="col">{t.colNet}</th>
           </tr>
         </thead>
         <tbody>
           {(["low", "base", "high"] as const).map((k) => (
             <tr key={k}>
-              <th scope="row">{k}</th>
-              <td>{s.result.cases[k].production}</td>
-              <td>{fmt.format(s.result.cases[k].grossRevenue)}</td>
-              <td>{fmt.format(s.result.cases[k].costs)}</td>
-              <td>{fmt.format(s.result.cases[k].net)}</td>
+              <th scope="row">{t.cases[k]}</th>
+              <td>{fmt.number(s.result.cases[k].production)}</td>
+              <td>{money(s.result.cases[k].grossRevenue)}</td>
+              <td>{money(s.result.cases[k].costs)}</td>
+              <td>{money(s.result.cases[k].net)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="mf-muted">{s.result.disclaimer}</p>
+      <p className="mf-muted">{t.disclaimer}</p>
     </article>
   );
 }

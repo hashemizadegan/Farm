@@ -2,13 +2,15 @@
 import { useState, type FormEvent } from "react";
 import { Button, ErrorSummary, Notice, PageHeader, TextField, useAnnounce } from "@metafarm/ui";
 import { api, unwrap } from "@/lib/api";
-import { ROLE_LABELS } from "@/lib/roles";
 import { useTenant } from "@/lib/tenant";
 import Link from "next/link";
+import { useI18n } from "@/i18n/provider";
 
 export default function AccountPage() {
   const { me, signedIn, reloadMe } = useTenant();
   const announce = useAnnounce();
+  const { m } = useI18n();
+  const t = m.account;
   const [displayName, setDisplayName] = useState<string | undefined>(undefined);
   const [errors, setErrors] = useState<{ field?: string; message: string }[]>([]);
   const [busy, setBusy] = useState(false);
@@ -17,10 +19,8 @@ export default function AccountPage() {
   if (!signedIn) {
     return (
       <>
-        <PageHeader title="Your account" />
-        <p>
-          <Link href="/sign-in">Sign in</Link> to see your account.
-        </p>
+        <PageHeader title={t.title} />
+        <p>{t.signInToSee((x) => <Link href="/sign-in">{x}</Link>)}</p>
       </>
     );
   }
@@ -34,7 +34,7 @@ export default function AccountPage() {
     try {
       await unwrap(api.PATCH("/v1/me/profile", { body: { displayName: name.trim() || null } }));
       setSaved(true);
-      announce("Name saved.");
+      announce(t.savedAnnounce);
       reloadMe();
     } catch (err) {
       setErrors([{ message: (err as Error).message }]);
@@ -45,12 +45,12 @@ export default function AccountPage() {
 
   return (
     <>
-      <PageHeader title="Your account" description="How other members of your workspaces see you." />
+      <PageHeader title={t.title} description={t.description} />
       <form className="card" onSubmit={save} noValidate>
         <ErrorSummary errors={errors} />
         <TextField
-          label="Display name"
-          hint="Shown to people in your workspaces, for example on files you upload. Leave empty to show your email instead."
+          label={t.displayName}
+          hint={t.displayNameHint}
           value={name}
           maxLength={120}
           autoComplete="name"
@@ -60,25 +60,25 @@ export default function AccountPage() {
           }}
         />
         <Button type="submit" variant="primary" busy={busy}>
-          Save
+          {m.common.save}
         </Button>
-        {saved && <p role="status">Saved.</p>}
+        {saved && <p role="status">{m.common.saved}</p>}
       </form>
       <section aria-labelledby="memberships-heading" style={{ marginTop: "1.5rem" }}>
-        <h2 id="memberships-heading">Your workspaces</h2>
+        <h2 id="memberships-heading">{t.workspaces}</h2>
         {me && me.tenants.length > 0 ? (
           <ul>
-            {me.tenants.map((t) => (
-              <li key={t.tenantId}>
-                {t.name} — {ROLE_LABELS[t.role].label}
+            {me.tenants.map((ws) => (
+              <li key={ws.tenantId}>
+                {ws.name} — {m.roles[ws.role].label}
               </li>
             ))}
           </ul>
         ) : (
-          <Notice>You are not in a workspace yet.</Notice>
+          <Notice>{t.none}</Notice>
         )}
         <p>
-          <Link href="/workspaces/new">Create another workspace</Link>
+          <Link href="/workspaces/new">{t.createAnother}</Link>
         </p>
       </section>
     </>

@@ -9,6 +9,7 @@
     ".": "./src/core/index.ts",
     "./core": "./src/core/index.ts",
     "./react": "./src/react/index.ts",
+    "./labels": "./src/react/labels.ts",
     "./map": "./src/map/index.ts"
   },
   "scripts": {

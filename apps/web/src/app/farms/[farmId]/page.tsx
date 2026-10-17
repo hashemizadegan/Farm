@@ -5,6 +5,7 @@ import { Notice, ProvenanceBadge } from "@metafarm/ui";
 import { PlanEditor } from "@/components/PlanEditor";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
+import { useI18n } from "@/i18n/provider";
 
 export default function FarmOverviewPage() {
   const { farmId } = useParams<{ farmId: string }>();
@@ -12,9 +13,11 @@ export default function FarmOverviewPage() {
 }
 
 function Overview({ tenantId, farmId }: { tenantId: string; farmId: string }) {
+  const { m, fmt } = useI18n();
+  const t = m.farm;
   const farm = useQuery(`farm:${farmId}`, () => unwrap(api.GET("/v1/tenants/{tenantId}/farms/{farmId}", { params: { path: { tenantId, farmId } } })));
-  if (farm.loading) return <p role="status">Loading farm…</p>;
-  if (farm.error) return <Notice tone="error" title="Could not load this farm.">{farm.error.status === 404 ? "It does not exist or you do not have access." : farm.error.message}</Notice>;
+  if (farm.loading) return <p role="status">{t.loading}</p>;
+  if (farm.error) return <Notice tone="error" title={t.couldNotLoad}>{farm.error.status === 404 ? t.notFound : farm.error.message}</Notice>;
   const f = farm.data!;
   return (
     <>
@@ -23,29 +26,29 @@ function Overview({ tenantId, farmId }: { tenantId: string; farmId: string }) {
       <div className="card" style={{ marginTop: "1.25rem" }}>
         <dl className="facts">
           <div>
-            <dt>Origin point</dt>
+            <dt>{t.origin}</dt>
             <dd>
-              {f.origin ? `${f.origin.lat.toFixed(6)}, ${f.origin.lon.toFixed(6)}` : "Not set"} <ProvenanceBadge label={f.originProvenance} />
+              {f.origin ? <span className="ltr">{`${f.origin.lat.toFixed(6)}, ${f.origin.lon.toFixed(6)}`}</span> : m.common.notSet} <ProvenanceBadge label={f.originProvenance} />
             </dd>
           </div>
           <div>
-            <dt>Boundary</dt>
+            <dt>{t.boundary}</dt>
             <dd>
               {f.currentBoundaryVersionId ? (
-                <Link href={`/farms/${farmId}/boundary`}>Validated. Review versions</Link>
+                <Link href={`/farms/${farmId}/boundary`}>{t.validatedReview}</Link>
               ) : (
-                <Link href={`/farms/${farmId}/boundary`}>Not validated yet. Review submissions</Link>
+                <Link href={`/farms/${farmId}/boundary`}>{t.notValidatedReview}</Link>
               )}
             </dd>
           </div>
           <div>
-            <dt>Time zone</dt>
-            <dd>{f.timezone.replace(/_/g, " ")}</dd>
+            <dt>{t.timezone}</dt>
+            <dd className="ltr">{f.timezone.replace(/_/g, " ")}</dd>
           </div>
           <div>
-            <dt>Created</dt>
+            <dt>{t.created}</dt>
             <dd>
-              <time dateTime={f.createdAt}>{new Date(f.createdAt).toLocaleDateString()}</time>
+              <time dateTime={f.createdAt}>{fmt.date(f.createdAt)}</time>
             </dd>
           </div>
         </dl>

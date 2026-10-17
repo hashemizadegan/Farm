@@ -4,26 +4,29 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, Notice, TextField } from "@metafarm/ui";
 import { devSession, getUserManager, oidcConfigured } from "@/lib/auth";
 import { rememberReturnTo, takeReturnTo } from "@/lib/return-to";
+import { useI18n } from "@/i18n/provider";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
 
 export default function SignInPage() {
   // ?next=/path brings the user back to where they were (e.g. an invitation).
   useEffect(() => rememberReturnTo(new URLSearchParams(window.location.search).get("next")), []);
+  const t = useI18n().m.signIn;
   return (
     <div className="landing">
       <section className="landing__plate" aria-labelledby="landing-headline">
-        <p className="landing__brand">Metafarm</p>
-        <SurveyDrawing />
+        <p className="landing__brand">{t.brand}</p>
+        <SurveyDrawing label={t.illustrative} />
         <div>
           <h1 id="landing-headline" className="landing__headline">
-            Every farm starts with its boundary.
+            {t.headline}
           </h1>
-          <p className="landing__lede">
-            Draw or import the field boundary, plan plantings inside it, record what you see on the ground, and keep a
-            clear record of what has been checked and by whom.
-          </p>
+          <p className="landing__lede">{t.lede}</p>
         </div>
       </section>
-      <div className="landing__panel">{oidcConfigured ? <OidcSignIn /> : <DevSignIn />}</div>
+      <div className="landing__panel">
+        <LanguageSwitch className="landing__lang" />
+        {oidcConfigured ? <OidcSignIn /> : <DevSignIn />}
+      </div>
     </div>
   );
 }
@@ -41,7 +44,7 @@ const FIELD: [number, number][] = [
   [62, 222],
 ];
 
-function SurveyDrawing() {
+function SurveyDrawing({ label }: { label: string }) {
   const d = `M${FIELD.map((p) => p.join(" ")).join(" L")} Z`;
   return (
     <svg className="landing__survey" viewBox="0 0 400 300" aria-hidden="true" focusable="false">
@@ -62,7 +65,7 @@ function SurveyDrawing() {
         <circle key={i} className="survey__vertex" cx={x} cy={y} r={5.5} style={{ animationDelay: `${0.3 + (i / FIELD.length) * 2.4}s` }} />
       ))}
       <text className="survey__label" x="200" y="290" textAnchor="middle">
-        Illustrative boundary
+        {label}
       </text>
     </svg>
   );
@@ -71,6 +74,7 @@ function SurveyDrawing() {
 function OidcSignIn() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const t = useI18n().m.signIn;
   const start = async () => {
     setBusy(true);
     try {
@@ -82,20 +86,20 @@ function OidcSignIn() {
   };
   return (
     <>
-      <h2>Sign in</h2>
+      <h2>{t.heading}</h2>
       <ul>
-        <li>Boundaries are checked for valid shape and labelled with where they came from.</li>
-        <li>A verifier can mark a boundary independently verified by attaching a survey or registry document.</li>
-        <li>Plans, observations, photos and documents stay private to your workspace.</li>
+        {t.points.map((p) => (
+          <li key={p}>{p}</li>
+        ))}
       </ul>
-      <p className="landing__foot">You will continue to a secure sign-in page and come back here afterwards. New here? You can create an account there.</p>
+      <p className="landing__foot">{t.foot}</p>
       {error && (
-        <Notice tone="error" title="Could not start sign-in.">
+        <Notice tone="error" title={t.couldNotStart}>
           {error}
         </Notice>
       )}
       <Button variant="primary" onClick={start} busy={busy}>
-        Continue to sign in
+        {t.continue}
       </Button>
     </>
   );
@@ -106,11 +110,12 @@ function DevSignIn() {
   const router = useRouter();
   const [token, setToken] = useState("");
   const [error, setError] = useState<string>();
+  const t = useI18n().m.signIn;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (token.split(".").length !== 3) {
-      setError("That does not look like a token. Paste the full value printed by the dev-token command.");
+      setError(t.devInvalid);
       return;
     }
     devSession.signIn(token);
@@ -119,14 +124,14 @@ function DevSignIn() {
 
   return (
     <>
-      <h2>Sign in</h2>
-      <Notice tone="warning" title="Development sign-in.">
-        This screen appears only when no OpenID Connect provider is configured. Deployed environments require one.
+      <h2>{t.heading}</h2>
+      <Notice tone="warning" title={t.devTitle}>
+        {t.devText}
       </Notice>
       <form onSubmit={submit} noValidate>
         <TextField
-          label="Development token"
-          hint="Run: pnpm --filter @metafarm/api dev-token"
+          label={t.devToken}
+          hint={t.devHint}
           name="token"
           autoComplete="off"
           value={token}
@@ -135,7 +140,7 @@ function DevSignIn() {
           required
         />
         <Button type="submit" variant="primary">
-          Sign in
+          {t.heading}
         </Button>
       </form>
     </>

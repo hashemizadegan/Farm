@@ -2,6 +2,7 @@ import { Component, Suspense, lazy, useEffect, useId, useState, type ReactNode }
 import { QUALITY_PRESETS, autoQuality, type QualityLevel } from "../core/quality";
 import type { SceneDescription } from "../core/scene-builder";
 import { detectWebGL, type WebGLSupport } from "../core/webgl";
+import { EN_SCENE_LABELS, type SceneLabels } from "./labels";
 import { SceneEntityList } from "./SceneEntityList";
 
 // Lazy: three.js and the renderer load only when a 3D view is actually shown.
@@ -14,6 +15,8 @@ export interface FarmSceneProps {
   /** Force the DOM view (used by tests and by users who prefer it). */
   forceFallback?: boolean;
   onStatus?: (message: string) => void;
+  /** Translated text; English by default. */
+  labels?: SceneLabels;
 }
 
 type ViewMode = "3d" | "list";
@@ -26,7 +29,8 @@ type ViewMode = "3d" | "list";
  *  - mirrors every 3D action in a keyboard-operable list,
  *  - honours prefers-reduced-motion.
  */
-export function FarmScene({ scene, forceFallback, onStatus }: FarmSceneProps) {
+export function FarmScene({ scene, forceFallback, onStatus, labels = EN_SCENE_LABELS }: FarmSceneProps) {
+  const L = labels;
   const [support, setSupport] = useState<WebGLSupport | null>(null);
   const [quality, setQuality] = useState<QualityLevel>("medium");
   const [mode, setMode] = useState<ViewMode>("3d");
@@ -43,7 +47,7 @@ export function FarmScene({ scene, forceFallback, onStatus }: FarmSceneProps) {
   };
 
   useEffect(() => {
-    setSupport(forceFallback ? { supported: false, reason: "3D view disabled" } : detectWebGL());
+    setSupport(forceFallback ? { supported: false, reason: L.disabledReason } : detectWebGL());
     let stored: string | null = null;
     try {
       stored = window.localStorage.getItem(QUALITY_KEY);
@@ -66,7 +70,7 @@ export function FarmScene({ scene, forceFallback, onStatus }: FarmSceneProps) {
     const onChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
     mq?.addEventListener?.("change", onChange);
     return () => mq?.removeEventListener?.("change", onChange);
-  }, [forceFallback]);
+  }, [forceFallback, L.disabledReason]);
 
   const changeQuality = (q: QualityLevel) => {
     setQuality(q);
@@ -75,13 +79,13 @@ export function FarmScene({ scene, forceFallback, onStatus }: FarmSceneProps) {
     } catch {
       /* ignore */
     }
-    announce(`Rendering quality set to ${q}.`);
+    announce(L.qualitySet(L.qualityLevels[q]));
   };
 
   const select = (id: string) => {
     setSelectedId(id);
     const e = scene.entities.find((x) => x.id === id);
-    announce(`Selected ${e?.label ?? id}.`);
+    announce(L.selectedAnnounce(e?.label ?? id));
   };
 
   const canRender3D = support?.supported === true && !failure;
@@ -90,40 +94,39 @@ export function FarmScene({ scene, forceFallback, onStatus }: FarmSceneProps) {
 
   return (
     <section className="mf-scene" aria-labelledby={headingId}>
-      <h2 id={headingId}>Farm scene</h2>
+      <h2 id={headingId}>{L.heading}</h2>
       <p className="mf-notice" role="note">
-        <strong>Illustrative only.</strong> {scene.disclaimer}
+        <strong>{L.illustrativeOnly}</strong> {L.disclaimer ?? scene.disclaimer}
       </p>
 
-      <div className="mf-toolbar" role="group" aria-label="Scene controls">
+      <div className="mf-toolbar" role="group" aria-label={L.controls}>
         <fieldset disabled={!canRender3D}>
-          <legend className="mf-visually-hidden">View</legend>
+          <legend className="mf-visually-hidden">{L.view}</legend>
           <button type="button" aria-pressed={mode === "3d"} onClick={() => setMode("3d")}>
-            3D view
+            {L.view3d}
           </button>
           <button type="button" aria-pressed={mode === "list"} onClick={() => setMode("list")}>
-            List view
+            {L.viewList}
           </button>
         </fieldset>
-        <label htmlFor={qualityId}>Quality</label>
+        <label htmlFor={qualityId}>{L.quality}</label>
         <select id={qualityId} value={quality} onChange={(e) => changeQuality(e.target.value as QualityLevel)} disabled={!canRender3D}>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
+          <option value="low">{L.qualityLevels.low}</option>
+          <option value="medium">{L.qualityLevels.medium}</option>
+          <option value="high">{L.qualityLevels.high}</option>
         </select>
       </div>
 
       {support && !canRender3D && (
         <p className="mf-notice" role="status" data-testid="webgl-fallback">
-          The 3D view is not available on this device ({failure ?? (support.supported ? "" : support.reason)}). All scene
-          information is shown in the list below.
+          {L.unavailable(failure ?? (support.supported ? "" : support.reason))}
         </p>
       )}
 
       {showCanvas && (
         <div className="mf-canvas" data-testid="scene-canvas" data-quality={quality}>
           <SceneErrorBoundary onError={(m) => setFailure(m)}>
-            <Suspense fallback={<p role="status">Loading 3D view…</p>}>
+            <Suspense fallback={<p role="status">{L.loading}</p>}>
               <SceneCanvas
                 scene={scene}
                 preset={QUALITY_PRESETS[quality]}
@@ -131,34 +134,34 @@ export function FarmScene({ scene, forceFallback, onStatus }: FarmSceneProps) {
                 selectedId={selectedId}
                 onSelect={select}
                 onContextLost={() => {
-                  setFailure("the graphics context was lost");
-                  announce("3D view stopped; showing the list view instead.");
+                  setFailure(L.contextLost);
+                  announce(L.contextLostAnnounce);
                 }}
-                onReady={() => announce(`3D view ready with ${scene.entities.length} elements.`)}
+                onReady={() => announce(L.ready(scene.entities.length))}
               />
             </Suspense>
           </SceneErrorBoundary>
-          <p className="mf-muted">Drag to orbit, scroll to zoom. Every element can also be selected from the list view.</p>
+          <p className="mf-muted">{L.hint}</p>
         </div>
       )}
 
       {selected && (
         <div className="mf-selection" aria-live="polite">
-          <h3>Selected element</h3>
+          <h3>{L.selectedHeading}</h3>
           <dl>
-            <dt>Name</dt>
+            <dt>{L.name}</dt>
             <dd>{selected.label ?? selected.id}</dd>
-            <dt>Position</dt>
+            <dt>{L.position}</dt>
             <dd>
-              {selected.x.toFixed(1)} m east, {(-selected.z).toFixed(1)} m north of origin
+              {L.positionValue(selected.x.toFixed(1), (-selected.z).toFixed(1))}
             </dd>
-            <dt>Provenance</dt>
-            <dd>{selected.provenance}</dd>
+            <dt>{L.provenance}</dt>
+            <dd>{L.provenanceName?.(selected.provenance) ?? selected.provenance}</dd>
           </dl>
         </div>
       )}
 
-      {!showCanvas && <SceneEntityList scene={scene} selectedId={selectedId} onSelect={select} />}
+      {!showCanvas && <SceneEntityList scene={scene} selectedId={selectedId} onSelect={select} labels={L} />}
 
       <div className="mf-visually-hidden" role="status" aria-live="polite" data-testid="scene-status">
         {status}

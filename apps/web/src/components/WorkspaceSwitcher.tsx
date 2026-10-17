@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
-import { ROLE_LABELS } from "@/lib/roles";
 import { useTenant } from "@/lib/tenant";
+import { useI18n } from "@/i18n/provider";
 
 /** Current workspace and role; a native select when the user belongs to several. */
 export function WorkspaceSwitcher() {
   const { me, tenantId, setTenantId } = useTenant();
+  const { m } = useI18n();
   if (!me) return <div className="ws ws--loading" aria-hidden="true" />;
   if (me.tenants.length === 0) return null;
   const current = me.tenants.find((t) => t.tenantId === tenantId) ?? me.tenants[0]!;
@@ -15,7 +16,7 @@ export function WorkspaceSwitcher() {
       {me.tenants.length > 1 ? (
         <>
           <label htmlFor="workspace-select" className="ws__label">
-            Workspace
+            {m.switcher.label}
           </label>
           <select id="workspace-select" className="ws__select" value={current.tenantId} onChange={(e) => setTenantId(e.target.value)}>
             {me.tenants.map((t) => (
@@ -28,9 +29,9 @@ export function WorkspaceSwitcher() {
       ) : (
         <p className="ws__name">{current.name}</p>
       )}
-      <p className="ws__role">Your role: {ROLE_LABELS[current.role].label}</p>
+      <p className="ws__role">{m.switcher.role(m.roles[current.role].label)}</p>
       <Link href="/workspaces/new" className="ws__new">
-        New workspace
+        {m.switcher.newWorkspace}
       </Link>
     </div>
   );

@@ -86,14 +86,14 @@
   border-radius: var(--mf-radius);
   text-decoration: none;
   font-weight: 500;
-  border-left: 3px solid transparent;
+  border-inline-start: 3px solid transparent;
 }
 .sidenav a:hover {
   background: rgb(255 255 255 / 0.06);
 }
 .sidenav a[aria-current="page"] {
   background: var(--mf-sidebar-active);
-  border-left-color: var(--mf-marker);
+  border-inline-start-color: var(--mf-marker);
   font-weight: 700;
 }
 .sidebar :focus-visible {
@@ -176,10 +176,16 @@ main:focus {
   }
   .sidebar {
     position: fixed;
-    inset: 0 auto 0 0;
+    inset-block: 0;
+    inset-inline-start: 0;
     width: min(18rem, 85vw);
     z-index: 40;
     transform: translateX(-100%);
+  }
+  [dir="rtl"] .sidebar {
+    transform: translateX(100%);
+  }
+  .sidebar {
     visibility: hidden;
     transition: transform 160ms ease-out, visibility 0s linear 160ms;
   }
@@ -425,7 +431,7 @@ fieldset {
 }
 .crumbs li + li::before {
   content: "/";
-  margin-right: 0.35rem;
+  margin-inline-end: 0.35rem;
   color: var(--mf-muted);
   font-weight: 400;
 }
@@ -771,7 +777,7 @@ fieldset {
 }
 .landing__panel ul {
   margin: 0;
-  padding-left: 1.1rem;
+  padding-inline-start: 1.1rem;
   color: var(--mf-muted);
 }
 .landing__panel li + li {
@@ -789,4 +795,75 @@ fieldset {
   .landing__survey {
     width: min(100%, 18rem);
   }
+}
+
+/* ---------- Persian / right-to-left ---------- */
+/* Vazirmatn covers Persian and Latin; letter-spacing would break joined Persian letterforms. */
+html[lang="fa"] {
+  --font-body: var(--font-fa);
+  --font-display: var(--font-fa);
+}
+html[lang="fa"] *,
+html[lang="fa"] *::before,
+html[lang="fa"] *::after {
+  letter-spacing: normal !important;
+}
+html[lang="fa"] body {
+  line-height: 1.75;
+}
+/* Maps, the 3D scene, the survey drawing and machine values (coordinates, codes, links, emails) stay left-to-right. */
+.mf-map,
+.mf-canvas,
+.landing__survey,
+.ltr {
+  direction: ltr;
+}
+[dir="rtl"] code,
+[dir="rtl"] input[type="number"],
+[dir="rtl"] input[type="email"],
+[dir="rtl"] input[inputmode="decimal"],
+[dir="rtl"] input[type="datetime-local"],
+[dir="rtl"] .copy-field input {
+  direction: ltr;
+  text-align: right;
+  unicode-bidi: plaintext;
+}
+.lang-switch {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.lang-switch button {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--mf-radius);
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  min-height: 2rem;
+}
+.lang-switch button[aria-pressed="true"] {
+  background: var(--mf-marker);
+  border-color: var(--mf-marker);
+  color: #1b1b1b;
+  font-weight: 700;
+}
+.sidebar__lang {
+  justify-self: start;
+  margin-top: 0.25rem;
+}
+.landing__lang {
+  align-self: flex-end;
+  margin-bottom: 0.5rem;
+}
+.ltr {
+  unicode-bidi: isolate;
+}
+[dir="rtl"] td.ltr,
+[dir="rtl"] dd.ltr {
+  text-align: right;
 }

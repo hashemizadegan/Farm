@@ -1,14 +1,25 @@
-import { forwardRef, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { createContext, forwardRef, useContext, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 import { PROVENANCE_DESCRIPTIONS, type ProvenanceLabel } from "@metafarm/domain/provenance";
+
+/** The few strings this package renders itself; the app supplies translations. */
+export interface UiText {
+  errorSummaryTitle: string;
+  provenance: Record<ProvenanceLabel, { short: string; long: string }>;
+}
+const DEFAULT_TEXT: UiText = { errorSummaryTitle: "There is a problem", provenance: PROVENANCE_DESCRIPTIONS };
+const UiTextContext = createContext<UiText>(DEFAULT_TEXT);
+export function UiTextProvider({ value, children }: { value: UiText; children: ReactNode }) {
+  return <UiTextContext.Provider value={value}>{children}</UiTextContext.Provider>;
+}
 
 export function VisuallyHidden({ children }: { children: ReactNode }) {
   return <span className="mf-visually-hidden">{children}</span>;
 }
 
-export function SkipLink({ href = "#main" }: { href?: string }) {
+export function SkipLink({ href = "#main", children = "Skip to main content" }: { href?: string; children?: ReactNode }) {
   return (
     <a className="mf-skip-link" href={href}>
-      Skip to main content
+      {children}
     </a>
   );
 }
@@ -101,7 +112,7 @@ export function SelectField({ label, hint, error, id, children, ...rest }: Field
 
 /** Provenance is conveyed by text, not colour alone (WCAG 1.4.1). */
 export function ProvenanceBadge({ label }: { label: ProvenanceLabel }) {
-  const d = PROVENANCE_DESCRIPTIONS[label];
+  const d = useContext(UiTextContext).provenance[label];
   return (
     <span className={`mf-badge mf-badge--${label}`} title={d.long}>
       {d.short}
@@ -119,8 +130,10 @@ export function Notice({ tone = "info", title, children }: { tone?: "info" | "wa
   );
 }
 
-export function ErrorSummary({ errors, title = "There is a problem" }: { errors: { field?: string; message: string }[]; title?: string }) {
+export function ErrorSummary({ errors, title }: { errors: { field?: string; message: string }[]; title?: string }) {
+  const text = useContext(UiTextContext);
   if (errors.length === 0) return null;
+  title ??= text.errorSummaryTitle;
   return (
     // tabIndex -1 lets the page move focus here after a failed submit.
     <div className="mf-error-summary" role="alert" tabIndex={-1} data-error-summary>

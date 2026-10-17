@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BoundaryGeometry } from "@metafarm/domain/geometry";
 import { createMapLibreAdapter, type MapHandle } from "@metafarm/map-scene/map";
+import { useI18n } from "@/i18n/provider";
 
 interface Props {
   boundary?: BoundaryGeometry | null;
@@ -28,6 +29,7 @@ export function BoundaryMap({ boundary, center, draft, onAddVertex, label }: Pro
   const container = useRef<HTMLDivElement>(null);
   const handle = useRef<MapHandle | null>(null);
   const [failed, setFailed] = useState<string>();
+  const { m } = useI18n();
   const onAdd = useRef(onAddVertex);
   onAdd.current = onAddVertex;
 
@@ -74,14 +76,14 @@ export function BoundaryMap({ boundary, center, draft, onAddVertex, label }: Pro
     <figure style={{ margin: 0 }}>
       {failed ? (
         <p className="mf-notice" role="status">
-          The map could not be displayed ({failed}). You can still enter coordinates in the form.
+          {m.map.failed(failed)}
         </p>
       ) : (
         <div ref={container} className="mf-map" role="region" aria-label={label} data-testid="boundary-map" />
       )}
       <figcaption className="mf-muted">
-        {onAddVertex ? "Click the map to add boundary points, or type coordinates below. " : ""}
-        Boundaries shown here are as submitted by users unless marked independently verified.
+        {onAddVertex ? m.map.clickToAdd : ""}
+        {m.map.caption}
       </figcaption>
     </figure>
   );

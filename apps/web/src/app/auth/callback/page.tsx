@@ -5,12 +5,14 @@ import { Notice } from "@metafarm/ui";
 import { api } from "@/lib/api";
 import { getUserManager, oidcConfigured } from "@/lib/auth";
 import { takeReturnTo } from "@/lib/return-to";
+import { useI18n } from "@/i18n/provider";
 
 /** Completes the OIDC Authorization Code + PKCE redirect. */
 export default function AuthCallbackPage() {
   const router = useRouter();
   const [error, setError] = useState<string>();
   const ran = useRef(false);
+  const t = useI18n().m.callback;
 
   useEffect(() => {
     // React strict mode runs effects twice in development; the code can only be exchanged once.
@@ -36,13 +38,13 @@ export default function AuthCallbackPage() {
 
   return (
     <>
-      <h1>Signing in</h1>
+      <h1>{t.title}</h1>
       {error ? (
-        <Notice tone="error" title="Sign-in failed.">
-          {error} <a href="/sign-in">Try again</a>
+        <Notice tone="error" title={t.failed}>
+          {error} <a href="/sign-in">{t.tryAgain}</a>
         </Notice>
       ) : (
-        <p role="status">Completing sign-in…</p>
+        <p role="status">{t.completing}</p>
       )}
     </>
   );

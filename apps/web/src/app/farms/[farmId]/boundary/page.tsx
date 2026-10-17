@@ -8,12 +8,14 @@ import { FileUploader } from "@/components/FileUploader";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
+import { useI18n } from "@/i18n/provider";
 
 export default function BoundaryReviewPage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const { m } = useI18n();
   return (
     <>
-      <h1>Boundary review</h1>
+      <h1>{m.boundary.title}</h1>
       <RequireTenant>{(tenantId) => <Review tenantId={tenantId} farmId={farmId} />}</RequireTenant>
     </>
   );
@@ -22,6 +24,9 @@ export default function BoundaryReviewPage() {
 function Review({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   const announce = useAnnounce();
   const can = useCan();
+  const { m, fmt } = useI18n();
+  const t = m.boundary;
+  const statusText = (s: string) => t.status[s] ?? s;
   const versions = useQuery(
     `boundaries:${farmId}`,
     () => unwrap(api.GET("/v1/tenants/{tenantId}/farms/{farmId}/boundaries", { params: { path: { tenantId, farmId } } })),
@@ -32,14 +37,14 @@ function Review({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   const prevStatus = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (latest && prevStatus.current === "pending" && latest.validationStatus !== "pending") {
-      announce(`Boundary version ${latest.version} is ${latest.validationStatus}.`);
+      announce(t.statusChanged(latest.version, t.statusShort[latest.validationStatus] ?? latest.validationStatus));
     }
     prevStatus.current = latest?.validationStatus;
-  }, [latest, announce]);
+  }, [latest, announce, t]);
 
-  if (versions.loading && !versions.data) return <p role="status">Loading boundary versions…</p>;
-  if (versions.error) return <Notice tone="error" title="Could not load boundaries.">{versions.error.message}</Notice>;
-  if (!latest) return <p>No boundary has been submitted for this farm.</p>;
+  if (versions.loading && !versions.data) return <p role="status">{t.loading}</p>;
+  if (versions.error) return <Notice tone="error" title={t.couldNotLoad}>{versions.error.message}</Notice>;
+  if (!latest) return <p>{t.none}</p>;
 
   const ring = (latest.geojson as unknown as BoundaryGeometry).type === "MultiPolygon"
     ? (latest.geojson as { coordinates: number[][][][] }).coordinates[0]![0]!
@@ -48,39 +53,39 @@ function Review({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   return (
     <>
       <div className="grid-2">
-        <BoundaryMap label={`Map of boundary version ${latest.version}`} boundary={latest.geojson as unknown as BoundaryGeometry} />
+        <BoundaryMap label={t.mapLabel(latest.version)} boundary={latest.geojson as unknown as BoundaryGeometry} />
         <section className="card" aria-labelledby="latest-heading">
-          <h2 id="latest-heading">Version {latest.version}</h2>
+          <h2 id="latest-heading">{t.version(latest.version)}</h2>
           <dl>
-            <dt>Validation</dt>
+            <dt>{t.validation}</dt>
             <dd data-testid="validation-status">{statusText(latest.validationStatus)}</dd>
-            <dt>Provenance</dt>
+            <dt>{t.provenance}</dt>
             <dd>
               <ProvenanceBadge label={latest.provenance} />
             </dd>
-            <dt>Area (geodesic estimate)</dt>
+            <dt>{t.area}</dt>
+            <dd>{t.areaValue(`${fmt.fixed(latest.areaM2 / 10_000, 3)} ${fmt.unitHa}`, fmt.m2(latest.areaM2))}</dd>
+            <dt>{t.vertices}</dt>
+            <dd>{fmt.number(latest.vertexCount)}</dd>
+            <dt>{t.source}</dt>
+            <dd>{t.sources[latest.source] ?? latest.source}</dd>
+            <dt>{t.crs}</dt>
             <dd>
-              {(latest.areaM2 / 10_000).toFixed(3)} ha ({Math.round(latest.areaM2).toLocaleString()} m²) — computed from the submitted shape, not a survey
+              <span className="ltr">{latest.crs}</span> {t.crsNote}
             </dd>
-            <dt>Vertices</dt>
-            <dd>{latest.vertexCount}</dd>
-            <dt>Source</dt>
-            <dd>{latest.source}</dd>
-            <dt>Coordinate reference</dt>
-            <dd>{latest.crs} (WGS 84 longitude/latitude)</dd>
           </dl>
           {latest.validationIssues.length > 0 && (
-            <Notice tone="error" title="Validation problems:">
+            <Notice tone="error" title={t.problemsTitle}>
               <ul>
                 {latest.validationIssues.map((i, n) => (
-                  <li key={n}>{i.message}</li>
+                  <li key={n}>{m.geometryIssue(i)}</li>
                 ))}
               </ul>
             </Notice>
           )}
           {latest.overlaps && latest.overlaps.length > 0 && (
-            <Notice tone="warning" title="Overlap:">
-              This boundary overlaps {latest.overlaps.length} other farm boundary(ies) in your workspace. Overlap is shown for review only.
+            <Notice tone="warning" title={t.overlapTitle}>
+              {t.overlap(latest.overlaps.length)}
             </Notice>
           )}
         </section>
@@ -91,48 +96,48 @@ function Review({ tenantId, farmId }: { tenantId: string; farmId: string }) {
       )}
 
       <details style={{ marginTop: "1rem" }}>
-        <summary>Boundary coordinates as text ({ring.length - 1} corners)</summary>
+        <summary>{t.coordsSummary(ring.length - 1)}</summary>
         <table>
-          <caption className="mf-visually-hidden">Corner coordinates of boundary version {latest.version}</caption>
+          <caption className="mf-visually-hidden">{t.coordsCaption(latest.version)}</caption>
           <thead>
             <tr>
               <th scope="col">#</th>
-              <th scope="col">Latitude</th>
-              <th scope="col">Longitude</th>
+              <th scope="col">{t.lat}</th>
+              <th scope="col">{t.lon}</th>
             </tr>
           </thead>
           <tbody>
             {ring.slice(0, -1).map(([lo, la], i) => (
               <tr key={i}>
-                <td>{i + 1}</td>
-                <td>{la!.toFixed(7)}</td>
-                <td>{lo!.toFixed(7)}</td>
+                <td>{fmt.number(i + 1)}</td>
+                <td className="ltr">{la!.toFixed(7)}</td>
+                <td className="ltr">{lo!.toFixed(7)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </details>
 
-      <h2>History</h2>
+      <h2>{t.history}</h2>
       <table>
         <thead>
           <tr>
-            <th scope="col">Version</th>
-            <th scope="col">Status</th>
-            <th scope="col">Provenance</th>
-            <th scope="col">Submitted</th>
+            <th scope="col">{t.colVersion}</th>
+            <th scope="col">{t.colStatus}</th>
+            <th scope="col">{t.colProvenance}</th>
+            <th scope="col">{t.colSubmitted}</th>
           </tr>
         </thead>
         <tbody>
           {versions.data!.items.map((v) => (
             <tr key={v.id}>
-              <td>{v.version}</td>
+              <td>{fmt.number(v.version)}</td>
               <td>{statusText(v.validationStatus)}</td>
               <td>
                 <ProvenanceBadge label={v.provenance} />
               </td>
               <td>
-                <time dateTime={v.submittedAt}>{new Date(v.submittedAt).toLocaleString()}</time>
+                <time dateTime={v.submittedAt}>{fmt.dateTime(v.submittedAt)}</time>
               </td>
             </tr>
           ))}
@@ -142,16 +147,7 @@ function Review({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   );
 }
 
-function statusText(s: string) {
-  return s === "pending" ? "Pending — validation in progress" : s === "valid" ? "Valid" : "Invalid";
-}
-
-const EVIDENCE_KINDS = [
-  ["survey-document", "Survey document"],
-  ["registry-extract", "Land registry extract"],
-  ["field-inspection", "Field inspection report"],
-  ["other", "Other"],
-] as const;
+const EVIDENCE_KINDS = ["survey-document", "registry-extract", "field-inspection", "other"] as const;
 
 /**
  * Verifier workflow: attach one evidence document (an existing one from the
@@ -161,7 +157,8 @@ const EVIDENCE_KINDS = [
 function VerifyPanel(props: { tenantId: string; farmId: string; boundaryId: string; version: number; onVerified: () => void }) {
   const { tenantId, farmId, boundaryId, version, onVerified } = props;
   const announce = useAnnounce();
-  const [kind, setKind] = useState<(typeof EVIDENCE_KINDS)[number][0]>("survey-document");
+  const t = useI18n().m.boundary.verify;
+  const [kind, setKind] = useState<(typeof EVIDENCE_KINDS)[number]>("survey-document");
   const [mediaId, setMediaId] = useState("");
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<{ field?: string; message: string }[]>([]);
@@ -178,7 +175,7 @@ function VerifyPanel(props: { tenantId: string; farmId: string; boundaryId: stri
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!mediaId) {
-      setErrors([{ field: "evidence-file", message: "Choose or upload the evidence document." }]);
+      setErrors([{ field: "evidence-file", message: t.chooseRequired }]);
       return;
     }
     setBusy(true);
@@ -190,7 +187,7 @@ function VerifyPanel(props: { tenantId: string; farmId: string; boundaryId: stri
           body: { kind, mediaObjectId: mediaId, ...(note.trim() ? { note: note.trim() } : {}) },
         }),
       );
-      announce(`Boundary version ${version} marked independently verified.`);
+      announce(t.verified(version));
       onVerified();
     } catch (err) {
       setErrors([{ message: (err as Error).message }]);
@@ -202,17 +199,14 @@ function VerifyPanel(props: { tenantId: string; farmId: string; boundaryId: stri
   const items = docs.data?.items ?? [];
   return (
     <section className="card" aria-labelledby="verify-heading" style={{ marginTop: "1.5rem" }}>
-      <h2 id="verify-heading">Verify this boundary</h2>
-      <p className="mf-hint">
-        You are a verifier in this workspace. Attach the document you checked this boundary against. The boundary is then
-        labelled independently verified, with your name and the document on record.
-      </p>
+      <h2 id="verify-heading">{t.heading}</h2>
+      <p className="mf-hint">{t.intro}</p>
       <ErrorSummary errors={errors} />
       <FileUploader
         tenantId={tenantId}
         farmId={farmId}
         purpose="verification-evidence"
-        label="Upload an evidence document"
+        label={t.upload}
         multiple={false}
         onUploaded={(m) => {
           setReloadKey((k) => k + 1);
@@ -222,28 +216,28 @@ function VerifyPanel(props: { tenantId: string; farmId: string; boundaryId: stri
       <form onSubmit={submit} noValidate>
         <SelectField
           id="evidence-file"
-          label="Evidence document"
+          label={t.document}
           value={mediaId}
           onChange={(e) => setMediaId(e.target.value)}
           error={errors.find((x) => x.field === "evidence-file")?.message}
         >
-          <option value="">{items.length ? "Choose a document" : "Upload a document first"}</option>
+          <option value="">{items.length ? t.choose : t.uploadFirst}</option>
           {items.map((m) => (
             <option key={m.id} value={m.id}>
               {m.filename}
             </option>
           ))}
         </SelectField>
-        <SelectField label="Kind of evidence" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-          {EVIDENCE_KINDS.map(([id, label]) => (
+        <SelectField label={t.kind} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+          {EVIDENCE_KINDS.map((id) => (
             <option key={id} value={id}>
-              {label}
+              {t.kinds[id]}
             </option>
           ))}
         </SelectField>
-        <TextField label="Note (optional)" value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
+        <TextField label={t.note} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
         <Button type="submit" variant="primary" busy={busy}>
-          Mark as independently verified
+          {t.submit}
         </Button>
       </form>
     </section>

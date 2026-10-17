@@ -6,20 +6,22 @@ import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
 import { useTenant } from "@/lib/tenant";
+import { useI18n } from "@/i18n/provider";
 
 export default function OverviewPage() {
   const { me, tenantId } = useTenant();
   const can = useCan();
   const workspace = me?.tenants.find((t) => t.tenantId === tenantId);
+  const { m } = useI18n();
   return (
     <>
       <PageHeader
-        title={workspace ? workspace.name : "Overview"}
-        description="Your farm projects and what needs attention."
+        title={workspace ? workspace.name : m.overview.title}
+        description={m.overview.description}
         actions={
           workspace && can("farm:write") ? (
             <Link href="/farms/new" className="mf-button mf-button--primary">
-              Create a farm project
+              {m.overview.createFarm}
             </Link>
           ) : undefined
         }
@@ -31,25 +33,21 @@ export default function OverviewPage() {
 
 function Overview({ tenantId }: { tenantId: string }) {
   const can = useCan();
+  const { m, fmt } = useI18n();
+  const t = m.overview;
   const farms = useQuery(`farms:${tenantId}`, () =>
     unwrap(api.GET("/v1/tenants/{tenantId}/farms", { params: { path: { tenantId }, query: { limit: 100 } } })),
   );
-  if (farms.loading && !farms.data) return <p role="status">Loading your farms…</p>;
-  if (farms.error) return <Notice tone="error" title="Could not load farms.">{farms.error.message}</Notice>;
+  if (farms.loading && !farms.data) return <p role="status">{t.loading}</p>;
+  if (farms.error) return <Notice tone="error" title={t.couldNotLoad}>{farms.error.message}</Notice>;
   const items = farms.data?.items ?? [];
   const withBoundary = items.filter((f) => f.currentBoundaryVersionId).length;
 
   if (items.length === 0) {
     return (
       <>
-        <EmptyState
-          title="Start your first farm project"
-        >
-          {can("farm:write")
-            ? "A farm project holds a boundary, a planting plan, field observations and a 3D view of the plan."
-            : "No farm projects have been created in this workspace yet. Ask a manager or admin to create one."}
-        </EmptyState>
-        <h2>How a project comes together</h2>
+        <EmptyState title={t.emptyTitle}>{can("farm:write") ? t.emptyWriter : t.emptyReader}</EmptyState>
+        <h2>{t.howHeading}</h2>
         <GettingStarted farms={0} validated={0} />
       </>
     );
@@ -60,16 +58,16 @@ function Overview({ tenantId }: { tenantId: string }) {
     <>
       <dl className="stats">
         <div>
-          <dt>Farm projects</dt>
-          <dd>{items.length}</dd>
+          <dt>{t.statFarms}</dt>
+          <dd>{fmt.number(items.length)}</dd>
         </div>
         <div>
-          <dt>With a validated boundary</dt>
-          <dd>{withBoundary}</dd>
+          <dt>{t.statValidated}</dt>
+          <dd>{fmt.number(withBoundary)}</dd>
         </div>
         <div>
-          <dt>Waiting for a valid boundary</dt>
-          <dd>{items.length - withBoundary}</dd>
+          <dt>{t.statWaiting}</dt>
+          <dd>{fmt.number(items.length - withBoundary)}</dd>
         </div>
       </dl>
 
@@ -77,9 +75,9 @@ function Overview({ tenantId }: { tenantId: string }) {
         <section aria-labelledby="recent-heading">
           <div className="mf-page-header" style={{ marginBottom: "0.75rem" }}>
             <h2 id="recent-heading" style={{ margin: 0 }}>
-              Recent farm projects
+              {t.recentHeading}
             </h2>
-            <Link href="/farms">All farms</Link>
+            <Link href="/farms">{t.allFarms}</Link>
           </div>
           <ul className="plots">
             {recent.map((f) => (
@@ -89,7 +87,7 @@ function Overview({ tenantId }: { tenantId: string }) {
                   <p className="plots__name">
                     <Link href={`/farms/${f.id}`}>{f.name}</Link>
                   </p>
-                  <p className="plots__meta">{f.boundaryAreaM2 != null ? `${formatHa(f.boundaryAreaM2)}, boundary validated` : "No validated boundary yet"}</p>
+                  <p className="plots__meta">{f.boundaryAreaM2 != null ? t.areaValidated(fmt.ha(f.boundaryAreaM2)) : t.noBoundary}</p>
                 </div>
               </li>
             ))}
@@ -97,7 +95,7 @@ function Overview({ tenantId }: { tenantId: string }) {
         </section>
         <section aria-labelledby="next-heading">
           <h2 id="next-heading" style={{ marginTop: 0 }}>
-            Next steps
+            {t.nextHeading}
           </h2>
           <GettingStarted farms={items.length} validated={withBoundary} />
         </section>
@@ -106,39 +104,34 @@ function Overview({ tenantId }: { tenantId: string }) {
   );
 }
 
-/** Area in hectares, to a sensible precision for the size. */
-function formatHa(m2: number): string {
-  const ha = m2 / 10_000;
-  return `${ha < 10 ? ha.toFixed(2) : ha < 100 ? ha.toFixed(1) : Math.round(ha).toLocaleString()} ha`;
-}
-
 /** The real order of work in a project, with the steps already done ticked. */
 function GettingStarted({ farms, validated }: { farms: number; validated: number }) {
   const can = useCan();
+  const s = useI18n().m.overview.steps;
   return (
     <ol className="steps">
       <li data-done={farms > 0 || undefined}>
         <div>
-          <strong>Create a farm project</strong>
-          <p>Name it and give a GPS point, a drawn outline or a GeoJSON file.</p>
+          <strong>{s.create.title}</strong>
+          <p>{s.create.text}</p>
         </div>
       </li>
       <li data-done={validated > 0 || undefined}>
         <div>
-          <strong>Get a valid boundary</strong>
-          <p>The shape is checked automatically. Fix and resubmit if it is rejected.</p>
+          <strong>{s.boundary.title}</strong>
+          <p>{s.boundary.text}</p>
         </div>
       </li>
       <li>
         <div>
-          <strong>Plan parcels and planting grids</strong>
-          <p>Set rows, columns and spacing on the farm&apos;s overview page.</p>
+          <strong>{s.plan.title}</strong>
+          <p>{s.plan.text}</p>
         </div>
       </li>
       <li>
         <div>
-          <strong>{can("member:manage") ? <Link href="/team">Invite your team</Link> : "Work with your team"}</strong>
-          <p>Give each person a role: manager, verifier or viewer.</p>
+          <strong>{can("member:manage") ? <Link href="/team">{s.team.title}</Link> : s.team.titleReader}</strong>
+          <p>{s.team.text}</p>
         </div>
       </li>
     </ol>
