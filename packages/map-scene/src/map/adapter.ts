@@ -29,4 +29,10 @@ export interface BasemapConfig {
   styleUrl?: string;
   /** Attribution text required by your provider's terms. */
   attribution?: string;
+  /**
+   * URL of MapLibre's worker script (dist/maplibre-gl-worker.mjs), served by the
+   * app. Bundlers rewrite MapLibre's own import.meta.url-based lookup to a build
+   * path that does not exist in the browser, so the app must say where it is.
+   */
+  workerUrl?: string;
 }

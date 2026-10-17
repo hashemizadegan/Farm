@@ -96,6 +96,12 @@ NEXT_PUBLIC_OIDC_AUTHORITY=https://<your-tenant>.us.auth0.com
 NEXT_PUBLIC_OIDC_CLIENT_ID=<SPA client id>
 NEXT_PUBLIC_OIDC_AUDIENCE=https://api.metafarm-staging
 NEXT_PUBLIC_WALLET_CHAIN_ID=<same chain id as the API>
+# Free basemap, no key (https://openfreemap.org); attribution required by its terms.
+NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
+NEXT_PUBLIC_MAP_ATTRIBUTION=OpenFreeMap © OpenMapTiles Data from OpenStreetMap
+NEXT_PUBLIC_MAP_CONNECT_SRC=https://tiles.openfreemap.org
+# The bucket origin presigned uploads go to (shown in an upload URL, e.g. https://<bucket>.t3.storageapi.dev).
+NEXT_PUBLIC_UPLOAD_CONNECT_SRC=https://<bucket host>
 ```
 
 Generate random values locally with `openssl rand -hex 32`. Do not reuse them between staging and production.

@@ -17,3 +17,6 @@ contracts/nft/typechain-types/
 *.log
 packages/contracts/src/generated/
 tests/e2e/.tokens.json
+
+# Generated at build time
+apps/web/public/maplibre-gl-worker.mjs

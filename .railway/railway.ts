@@ -123,6 +123,8 @@ export default defineRailway((ctx) => {
       NEXT_PUBLIC_MAP_STYLE_URL: preserve(),
       NEXT_PUBLIC_MAP_ATTRIBUTION: preserve(),
       NEXT_PUBLIC_MAP_CONNECT_SRC: preserve(),
+      // Bucket origin for presigned uploads, e.g. https://<bucket>.<storage host>.
+      NEXT_PUBLIC_UPLOAD_CONNECT_SRC: preserve(),
       NEXT_PUBLIC_WALLET_CHAIN_ID: preserve(),
       // OIDC browser sign-in (e.g. Auth0 single-page application).
       NEXT_PUBLIC_OIDC_AUTHORITY: preserve(),

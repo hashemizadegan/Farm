@@ -23,6 +23,12 @@ export function createS3Storage(opts: S3StorageOptions): ObjectStorage {
     endpoint: opts.endpoint,
     forcePathStyle: opts.forcePathStyle,
     credentials: { accessKeyId: opts.accessKeyId, secretAccessKey: opts.secretAccessKey },
+    // AWS SDK v3 adds a CRC32 checksum to every request by default. For a
+    // presigned PUT it is computed over an empty body at signing time, so the
+    // browser's real upload would fail the check. Only add checksums when the
+    // operation requires one.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   });
 
   return {

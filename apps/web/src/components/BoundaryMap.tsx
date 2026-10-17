@@ -15,6 +15,8 @@ interface Props {
 const adapter = createMapLibreAdapter({
   styleUrl: process.env.NEXT_PUBLIC_MAP_STYLE_URL,
   attribution: process.env.NEXT_PUBLIC_MAP_ATTRIBUTION,
+  // Copied into public/ by scripts/copy-maplibre-worker.mjs before dev/build.
+  workerUrl: "/maplibre-gl-worker.mjs",
 });
 
 /**

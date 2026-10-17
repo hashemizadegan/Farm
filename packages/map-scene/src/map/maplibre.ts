@@ -13,6 +13,9 @@ export function createMapLibreAdapter(config: BasemapConfig = {}): MapAdapter {
     async mount(container, opts): Promise<MapHandle> {
       // MapLibre 6 is ESM-only with no default export.
       const maplibre = await import("maplibre-gl");
+      if (config.workerUrl && typeof location !== "undefined") {
+        maplibre.config.WORKER_URL = new URL(config.workerUrl, location.href).href;
+      }
       const map = new maplibre.Map({
         container,
         style: (config.styleUrl || mockStyle()) as never,

@@ -78,6 +78,7 @@ ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_MAP_STYLE_URL
 ARG NEXT_PUBLIC_MAP_ATTRIBUTION
 ARG NEXT_PUBLIC_MAP_CONNECT_SRC
+ARG NEXT_PUBLIC_UPLOAD_CONNECT_SRC
 ARG NEXT_PUBLIC_CESIUM_ENABLED=false
 ARG NEXT_PUBLIC_WALLET_CHAIN_ID
 ARG NEXT_PUBLIC_OIDC_AUTHORITY
@@ -87,6 +88,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_MAP_STYLE_URL=$NEXT_PUBLIC_MAP_STYLE_URL \
     NEXT_PUBLIC_MAP_ATTRIBUTION=$NEXT_PUBLIC_MAP_ATTRIBUTION \
     NEXT_PUBLIC_MAP_CONNECT_SRC=$NEXT_PUBLIC_MAP_CONNECT_SRC \
+    NEXT_PUBLIC_UPLOAD_CONNECT_SRC=$NEXT_PUBLIC_UPLOAD_CONNECT_SRC \
     NEXT_PUBLIC_CESIUM_ENABLED=$NEXT_PUBLIC_CESIUM_ENABLED \
     NEXT_PUBLIC_WALLET_CHAIN_ID=$NEXT_PUBLIC_WALLET_CHAIN_ID \
     NEXT_PUBLIC_OIDC_AUTHORITY=$NEXT_PUBLIC_OIDC_AUTHORITY \
@@ -100,6 +102,8 @@ WORKDIR /app
 # Standalone output mirrors the monorepo layout; server.js lives under apps/web.
 COPY --from=build-web --chown=node:node /repo/apps/web/.next/standalone ./
 COPY --from=build-web --chown=node:node /repo/apps/web/.next/static ./apps/web/.next/static
+# Standalone output does not include public/ (it holds MapLibre's worker script).
+COPY --from=build-web --chown=node:node /repo/apps/web/public ./apps/web/public
 USER node
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
