@@ -11,3 +11,4 @@ export * from "./repositories/team";
 export * from "./repositories/tasks";
 export * from "./repositories/harvests";
 export * from "./repositories/inventory";
+export * from "./repositories/seasons";

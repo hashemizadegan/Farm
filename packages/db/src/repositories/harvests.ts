@@ -14,6 +14,7 @@ export interface HarvestRow {
   quality_grade: string | null;
   notes: string | null;
   task_id: string | null;
+  season_id: string | null;
   public_record: HarvestPublicRecord;
   record_hash: string;
   anchor_status: AnchorStatus;
@@ -35,7 +36,7 @@ export interface HarvestRow {
 
 const SELECT = `
   SELECT h.id, h.tenant_id, h.farm_id, h.code, h.crop_name, h.parcel_label, to_char(h.harvested_on, 'YYYY-MM-DD') AS harvested_on,
-         h.quantity::text AS quantity, h.unit, h.quality_grade, h.notes, h.task_id, h.public_record, h.record_hash,
+         h.quantity::text AS quantity, h.unit, h.quality_grade, h.notes, h.task_id, h.season_id, h.public_record, h.record_hash,
          h.anchor_status, h.anchor_attempt, h.anchor_chain_id, h.anchor_contract, h.anchor_tx_hash, h.anchor_block::text AS anchor_block,
          h.anchored_at, h.anchor_error, h.voided_at, h.void_reason, h.void_anchor_status, h.void_tx_hash, h.recorded_by,
          coalesce(u.display_name, u.email::text) AS recorded_by_name, h.created_at
@@ -50,12 +51,12 @@ export async function tenantName(tx: TenantTx): Promise<string> {
 export async function insertHarvest(
   tx: TenantTx,
   farmId: string,
-  input: CreateHarvestInput & { code: string; record: HarvestPublicRecord; hash: string; anchorStatus: AnchorStatus; userId: string },
+  input: CreateHarvestInput & { code: string; record: HarvestPublicRecord; hash: string; anchorStatus: AnchorStatus; userId: string; seasonId?: string | null },
 ): Promise<string> {
   const r = await tx.query<{ id: string }>(
     `INSERT INTO harvest_batches (tenant_id, farm_id, code, crop_name, parcel_label, harvested_on, quantity, unit, quality_grade, notes, task_id,
-                                  public_record, record_hash, anchor_status, anchor_attempt, recorded_by, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6::date, $7::numeric, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17::timestamptz)
+                                  public_record, record_hash, anchor_status, anchor_attempt, recorded_by, created_at, season_id)
+     VALUES ($1, $2, $3, $4, $5, $6::date, $7::numeric, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17::timestamptz, $18)
      RETURNING id`,
     [
       tx.tenantId,
@@ -75,6 +76,7 @@ export async function insertHarvest(
       input.anchorStatus === "pending" ? 1 : 0,
       input.userId,
       input.record.recordedAt,
+      input.seasonId ?? null,
     ],
   );
   return r.rows[0]!.id;
@@ -84,6 +86,11 @@ export async function getHarvest(tx: TenantTx, id: string, forUpdate = false): P
   if (forUpdate) await tx.query(`SELECT 1 FROM harvest_batches WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tx.tenantId, id]);
   const r = await tx.query<HarvestRow>(`${SELECT} WHERE h.tenant_id = $1 AND h.id = $2`, [tx.tenantId, id]);
   return r.rows[0];
+}
+
+export async function listSeasonHarvests(tx: TenantTx, seasonId: string): Promise<HarvestRow[]> {
+  const r = await tx.query<HarvestRow>(`${SELECT} WHERE h.tenant_id = $1 AND h.season_id = $2 ORDER BY h.harvested_on, h.created_at`, [tx.tenantId, seasonId]);
+  return r.rows;
 }
 
 export async function listHarvests(tx: TenantTx, farmId: string, limit = 200): Promise<HarvestRow[]> {

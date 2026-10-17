@@ -33,6 +33,8 @@ export const createHarvestSchema = z
     /** Private to the workspace; never published. */
     notes: z.string().trim().max(4_000).nullable().optional(),
     taskId: z.string().uuid().nullable().optional(),
+    /** Crop season; when omitted, the single active season for this parcel and crop is used. */
+    seasonId: z.string().uuid().nullable().optional(),
   })
   .strict();
 export type CreateHarvestInput = z.infer<typeof createHarvestSchema>;

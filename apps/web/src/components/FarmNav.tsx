@@ -11,6 +11,7 @@ import { useI18n } from "@/i18n/provider";
 const TABS = [
   ["", "overview"],
   ["/tasks", "tasks"],
+  ["/seasons", "seasons"],
   ["/harvests", "harvests"],
   ["/inputs", "inputs"],
   ["/boundary", "boundary"],

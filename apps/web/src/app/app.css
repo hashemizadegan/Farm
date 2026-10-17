@@ -1262,3 +1262,40 @@ html[lang="fa"] body {
 .task__input-row .mf-button {
   margin-bottom: 1rem;
 }
+
+/* ---------- Crop seasons ---------- */
+.stage-line {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  border-inline-start: 3px solid var(--mf-line);
+}
+.stage-line li {
+  position: relative;
+  padding: 0.25rem 0 0.6rem;
+  padding-inline-start: 1rem;
+}
+.stage-line li::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: -0.45rem;
+  top: 0.55rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--mf-primary);
+}
+.stage-line li:last-child::before {
+  background: var(--mf-marker);
+  box-shadow: 0 0 0 2px var(--mf-primary);
+}
+.season-batches {
+  margin: 0.5rem 0 0;
+  padding-inline-start: 1.1rem;
+  display: grid;
+  gap: 0.3rem;
+}
+.season-batches [data-voided] {
+  text-decoration: line-through;
+  color: var(--mf-muted);
+}

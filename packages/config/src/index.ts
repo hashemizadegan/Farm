@@ -97,7 +97,8 @@ export const apiEnvSchema = z
     HOST: z.string().default("0.0.0.0"),
     CORS_ORIGINS: csv.default("http://localhost:3000"),
     BODY_LIMIT_BYTES: z.coerce.number().int().min(1024).max(10 * 1024 * 1024).default(1024 * 1024),
-    RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(300),
+    // Per client IP per window. A farm team often shares one connection, and the app polls while pages are open.
+    RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(1200),
     RATE_LIMIT_WINDOW: z.string().default("1 minute"),
     TRUST_PROXY: bool.default("true"),
     WEBHOOK_SIGNING_SECRETS: csv.default(""),

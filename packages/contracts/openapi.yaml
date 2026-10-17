@@ -36,6 +36,7 @@ tags:
   - name: tasks
   - name: harvests
   - name: inventory
+  - name: seasons
   - name: media
   - name: team
   - name: audit
@@ -1144,6 +1145,99 @@ paths:
                   items: { type: array, items: { $ref: "#/components/schemas/PhiRestriction" } }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/tenants/{tenantId}/farms/{farmId}/seasons:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [seasons]
+      summary: Crop seasons of a farm (active first)
+      operationId: listSeasons
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Season" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [seasons]
+      summary: Start or plan a crop season (plan:write)
+      operationId: createSeason
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SeasonInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Season" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/seasons/{seasonId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: seasonId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [seasons]
+      summary: A season with its stages, harvest totals, inputs used and tasks
+      operationId: getSeason
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SeasonDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [seasons]
+      summary: Change, close or reopen a season (plan:write)
+      operationId: updateSeason
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SeasonUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Season" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/seasons/{seasonId}/stages:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: seasonId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [seasons]
+      summary: Record a growth stage (observation:write)
+      operationId: addSeasonStage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StageEntry" }
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Season" }
+        "409": { description: The season is closed }
+
   /v1/tenants/{tenantId}/uploads:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     post:
@@ -1858,6 +1952,7 @@ components:
         qualityGrade: { type: [string, "null"], maxLength: 40 }
         notes: { type: [string, "null"], maxLength: 4000, description: Private to the workspace }
         taskId: { type: [string, "null"], format: uuid }
+        seasonId: { type: [string, "null"], format: uuid, description: "Omit to use the single active season for this parcel and crop" }
 
     HarvestPublicRecord:
       type: object
@@ -1908,6 +2003,7 @@ components:
         qualityGrade: { type: [string, "null"] }
         notes: { type: [string, "null"] }
         taskId: { type: [string, "null"], format: uuid }
+        seasonId: { type: [string, "null"], format: uuid }
         publicRecord: { $ref: "#/components/schemas/HarvestPublicRecord" }
         recordHash: { type: string, pattern: "^[0-9a-f]{64}$" }
         anchor: { $ref: "#/components/schemas/HarvestAnchor" }
@@ -2069,6 +2165,128 @@ components:
         appliedOn: { type: string, format: date }
         preHarvestIntervalDays: { type: integer }
         harvestAllowedFrom: { type: string, format: date }
+
+    SeasonStage:
+      type: string
+      enum: [land-preparation, sowing, emergence, vegetative, flowering, fruit-set, ripening, harvest, post-harvest]
+
+    SeasonInput:
+      type: object
+      additionalProperties: false
+      required: [cropName, plannedStart]
+      properties:
+        cropName: { type: string, minLength: 1, maxLength: 120 }
+        variety: { type: [string, "null"], maxLength: 120 }
+        parcelLabel: { type: [string, "null"], maxLength: 80, description: "Empty for the whole farm" }
+        areaHa: { type: [string, "null"], pattern: "^\\d{1,7}(\\.\\d{1,4})?$" }
+        plannedStart: { type: string, format: date }
+        expectedHarvestFrom: { type: [string, "null"], format: date }
+        status: { type: string, enum: [planned, active], default: active }
+        notes: { type: [string, "null"], maxLength: 4000 }
+
+    SeasonUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        variety: { type: [string, "null"], maxLength: 120 }
+        areaHa: { type: [string, "null"] }
+        expectedHarvestFrom: { type: [string, "null"], format: date }
+        notes: { type: [string, "null"], maxLength: 4000 }
+        status: { type: string, enum: [planned, active, closed] }
+        endedOn: { type: [string, "null"], format: date, description: "Required when closing" }
+
+    StageEntry:
+      type: object
+      additionalProperties: false
+      required: [stage, observedOn]
+      properties:
+        stage: { $ref: "#/components/schemas/SeasonStage" }
+        observedOn: { type: string, format: date }
+        note: { type: [string, "null"], maxLength: 2000 }
+
+    Season:
+      type: object
+      required: [id, farmId, farmName, cropName, plannedStart, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: string, format: uuid }
+        farmName: { type: string }
+        cropName: { type: string }
+        variety: { type: [string, "null"] }
+        parcelLabel: { type: [string, "null"] }
+        areaHa: { type: [string, "null"] }
+        plannedStart: { type: string, format: date }
+        expectedHarvestFrom: { type: [string, "null"], format: date }
+        status: { type: string, enum: [planned, active, closed] }
+        endedOn: { type: [string, "null"], format: date }
+        notes: { type: [string, "null"] }
+        currentStage:
+          oneOf:
+            - { $ref: "#/components/schemas/SeasonStage" }
+            - { type: "null" }
+        currentStageOn: { type: [string, "null"], format: date }
+        createdAt: { type: string, format: date-time }
+
+    SeasonDetail:
+      type: object
+      required: [season, today, stages, harvest, inputs, tasks]
+      properties:
+        season: { $ref: "#/components/schemas/Season" }
+        today: { type: string, format: date, description: "Today in the farm's time zone" }
+        stages:
+          type: array
+          items:
+            type: object
+            required: [id, stage, observedOn]
+            properties:
+              id: { type: string, format: uuid }
+              stage: { $ref: "#/components/schemas/SeasonStage" }
+              observedOn: { type: string, format: date }
+              note: { type: [string, "null"] }
+              recordedByName: { type: [string, "null"] }
+        harvest:
+          type: object
+          required: [batches, totals]
+          properties:
+            batches:
+              type: array
+              items:
+                type: object
+                required: [id, code, harvestedOn, quantity, unit, voided]
+                properties:
+                  id: { type: string, format: uuid }
+                  code: { type: string }
+                  harvestedOn: { type: string, format: date }
+                  quantity: { type: string }
+                  unit: { type: string }
+                  voided: { type: boolean }
+            totals:
+              type: array
+              items:
+                type: object
+                required: [unit, quantity, perHa]
+                properties:
+                  unit: { type: string }
+                  quantity: { type: string }
+                  perHa: { type: [string, "null"] }
+        inputs:
+          type: array
+          items:
+            type: object
+            required: [itemId, itemName, unit, quantity, applications]
+            properties:
+              itemId: { type: string, format: uuid }
+              itemName: { type: string }
+              unit: { type: string }
+              quantity: { type: string }
+              applications: { type: integer }
+        tasks:
+          type: object
+          required: [done, open]
+          properties:
+            done: { type: integer }
+            open: { type: integer }
 
     UploadRequest:
       type: object
