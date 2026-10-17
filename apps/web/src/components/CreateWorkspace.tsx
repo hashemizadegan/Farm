@@ -58,7 +58,7 @@ export function CreateWorkspace() {
           required
           error={errors.find((x) => x.field === "workspace-name")?.message}
         />
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" variant="primary" busy={busy}>
           {busy ? "Creating…" : "Create workspace"}
         </Button>
       </form>

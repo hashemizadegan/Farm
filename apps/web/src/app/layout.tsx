@@ -2,6 +2,7 @@ import "@metafarm/ui/styles.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./app.css";
 import type { Metadata, Viewport } from "next";
+import { Bricolage_Grotesque, Public_Sans } from "next/font/google";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
@@ -11,6 +12,10 @@ export const metadata: Metadata = {
   description: "Plan farm projects on a map and explore them in an illustrative 3D scene.",
 };
 
+// Self-hosted at build time by next/font, so no third-party font requests (CSP font-src 'self').
+const body = Public_Sans({ subsets: ["latin", "latin-ext"], variable: "--font-body", display: "swap" });
+const display = Bricolage_Grotesque({ subsets: ["latin", "latin-ext"], variable: "--font-display", display: "swap", weight: ["600", "700"] });
+
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
@@ -18,7 +23,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // per-request CSP nonce (middleware.ts) to be applied to Next's inline scripts.
   await headers();
   return (
-    <html lang="en">
+    <html lang="en" className={`${body.variable} ${display.variable}`}>
       <body>
         <AppShell>{children}</AppShell>
       </body>

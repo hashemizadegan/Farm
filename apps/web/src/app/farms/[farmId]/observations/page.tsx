@@ -2,8 +2,11 @@
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button, ErrorSummary, Notice, ProvenanceBadge, SelectField, TextField, useAnnounce } from "@metafarm/ui";
+import { FileList } from "@/components/FileList";
+import { FileUploader } from "@/components/FileUploader";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
+import { useCan } from "@/lib/can";
 
 const METRICS = [
   ["soil_moisture", "Soil moisture", ["percent_vwc", "fraction_vwc"]],
@@ -22,7 +25,14 @@ export default function ObservationsPage() {
   return (
     <>
       <h1>Observations</h1>
-      <RequireTenant>{(tenantId) => <Observations tenantId={tenantId} farmId={farmId} />}</RequireTenant>
+      <RequireTenant>
+        {(tenantId) => (
+          <>
+            <Observations tenantId={tenantId} farmId={farmId} />
+            <FieldPhotos tenantId={tenantId} farmId={farmId} />
+          </>
+        )}
+      </RequireTenant>
     </>
   );
 }
@@ -138,5 +148,26 @@ function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }
         )}
       </section>
     </div>
+  );
+}
+
+function FieldPhotos({ tenantId, farmId }: { tenantId: string; farmId: string }) {
+  const can = useCan();
+  const [reloadKey, setReloadKey] = useState(0);
+  return (
+    <section className="card" aria-labelledby="photos-heading" style={{ marginTop: "1.5rem" }}>
+      <h2 id="photos-heading">Field photos</h2>
+      {can("media:upload") && (
+        <FileUploader
+          tenantId={tenantId}
+          farmId={farmId}
+          purpose="observation-photo"
+          label="Add photos"
+          hint="Photos go to this farm's Files, newest first."
+          onUploaded={() => setReloadKey((k) => k + 1)}
+        />
+      )}
+      <FileList tenantId={tenantId} farmId={farmId} purpose="observation-photo" reloadKey={reloadKey} emptyTitle="No photos yet" />
+    </section>
   );
 }

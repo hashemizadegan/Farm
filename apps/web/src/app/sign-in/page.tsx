@@ -1,11 +1,19 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button, Notice, TextField } from "@metafarm/ui";
 import { devSession, getUserManager, oidcConfigured } from "@/lib/auth";
+import { rememberReturnTo, takeReturnTo } from "@/lib/return-to";
 
 export default function SignInPage() {
-  return <>{oidcConfigured ? <OidcSignIn /> : <DevSignIn />}</>;
+  // ?next=/path brings the user back to where they were (e.g. an invitation).
+  useEffect(() => rememberReturnTo(new URLSearchParams(window.location.search).get("next")), []);
+  return (
+    <div className="signin">
+      <p className="signin__brand">Metafarm</p>
+      {oidcConfigured ? <OidcSignIn /> : <DevSignIn />}
+    </div>
+  );
 }
 
 function OidcSignIn() {
@@ -23,7 +31,8 @@ function OidcSignIn() {
   return (
     <>
       <h1>Sign in</h1>
-      <p>You will be sent to your organisation&apos;s sign-in page and returned here afterwards.</p>
+      <p>Plan farm projects on a map, record what you observe in the field, and explore each plan in 3D.</p>
+      <p className="mf-hint">You will continue to the sign-in page and come back here afterwards.</p>
       {error && (
         <Notice tone="error" title="Could not start sign-in.">
           {error}
@@ -49,7 +58,7 @@ function DevSignIn() {
       return;
     }
     devSession.signIn(token);
-    router.push("/farms");
+    router.push(takeReturnTo());
   };
 
   return (

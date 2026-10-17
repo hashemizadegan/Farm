@@ -7,3 +7,4 @@ export * from "./repositories/observations";
 export * from "./repositories/media";
 export * from "./repositories/identity";
 export * from "./repositories/ops";
+export * from "./repositories/team";

@@ -2,7 +2,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Notice } from "@metafarm/ui";
+import { api } from "@/lib/api";
 import { getUserManager, oidcConfigured } from "@/lib/auth";
+import { takeReturnTo } from "@/lib/return-to";
 
 /** Completes the OIDC Authorization Code + PKCE redirect. */
 export default function AuthCallbackPage() {
@@ -20,7 +22,15 @@ export default function AuthCallbackPage() {
     }
     getUserManager()
       .signinRedirectCallback()
-      .then(() => router.replace("/farms"))
+      .then(async (user) => {
+        // Share the name and email from the sign-in provider with teammates. Best effort.
+        const name = typeof user.profile.name === "string" ? user.profile.name : undefined;
+        const email = typeof user.profile.email === "string" ? user.profile.email : undefined;
+        if (name || email) {
+          await api.PATCH("/v1/me/profile", { body: { ...(name ? { displayName: name } : {}), ...(email ? { email } : {}) } }).catch(() => undefined);
+        }
+        router.replace(takeReturnTo());
+      })
       .catch((e: Error) => setError(e.message));
   }, [router]);
 

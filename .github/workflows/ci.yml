@@ -31,8 +31,15 @@ jobs:
           cache: "${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}"
       - name: Install dependencies
         # Frozen once pnpm-lock.yaml is committed; the fallback only helps the very first run.
+        # On failure, the last lines are surfaced as an annotation (readable without log access).
         run: |
-          if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install --no-frozen-lockfile; fi
+          set -o pipefail
+          if [ -f pnpm-lock.yaml ]; then flags=--frozen-lockfile; else flags=--no-frozen-lockfile; fi
+          if ! pnpm install $flags 2>&1 | tee install.log; then
+            tail -25 install.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' | sed 's/^/::error title=pnpm install failed::/'
+            echo
+            exit 1
+          fi
       - name: Generated API types are produced from openapi.yaml
         run: test -f packages/contracts/src/generated/api.ts
       - name: Upload lockfile (commit it to enable frozen installs and caching)
@@ -141,7 +148,14 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "${{ env.NODE_VERSION }}", cache: "${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}" }
       - run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install --no-frozen-lockfile; fi
-      - run: pnpm build
+      - name: Build all packages (errors are surfaced as an annotation)
+        run: |
+          set -o pipefail
+          if ! pnpm build 2>&1 | tee build.log; then
+            grep -nE "error|Error|ERR_|failed|Type error" build.log | tail -30 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' | sed 's/^/::error title=pnpm build failed::/'
+            echo
+            exit 1
+          fi
       - name: Smoke-test the bundled services (they must load and reach config validation)
         # With no configuration each service should stop with its own config error, which
         # proves every bundled module (including CommonJS dependencies) loads under Node.

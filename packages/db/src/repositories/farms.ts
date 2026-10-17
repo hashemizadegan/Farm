@@ -10,6 +10,7 @@ export interface FarmRow {
   origin: { lon: number; lat: number } | null;
   origin_provenance: ProvenanceLabel;
   current_boundary_version_id: string | null;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -18,7 +19,7 @@ const FARM_COLUMNS = `
   f.id, f.tenant_id, f.name, f.description, f.timezone,
   CASE WHEN f.origin IS NULL THEN NULL
        ELSE json_build_object('lon', ST_X(f.origin), 'lat', ST_Y(f.origin)) END AS origin,
-  f.origin_provenance, f.current_boundary_version_id, f.created_at, f.updated_at`;
+  f.origin_provenance, f.current_boundary_version_id, f.archived_at, f.created_at, f.updated_at`;
 
 export async function createFarm(
   tx: TenantTx,
@@ -35,14 +36,49 @@ export async function createFarm(
   return r.rows[0]!;
 }
 
-export async function listFarms(tx: TenantTx, limit: number, cursor?: string): Promise<FarmRow[]> {
+export async function listFarms(
+  tx: TenantTx,
+  limit: number,
+  cursor?: string,
+  status: "active" | "archived" = "active",
+): Promise<FarmRow[]> {
   const r = await tx.query<FarmRow>(
     `SELECT ${FARM_COLUMNS} FROM farms f
       WHERE f.tenant_id = $1 AND ($2::timestamptz IS NULL OR f.created_at < $2)
+        AND (CASE WHEN $4 = 'archived' THEN f.archived_at IS NOT NULL ELSE f.archived_at IS NULL END)
       ORDER BY f.created_at DESC LIMIT $3`,
-    [tx.tenantId, cursor ?? null, limit],
+    [tx.tenantId, cursor ?? null, limit, status],
   );
   return r.rows;
+}
+
+/** Updates editable farm details. Undefined fields are left unchanged; description null clears it. */
+export async function updateFarm(
+  tx: TenantTx,
+  farmId: string,
+  input: { name?: string; description?: string | null; timezone?: string },
+): Promise<FarmRow | undefined> {
+  const r = await tx.query<FarmRow>(
+    `UPDATE farms AS f SET
+        name = COALESCE($3, f.name),
+        description = CASE WHEN $4::boolean THEN $5 ELSE f.description END,
+        timezone = COALESCE($6, f.timezone)
+      WHERE f.tenant_id = $1 AND f.id = $2
+      RETURNING ${FARM_COLUMNS}`,
+    [tx.tenantId, farmId, input.name ?? null, input.description !== undefined, input.description ?? null, input.timezone ?? null],
+  );
+  return r.rows[0];
+}
+
+/** Archives (hides from the default list) or restores a farm. Data is kept. */
+export async function setFarmArchived(tx: TenantTx, farmId: string, archived: boolean): Promise<FarmRow | undefined> {
+  const r = await tx.query<FarmRow>(
+    `UPDATE farms AS f SET archived_at = CASE WHEN $3 THEN COALESCE(f.archived_at, now()) ELSE NULL END
+      WHERE f.tenant_id = $1 AND f.id = $2
+      RETURNING ${FARM_COLUMNS}`,
+    [tx.tenantId, farmId, archived],
+  );
+  return r.rows[0];
 }
 
 export async function getFarm(tx: TenantTx, farmId: string): Promise<FarmRow | undefined> {

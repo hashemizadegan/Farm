@@ -9,6 +9,7 @@ import { chainRoutes } from "./routes/chain";
 import { farmRoutes } from "./routes/farms";
 import { healthRoutes } from "./routes/health";
 import { mediaRoutes } from "./routes/media";
+import { teamRoutes } from "./routes/team";
 import { observationRoutes } from "./routes/observations";
 import { planningRoutes } from "./routes/planning";
 
@@ -62,6 +63,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(planningRoutes);
   await app.register(observationRoutes);
   await app.register(mediaRoutes);
+  await app.register(teamRoutes);
   await app.register(chainRoutes);
 
   return app;

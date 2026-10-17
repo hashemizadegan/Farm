@@ -3,6 +3,7 @@
  * @metafarm/contracts mirrors these; contract tests keep them in sync.
  */
 import { z } from "zod";
+import { ROLES } from "./roles";
 import { PROVENANCE_LABELS } from "./provenance";
 import { NFT_ASSET_TYPES, NFT_DISCLOSURE, NFT_METADATA_SCHEMA_VERSION, NFT_UTILITIES } from "./nft";
 import { METRICS } from "./observations";
@@ -75,6 +76,51 @@ export const createObservationSchema = z.object({
 });
 
 export const ackAlertSchema = z.object({ note: z.string().max(1_000).optional() });
+
+/** IANA zone names, e.g. "Asia/Tehran"; validated against the runtime's zone list where available. */
+const timezone = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine((tz) => {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: tz });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "unknown time zone");
+
+export const updateFarmSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    description: z.string().trim().max(2_000).nullable().optional(),
+    timezone: timezone.optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, "nothing to update");
+export type UpdateFarmInput = z.infer<typeof updateFarmSchema>;
+
+export const renameWorkspaceSchema = z.object({ name: z.string().trim().min(1).max(200) }).strict();
+
+export const updateMemberSchema = z.object({ role: z.enum(ROLES) }).strict();
+
+export const createInvitationSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(320),
+    role: z.enum(ROLES),
+  })
+  .strict();
+
+export const acceptInvitationSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{32,128}$/) }).strict();
+
+export const updateProfileSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(120).nullable().optional(),
+    email: z.string().trim().toLowerCase().email().max(320).nullable().optional(),
+  })
+  .strict();
 
 export const createWorkspaceSchema = z.object({
   name: z.string().trim().min(1).max(200),

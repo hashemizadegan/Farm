@@ -133,3 +133,41 @@ export function ErrorSummary({ errors, title = "There is a problem" }: { errors:
     </div>
   );
 }
+
+/** Page title row: heading, optional one-line description, and actions aligned to the end. */
+export function PageHeader({ title, description, actions, children }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="mf-page-header">
+      <div className="mf-page-header__text">
+        <h1>{title}</h1>
+        {description && <p className="mf-page-header__desc">{description}</p>}
+        {children}
+      </div>
+      {actions && <div className="mf-page-header__actions">{actions}</div>}
+    </div>
+  );
+}
+
+/** Short status with a shape marker so meaning never rests on colour alone (WCAG 1.4.1). */
+export function StatusPill({ tone, children }: { tone: "ok" | "pending" | "problem" | "neutral"; children: ReactNode }) {
+  const marker = { ok: "●", pending: "◐", problem: "▲", neutral: "○" }[tone];
+  return (
+    <span className={`mf-pill mf-pill--${tone}`}>
+      <span aria-hidden="true" className="mf-pill__marker">
+        {marker}
+      </span>
+      {children}
+    </span>
+  );
+}
+
+/** An empty state that says what to do next. */
+export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="mf-empty">
+      <h2>{title}</h2>
+      {children && <p>{children}</p>}
+      {action}
+    </div>
+  );
+}
