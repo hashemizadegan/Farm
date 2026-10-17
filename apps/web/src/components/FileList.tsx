@@ -70,7 +70,7 @@ function Photo({ tenantId, media }: { tenantId: string; media: Media }) {
     <figure>
       {src ? (
         <a href={src} target="_blank" rel="noopener noreferrer">
-          <img src={src} alt={`Photo ${media.filename}`} loading="lazy" />
+          <img src={src} alt={media.filename} loading="lazy" />
         </a>
       ) : (
         <div className="gallery__placeholder" role="img" aria-label={failed ? `Could not load ${media.filename}` : `Loading ${media.filename}`} />
