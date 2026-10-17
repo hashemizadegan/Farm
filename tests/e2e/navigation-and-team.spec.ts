@@ -5,8 +5,8 @@ import { signIn, unique } from "./helpers";
 test.describe("navigation and team", () => {
   test("every main navigation link opens a real page", async ({ page }) => {
     await signIn(page);
-    const nav = page.getByRole("navigation", { name: "Main" });
-    const hrefs = await nav.getByRole("link").evaluateAll((links) => links.map((a) => (a as HTMLAnchorElement).getAttribute("href")!));
+    // Read hrefs from the DOM: on phones the menu is inside a closed drawer.
+    const hrefs = await page.locator('nav[aria-label="Main"] a').evaluateAll((links) => links.map((a) => (a as HTMLAnchorElement).getAttribute("href")!));
     expect(hrefs.length).toBeGreaterThan(3);
     for (const href of [...hrefs, "/account", "/workspaces/new"]) {
       const res = await page.goto(href);
@@ -20,7 +20,7 @@ test.describe("navigation and team", () => {
     await page.goto("/team");
     await expect(page.getByRole("heading", { name: /Members/ })).toBeVisible();
     await page.getByLabel("Their email address").fill(`${unique("invitee").replace(/\s+/g, "-").toLowerCase()}@example.com`);
-    await page.getByLabel("Role").selectOption("viewer");
+    await page.getByLabel("Role", { exact: true }).selectOption("viewer");
     await page.getByRole("button", { name: "Create invitation link" }).click();
     const link = await page.getByLabel("Invitation link").inputValue();
     expect(link).toMatch(/\/invite#token=[A-Za-z0-9_-]{32,}/);
@@ -30,9 +30,10 @@ test.describe("navigation and team", () => {
     expect(axe.violations).toEqual([]);
 
     const other = await browser.newPage();
-    await signIn(other, "other");
+    await signIn(other, "invitee");
     await other.goto(link);
     await other.getByRole("button", { name: "Accept invitation" }).click();
+    // The chromium and mobile projects share the invitee, so the second run finds them already a member.
     await expect(other.getByText(/You (have joined|were already a member)/)).toBeVisible();
     // The used token is removed from the address bar.
     expect(new URL(other.url()).hash).toBe("");

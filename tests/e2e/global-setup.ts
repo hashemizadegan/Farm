@@ -20,7 +20,8 @@ export default async function globalSetup() {
       .setExpirationTime("2h")
       .sign(new TextEncoder().encode(secret));
 
-  const tokens = { owner: await mint("dev-user"), other: await mint("dev-other") };
+  // "invitee" is used only by the invitation test, so joining a workspace never affects isolation tests.
+  const tokens = { owner: await mint("dev-user"), other: await mint("dev-other"), invitee: await mint(`dev-invitee-${Date.now().toString(36)}`) };
   const out = path.join(path.dirname(fileURLToPath(import.meta.url)), ".tokens.json");
   writeFileSync(out, JSON.stringify(tokens));
 }
