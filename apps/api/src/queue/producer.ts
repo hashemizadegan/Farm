@@ -9,7 +9,7 @@ import type { JobProducer } from "../deps";
  * no-op at the queue level; the worker's job_runs table covers the rest.
  */
 export function createBullProducer(redisUrl: string, prefix: string, maxAttempts = 5, backoffMs = 2_000): JobProducer {
-  const connection = new Redis(redisUrl, { maxRetriesPerRequest: null, enableReadyCheck: true });
+  const connection = new Redis(redisUrl, { maxRetriesPerRequest: null, enableReadyCheck: true, family: 0 });
   const queues = new Map<string, Queue>();
   const getQueue = (name: string) => {
     let q = queues.get(name);

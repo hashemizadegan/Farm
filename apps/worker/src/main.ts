@@ -18,7 +18,7 @@ const logger = createLogger({ service: env.SERVICE_NAME ?? "worker", level: env.
 const shutdown = installGracefulShutdown(logger, env.SHUTDOWN_GRACE_MS);
 
 const pool = createPool({ connectionString: env.DATABASE_URL, max: env.DATABASE_POOL_MAX, ssl: env.DATABASE_SSL, applicationName: "metafarm-worker" });
-const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null, family: 0 });
 const prefix = env.QUEUE_PREFIX;
 
 const store: JobRunStore = {

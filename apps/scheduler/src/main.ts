@@ -8,7 +8,7 @@ import { buildSchedules } from "./schedules";
 const env = loadEnv(schedulerEnvSchema, { ...process.env, HEALTH_PORT: process.env.HEALTH_PORT ?? process.env.PORT });
 const logger = createLogger({ service: env.SERVICE_NAME ?? "scheduler", level: env.LOG_LEVEL, environment: env.APP_ENV, pretty: env.APP_ENV === "development" });
 const shutdown = installGracefulShutdown(logger, env.SHUTDOWN_GRACE_MS);
-const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null, family: 0 });
 
 // Contracts to index: "0xaddr@fromBlock,0xaddr2@fromBlock".
 const contracts = env.CHAIN_INDEX_CONTRACTS.map((entry) => {
