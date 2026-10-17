@@ -212,10 +212,11 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/${{ matrix.app }}/Dockerfile
+          file: Dockerfile
           push: false
           tags: metafarm-${{ matrix.app }}:ci
           build-args: |
+            APP=${{ matrix.app }}
             NEXT_PUBLIC_API_URL=http://localhost:4000
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}

@@ -6,15 +6,15 @@ Four application services plus three data services, per environment:
 
 | Service | Source | Public? | Health check | Notes |
 | --- | --- | --- | --- | --- |
-| `web` | `apps/web/Dockerfile` | Yes (custom domain) | `GET /sign-in` | Next.js standalone server |
-| `api` | `apps/api/Dockerfile` | Yes (custom domain) | `GET /readyz` | Runs migrations as the pre-deploy command |
-| `worker` | `apps/worker/Dockerfile` | No | `GET /healthz` on `$PORT` | BullMQ consumers |
-| `scheduler` | `apps/scheduler/Dockerfile` | No | `GET /healthz` on `$PORT` | One replica |
+| `web` | root `Dockerfile` (app `web`) | Yes (custom domain) | `GET /sign-in` | Next.js standalone server |
+| `api` | root `Dockerfile` (app `api`) | Yes (custom domain) | `GET /readyz` | Runs migrations as the pre-deploy command |
+| `worker` | root `Dockerfile` (app `worker`) | No | `GET /healthz` on `$PORT` | BullMQ consumers |
+| `scheduler` | root `Dockerfile` (app `scheduler`) | No | `GET /healthz` on `$PORT` | One replica |
 | `postgres` | `postgis/postgis:16-3.4` image + volume | No | — | PostGIS is required |
 | `redis` | Railway Redis | No | — | Queue backend |
 | `uploads` | Railway bucket or external S3-compatible storage | No (presigned URLs only) | — | Private |
 
-All Dockerfiles build from the **repository root**; each service selects its Dockerfile with the `RAILWAY_DOCKERFILE_PATH` service variable.
+Every service builds the **root `Dockerfile`**. It selects the app from the Railway service name (`RAILWAY_SERVICE_NAME`, passed into the build), so the service names must be exactly `web`, `api`, `worker` and `scheduler` — or set a service variable `APP=<name>`. Leave the service's root directory as `/`.
 
 ## 1. Infrastructure as Code
 
@@ -60,9 +60,9 @@ Full list with local defaults: `.env.example`. Required when deployed:
 | `NEXT_PUBLIC_MAP_*` | web (build time) | Basemap style/attribution and CSP hosts |
 | `NEXT_PUBLIC_OIDC_AUTHORITY`, `NEXT_PUBLIC_OIDC_CLIENT_ID`, `NEXT_PUBLIC_OIDC_AUDIENCE` | web (build time) | Browser sign-in (Authorization Code + PKCE) |
 | `CHAIN_RPC_URL`, `CHAIN_ID`, `CHAIN_INDEX_CONTRACTS` | worker, scheduler | Optional; indexing is skipped without an RPC URL |
-| `RAILWAY_DOCKERFILE_PATH` | each app | e.g. `apps/api/Dockerfile` |
+| `APP` | each app (optional) | Only if the service name is not `web`/`api`/`worker`/`scheduler` |
 
-`NEXT_PUBLIC_*` values are inlined into the browser bundle at build time. Railway exposes service variables to a Docker build only when the Dockerfile declares them with `ARG`; `apps/web/Dockerfile` does this. Changing one requires a rebuild.
+`NEXT_PUBLIC_*` values are inlined into the browser bundle at build time. Railway exposes service variables to a Docker build only when the Dockerfile declares them with `ARG`; the root `Dockerfile` does this for every `NEXT_PUBLIC_*` value. Changing one requires a rebuild.
 
 ## 4. Private service communication
 

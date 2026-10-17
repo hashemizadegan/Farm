@@ -2,14 +2,16 @@
 
 The environment definition lives in [`.railway/railway.ts`](../../.railway/railway.ts) (Railway Infrastructure as Code, which the Railway CLI looks for at the repository root). The full runbook — services, variables, health checks, migrations, graceful shutdown, staging/production separation, rollback and backup/restore — is in [`docs/deployment-railway.md`](../../docs/deployment-railway.md).
 
-Per-service build settings, in case you configure services in the dashboard instead:
+Every service builds the root `Dockerfile`, which picks the app from the Railway service name (`RAILWAY_SERVICE_NAME`). Name the services exactly `web`, `api`, `worker` and `scheduler`, or set a service variable `APP=<name>`. No Dockerfile path setting is needed.
 
-| Service | Root directory | `RAILWAY_DOCKERFILE_PATH` | Pre-deploy | Health check path |
+Per-service settings, in case you configure services in the dashboard instead:
+
+| Service | Root directory | Builds | Pre-deploy | Health check path |
 | --- | --- | --- | --- | --- |
-| web | `/` | `apps/web/Dockerfile` | — | `/sign-in` |
-| api | `/` | `apps/api/Dockerfile` | `node dist/migrate.js` | `/readyz` |
-| worker | `/` | `apps/worker/Dockerfile` | — | `/healthz` |
-| scheduler | `/` | `apps/scheduler/Dockerfile` | — | `/healthz` |
+| web | `/` | root `Dockerfile`, app `web` | — | `/sign-in` |
+| api | `/` | root `Dockerfile`, app `api` | `node dist/migrate.js` | `/readyz` |
+| worker | `/` | root `Dockerfile`, app `worker` | — | `/healthz` |
+| scheduler | `/` | root `Dockerfile`, app `scheduler` | — | `/healthz` |
 
 Watch paths (to avoid rebuilding every service on every commit), set in the service settings:
 
@@ -18,4 +20,4 @@ Watch paths (to avoid rebuilding every service on every commit), set in the serv
 - worker: `apps/worker/**`, `packages/{config,db,domain,observability}/**`
 - scheduler: `apps/scheduler/**`, `packages/{config,domain,observability}/**`
 
-Also include `pnpm-lock.yaml` and the service's Dockerfile in each list.
+Also include `pnpm-lock.yaml` and `Dockerfile` in each list.

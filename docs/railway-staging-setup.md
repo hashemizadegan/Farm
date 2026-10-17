@@ -36,7 +36,7 @@ Create in this order. For each **GitHub** service: Source = `hashemizadegan/Farm
 | `scheduler` | GitHub | Health check path: `/healthz`. No public domain. 1 replica. |
 | `web` | GitHub | Health check path: `/sign-in`. **Generate a public domain.** |
 
-The service names matter: the variables below reference them (`postgres`, `redis`, `uploads`).
+The service names matter. The build picks the app from the service name (`api`, `web`, `worker`, `scheduler`), and the variables below reference `postgres`, `redis` and `uploads` by name. If Railway shows **Railpack** in a build log instead of a Docker build, the service is not seeing the root `Dockerfile` — check that its root directory is `/`.
 
 ## 4. Variables
 
@@ -71,7 +71,6 @@ If the bucket's **Credentials** tab says it uses path-style URLs, set `S3_FORCE_
 **`api` only**
 
 ```
-RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile
 AUTH_PROVIDER=oidc
 OIDC_ISSUER_URL=https://<your-tenant>.us.auth0.com/
 OIDC_AUDIENCE=https://api.metafarm-staging
@@ -86,20 +85,12 @@ AUDIT_IP_SALT=<generate a long random value>
 **`worker` only**
 
 ```
-RAILWAY_DOCKERFILE_PATH=apps/worker/Dockerfile
 IMAGERY_PROVIDER=none
-```
-
-**`scheduler` only**
-
-```
-RAILWAY_DOCKERFILE_PATH=apps/scheduler/Dockerfile
 ```
 
 **`web` only** (inlined at build time — redeploy after changing)
 
 ```
-RAILWAY_DOCKERFILE_PATH=apps/web/Dockerfile
 NEXT_PUBLIC_API_URL=https://<api-domain>
 NEXT_PUBLIC_OIDC_AUTHORITY=https://<your-tenant>.us.auth0.com
 NEXT_PUBLIC_OIDC_CLIENT_ID=<SPA client id>

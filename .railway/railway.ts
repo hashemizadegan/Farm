@@ -10,8 +10,9 @@
  * IMPORTANT: omitting a resource from this file deletes it on apply. Review
  * `railway config plan` output before every apply, especially in production.
  *
- * Build: each app has its own Dockerfile and builds from the repository root.
- * RAILWAY_DOCKERFILE_PATH selects the Dockerfile per service.
+ * Build: every service builds the root Dockerfile, which picks the app from the
+ * service name (api, web, worker, scheduler). Keep those service names, or set
+ * a service variable APP=<name>.
  */
 import { defineRailway, github, image, preserve, project, redis, service, volume, bucket } from "railway/iac";
 
@@ -72,7 +73,6 @@ export default defineRailway((ctx) => {
     env: {
       ...common,
       ...storageEnv,
-      RAILWAY_DOCKERFILE_PATH: "apps/api/Dockerfile",
       AUTH_PROVIDER: "oidc",
       OIDC_ISSUER_URL: preserve(),
       OIDC_AUDIENCE: preserve(),
@@ -93,7 +93,6 @@ export default defineRailway((ctx) => {
     env: {
       ...common,
       ...storageEnv,
-      RAILWAY_DOCKERFILE_PATH: "apps/worker/Dockerfile",
       WORKER_CONCURRENCY: "4",
       IMAGERY_PROVIDER: "none",
       CHAIN_RPC_URL: preserve(),
@@ -109,7 +108,6 @@ export default defineRailway((ctx) => {
     replicas: 1,
     env: {
       ...common,
-      RAILWAY_DOCKERFILE_PATH: "apps/scheduler/Dockerfile",
       CHAIN_ID: preserve(),
       CHAIN_INDEX_CONTRACTS: preserve(),
     },
@@ -120,7 +118,6 @@ export default defineRailway((ctx) => {
     healthcheck: "/sign-in",
     replicas: prod ? 2 : 1,
     env: {
-      RAILWAY_DOCKERFILE_PATH: "apps/web/Dockerfile",
       // Browser-facing: must be the API's PUBLIC URL (inlined at build time).
       NEXT_PUBLIC_API_URL: preserve(),
       NEXT_PUBLIC_MAP_STYLE_URL: preserve(),
