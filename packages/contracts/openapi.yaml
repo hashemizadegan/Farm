@@ -34,6 +34,7 @@ tags:
   - name: observations
   - name: alerts
   - name: tasks
+  - name: harvests
   - name: media
   - name: team
   - name: audit
@@ -908,6 +909,113 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Already completed or cancelled }
 
+  /v1/tenants/{tenantId}/farms/{farmId}/harvests:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [harvests]
+      summary: List harvest batches
+      operationId: listHarvests
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Harvest" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [harvests]
+      summary: Record a harvest batch (harvest:record)
+      description: |
+        Builds the batch's public record and its SHA-256 fingerprint. When the
+        harvest registry is configured, the fingerprint is registered on-chain
+        by a background job. The record can never be edited; void it instead.
+      operationId: recordHarvest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HarvestInput" }
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Harvest" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/harvests/{batchId}/void:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: batchId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [harvests]
+      summary: Void a harvest batch (harvest:manage)
+      operationId: voidHarvest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        "200":
+          description: Voided
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Harvest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Already void }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/harvests/{batchId}/anchor:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: batchId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [harvests]
+      summary: Retry the on-chain registration of a batch (harvest:manage)
+      operationId: retryHarvestAnchor
+      responses:
+        "200":
+          description: Registration queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Harvest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "Already registered, in progress, or registration is not configured" }
+
+  /v1/public/harvests/{code}:
+    parameters:
+      - { name: code, in: path, required: true, schema: { type: string, pattern: "^[2-9A-HJKMNP-Z]{10}$" } }
+    get:
+      tags: [harvests]
+      security: []
+      summary: Public traceability record of a batch (no sign-in)
+      description: |
+        For buyers scanning a label. Returns only the public record, its
+        fingerprint and registration details, plus a live check against the
+        registry contract when the server can reach the chain.
+      operationId: getPublicHarvest
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicHarvest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/tenants/{tenantId}/uploads:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     post:
@@ -1597,6 +1705,102 @@ components:
         completedByName: { type: [string, "null"] }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    HarvestInput:
+      type: object
+      additionalProperties: false
+      required: [cropName, harvestedOn, quantity, unit]
+      properties:
+        cropName: { type: string, minLength: 1, maxLength: 120 }
+        parcelLabel: { type: [string, "null"], maxLength: 80 }
+        harvestedOn: { type: string, format: date }
+        quantity: { type: string, pattern: "^\\d{1,11}(\\.\\d{1,3})?$", description: "Decimal as text, greater than zero" }
+        unit: { type: string, minLength: 1, maxLength: 16 }
+        qualityGrade: { type: [string, "null"], maxLength: 40 }
+        notes: { type: [string, "null"], maxLength: 4000, description: Private to the workspace }
+        taskId: { type: [string, "null"], format: uuid }
+
+    HarvestPublicRecord:
+      type: object
+      required: [v, batch, producer, farm, crop, parcel, harvestedOn, quantity, unit, grade, recordedAt]
+      properties:
+        v: { type: integer, enum: [1] }
+        batch: { type: string }
+        producer: { type: string }
+        farm: { type: string }
+        crop: { type: string }
+        parcel: { type: [string, "null"] }
+        harvestedOn: { type: string, format: date }
+        quantity: { type: string }
+        unit: { type: string }
+        grade: { type: [string, "null"] }
+        recordedAt: { type: string, format: date-time }
+
+    AnchorStatus:
+      type: string
+      enum: [not_configured, pending, submitted, confirmed, failed]
+
+    HarvestAnchor:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/AnchorStatus" }
+        chainId: { type: [integer, "null"] }
+        chainName: { type: [string, "null"] }
+        contract: { type: [string, "null"] }
+        txHash: { type: [string, "null"] }
+        block: { type: [string, "null"] }
+        anchoredAt: { type: [string, "null"], format: date-time }
+        explorerUrl: { type: [string, "null"] }
+        error: { type: [string, "null"] }
+
+    Harvest:
+      type: object
+      required: [id, farmId, code, cropName, harvestedOn, quantity, unit, publicRecord, recordHash, anchor, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: string, format: uuid }
+        code: { type: string }
+        cropName: { type: string }
+        parcelLabel: { type: [string, "null"] }
+        harvestedOn: { type: string, format: date }
+        quantity: { type: string }
+        unit: { type: string }
+        qualityGrade: { type: [string, "null"] }
+        notes: { type: [string, "null"] }
+        taskId: { type: [string, "null"], format: uuid }
+        publicRecord: { $ref: "#/components/schemas/HarvestPublicRecord" }
+        recordHash: { type: string, pattern: "^[0-9a-f]{64}$" }
+        anchor: { $ref: "#/components/schemas/HarvestAnchor" }
+        voidedAt: { type: [string, "null"], format: date-time }
+        voidReason: { type: [string, "null"] }
+        voidAnchorStatus:
+          oneOf:
+            - { $ref: "#/components/schemas/AnchorStatus" }
+            - { type: "null" }
+        recordedByName: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+
+    PublicHarvest:
+      type: object
+      required: [code, record, recordHash, chainBatchId, anchor, chainCheck, voidedAt]
+      properties:
+        code: { type: string }
+        record: { $ref: "#/components/schemas/HarvestPublicRecord" }
+        recordHash: { type: string }
+        chainBatchId: { type: string, description: "bytes32 id in the registry (the batch UUID, left-padded)" }
+        anchor: { $ref: "#/components/schemas/HarvestAnchor" }
+        chainCheck:
+          oneOf:
+            - type: object
+              required: [onChainHash, matches, registeredAt, voidedOnChain]
+              properties:
+                onChainHash: { type: [string, "null"] }
+                matches: { type: boolean }
+                registeredAt: { type: [string, "null"], format: date-time }
+                voidedOnChain: { type: boolean }
+            - { type: "null" }
+        voidedAt: { type: [string, "null"], format: date-time }
 
     UploadRequest:
       type: object

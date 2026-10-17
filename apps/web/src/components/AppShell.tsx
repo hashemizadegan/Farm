@@ -10,7 +10,7 @@ import { LanguageSwitch } from "./LanguageSwitch";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 /** Routes that render without the app chrome (sign-in and the OIDC callback). */
-const BARE = ["/sign-in", "/auth/callback"];
+const BARE = ["/sign-in", "/auth/callback", "/verify"];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();

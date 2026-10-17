@@ -15,6 +15,10 @@ const config: HardhatUserConfig = {
   networks: {
     hardhat: { chainId: 31337 },
     localhost: { url: "http://127.0.0.1:8545", chainId: 31337 },
+    // A real network, configured only from the environment (used by the manual deploy workflow).
+    ...(process.env.DEPLOY_RPC_URL && process.env.DEPLOYER_PRIVATE_KEY
+      ? { target: { url: process.env.DEPLOY_RPC_URL, accounts: [process.env.DEPLOYER_PRIVATE_KEY] } }
+      : {}),
   },
 };
 

@@ -28,6 +28,10 @@ export const PERMISSIONS = [
   "task:manage",
   /** Start and complete tasks assigned to oneself (or unassigned ones). */
   "task:work",
+  /** Record a harvest batch (published for traceability). */
+  "harvest:record",
+  /** Void a harvest batch and retry its registration. */
+  "harvest:manage",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -36,7 +40,7 @@ const READ: Permission[] = ["farm:read", "asset:read", "observation:read", "aler
 export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   viewer: new Set(READ),
   // Field workers run the day-to-day work: their tasks, observations and photos. They cannot change the farm's setup.
-  worker: new Set([...READ, "observation:write", "media:upload", "task:work"]),
+  worker: new Set([...READ, "observation:write", "media:upload", "task:work", "harvest:record"]),
   // Verifiers upload the evidence file that verification requires.
   verifier: new Set([...READ, "boundary:verify", "media:upload"]),
   manager: new Set([
@@ -52,6 +56,8 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "sensor:manage",
     "task:manage",
     "task:work",
+    "harvest:record",
+    "harvest:manage",
   ]),
   admin: new Set([
     ...READ,
@@ -69,6 +75,8 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "nft:manage",
     "task:manage",
     "task:work",
+    "harvest:record",
+    "harvest:manage",
   ]),
   owner: new Set(PERMISSIONS),
 };

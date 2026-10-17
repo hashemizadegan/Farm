@@ -6,6 +6,7 @@ import { buildApp } from "./app";
 import { createDevProvider } from "./auth/dev";
 import { createOidcProvider } from "./auth/oidc";
 import type { AuthProvider } from "./auth/provider";
+import { createHarvestChainReader } from "./lib/harvest-chain";
 import { createBullProducer } from "./queue/producer";
 import { createMemoryStorage } from "./storage/memory";
 import { createS3Storage } from "./storage/s3";
@@ -57,6 +58,8 @@ const app = await buildApp({
     auth: authProvider(),
     recoverMessageAddress: (message, signature) => recoverMessageAddress({ message, signature }),
     now: () => new Date(),
+    harvestChain:
+      env.CHAIN_RPC_URL && env.HARVEST_REGISTRY_ADDRESS ? createHarvestChainReader(env.CHAIN_RPC_URL, env.HARVEST_REGISTRY_ADDRESS) : undefined,
   },
   isDraining: () => shutdown.isShuttingDown,
 });

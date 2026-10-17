@@ -8,6 +8,8 @@ import { createViemChainReader } from "./chain-reader";
 import { alertEvaluationHandler, alertSweepHandler, pendingBoundarySweepHandler } from "./handlers/alerts";
 import { chainIndexHandler } from "./handlers/chain";
 import { gisValidationHandler } from "./handlers/gis";
+import { dbAnchorStore, harvestAnchorHandler } from "./handlers/harvest";
+import { createHarvestRegistryClient } from "./harvest-registry";
 import { imageryIngestionHandler, noImageryProvider } from "./handlers/imagery";
 import { observationNormalizationHandler } from "./handlers/observations";
 import { wrapHandler, type DeadLetterSink, type JobRunStore } from "./runner";
@@ -52,7 +54,22 @@ async function enqueue<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloa
 const deps = { store, deadLetter, logger };
 const chainReader = env.CHAIN_RPC_URL ? createViemChainReader(env.CHAIN_RPC_URL) : undefined;
 
+const harvestRegistry =
+  env.CHAIN_RPC_URL && env.HARVEST_REGISTRY_ADDRESS && env.CHAIN_SIGNER_PRIVATE_KEY
+    ? createHarvestRegistryClient({
+        rpcUrl: env.CHAIN_RPC_URL,
+        chainId: env.CHAIN_ID,
+        chainName: env.CHAIN_NAME,
+        address: env.HARVEST_REGISTRY_ADDRESS,
+        privateKey: env.CHAIN_SIGNER_PRIVATE_KEY as `0x${string}`,
+        confirmations: env.CHAIN_CONFIRMATIONS,
+        timeoutSeconds: env.CHAIN_TX_TIMEOUT_SECONDS,
+      })
+    : undefined;
+if (!harvestRegistry) logger.info("harvest registry not configured; batches stay unregistered");
+
 const processors: Record<string, Processor> = {
+  [QUEUES.anchor]: wrapHandler(QUEUES.anchor, harvestAnchorHandler(dbAnchorStore(pool), harvestRegistry, { maxAttempts: env.JOB_MAX_ATTEMPTS }), deps) as Processor,
   [QUEUES.gis]: wrapHandler(QUEUES.gis, gisValidationHandler(pool), deps) as Processor,
   [QUEUES.imagery]: wrapHandler(QUEUES.imagery, imageryIngestionHandler(pool, noImageryProvider), deps) as Processor,
   [QUEUES.observations]: wrapHandler(QUEUES.observations, observationNormalizationHandler(pool), deps) as Processor,

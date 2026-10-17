@@ -2,12 +2,13 @@
   "name": "@metafarm/nft-contracts",
   "version": "0.1.0",
   "private": true,
-  "description": "Digital collectible contracts (ERC-721 / ERC-1155). Not land title, crop ownership, profit share or an investment.",
+  "description": "Digital collectible contracts (ERC-721 / ERC-1155) and a harvest traceability registry. Not land title, crop ownership, profit share or an investment.",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
     "coverage": "hardhat coverage",
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:harvest-registry": "hardhat run scripts/deploy-harvest-registry.ts --network target",
     "node": "hardhat node"
   },
   "dependencies": {

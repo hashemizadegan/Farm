@@ -19,6 +19,7 @@ The codebase enforces this:
 - Every metadata document must contain the fixed `disclosure` string, and is validated against `packages/contracts/nft-metadata.schema.json`.
 - A content filter rejects names, descriptions and attributes containing ownership, title, deed, profit, yield, investment, guarantee or appreciation language (`checkNftMetadataContent`).
 - There is no fungible token, no yield mechanism, no revenue distribution and no investment product anywhere in the repository.
+- The harvest registry (`HarvestRegistry.sol`, see `docs/harvest-traceability.md`) is not a token: it stores only fingerprints of public harvest records so buyers can check they were not changed. It conveys no ownership, value or right.
 - Contracts have fixed supply, explicit mint roles, emergency-only pause and no confiscation.
 
 ## 2. Coordinates and boundaries may be user-submitted and unverified

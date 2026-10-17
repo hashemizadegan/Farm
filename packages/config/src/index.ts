@@ -77,6 +77,12 @@ const chain = {
   NFT_ERC721_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NFT_ERC1155_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   CHAIN_CONFIRMATIONS: z.coerce.number().int().min(0).max(256).default(12),
+  /** HarvestRegistry contract; harvest batches are registered on-chain only when this and CHAIN_RPC_URL are set. */
+  HARVEST_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+  /** Display name of the chain, e.g. "Base Sepolia". */
+  CHAIN_NAME: z.string().max(60).optional(),
+  /** Transaction page prefix of a block explorer, e.g. https://sepolia.basescan.org/tx/ */
+  CHAIN_EXPLORER_TX_URL: z.string().url().optional(),
 };
 
 export const apiEnvSchema = z
@@ -115,6 +121,13 @@ export const workerEnvSchema = z
     JOB_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(25).default(5),
     JOB_BACKOFF_BASE_MS: z.coerce.number().int().min(100).default(2_000),
     IMAGERY_PROVIDER: z.enum(["none", "mock"]).default("none"),
+    /**
+     * Hot key that registers harvest batches. It should hold only RECORDER_ROLE on
+     * the registry and a small amount of gas money. Set it in the platform's secret store.
+     */
+    CHAIN_SIGNER_PRIVATE_KEY: z.string().regex(/^0x[0-9a-fA-F]{64}$/, "0x followed by 64 hex characters").optional(),
+    /** Seconds to wait for a registration transaction before retrying later. */
+    CHAIN_TX_TIMEOUT_SECONDS: z.coerce.number().int().min(10).max(900).default(120),
     HEALTH_PORT: z.coerce.number().int().min(1).max(65535).default(4100),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(30_000),
   })

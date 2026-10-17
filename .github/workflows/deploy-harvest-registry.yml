@@ -1,0 +1,50 @@
+name: Deploy harvest registry
+
+# Manual only. Deploys contracts/nft/contracts/HarvestRegistry.sol to the network
+# given by the DEPLOY_RPC_URL secret, paid for by the DEPLOYER_PRIVATE_KEY secret.
+# The printed HARVEST_REGISTRY_ADDRESS goes into the api and worker settings.
+on:
+  workflow_dispatch:
+    inputs:
+      recorder:
+        description: "Address of the worker's signing key (gets RECORDER_ROLE)"
+        required: true
+      admin:
+        description: "Admin address (manages roles). Empty = the deployer"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: chain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pnpm install --no-frozen-lockfile
+      - name: Check inputs
+        env:
+          RECORDER: ${{ inputs.recorder }}
+          ADMIN: ${{ inputs.admin }}
+        run: |
+          echo "$RECORDER" | grep -Eq '^0x[0-9a-fA-F]{40}$' || { echo "::error::recorder must be a 0x address"; exit 1; }
+          if [ -n "$ADMIN" ]; then echo "$ADMIN" | grep -Eq '^0x[0-9a-fA-F]{40}$' || { echo "::error::admin must be a 0x address"; exit 1; }; fi
+      - name: Compile and test
+        run: pnpm --filter @metafarm/nft-contracts compile && pnpm --filter @metafarm/nft-contracts exec hardhat test test/HarvestRegistry.test.ts
+      - name: Deploy
+        env:
+          DEPLOY_RPC_URL: ${{ secrets.DEPLOY_RPC_URL }}
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          HARVEST_RECORDER_ADDRESS: ${{ inputs.recorder }}
+          HARVEST_ADMIN_ADDRESS: ${{ inputs.admin }}
+        run: |
+          set -o pipefail
+          pnpm --filter @metafarm/nft-contracts deploy:harvest-registry 2>&1 | tee deploy.log
+          # Surface the result as annotations (readable without log access).
+          grep -E '^(HARVEST_REGISTRY_ADDRESS|CHAIN_ID|DEPLOY_TX|ADMIN)=' deploy.log | sed 's/^/::notice title=Harvest registry::/'

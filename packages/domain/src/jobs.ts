@@ -13,6 +13,7 @@ export const QUEUES = {
   observations: "observation-normalization",
   alerts: "alert-evaluation",
   chain: "chain-event-indexing",
+  anchor: "harvest-anchoring",
   deadLetter: "dead-letter",
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -51,12 +52,21 @@ export interface ChainEventIndexingJob {
   toBlock: string;
 }
 
+export interface HarvestAnchorJob {
+  tenantId: string;
+  batchId: string;
+  action: "record" | "void";
+  /** Increases with each manual retry so a retry is a new job, not a duplicate. */
+  attempt: number;
+}
+
 export interface JobPayloads {
   [QUEUES.gis]: GisValidationJob;
   [QUEUES.imagery]: ImageryIngestionJob;
   [QUEUES.observations]: ObservationNormalizationJob;
   [QUEUES.alerts]: AlertEvaluationJob;
   [QUEUES.chain]: ChainEventIndexingJob;
+  [QUEUES.anchor]: HarvestAnchorJob;
 }
 
 export function idempotencyKey<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloads[Q]): string {
@@ -80,6 +90,10 @@ export function idempotencyKey<Q extends keyof JobPayloads>(queue: Q, payload: J
     case QUEUES.chain: {
       const p = payload as ChainEventIndexingJob;
       return `chain:${p.chainId}:${p.contractAddress.toLowerCase()}:${p.fromBlock}-${p.toBlock}`;
+    }
+    case QUEUES.anchor: {
+      const p = payload as HarvestAnchorJob;
+      return `anchor:${p.tenantId}:${p.batchId}:${p.action}:${p.attempt}`;
     }
     default:
       throw new Error(`unknown queue ${String(queue)}`);
