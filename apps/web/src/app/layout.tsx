@@ -2,7 +2,7 @@ import "@metafarm/ui/styles.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./app.css";
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Public_Sans } from "next/font/google";
+import { Atkinson_Hyperlegible, Familjen_Grotesk } from "next/font/google";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
@@ -13,8 +13,9 @@ export const metadata: Metadata = {
 };
 
 // Self-hosted at build time by next/font, so no third-party font requests (CSP font-src 'self').
-const body = Public_Sans({ subsets: ["latin", "latin-ext"], variable: "--font-body", display: "swap" });
-const display = Bricolage_Grotesque({ subsets: ["latin", "latin-ext"], variable: "--font-display", display: "swap", weight: ["600", "700"] });
+// Atkinson Hyperlegible: designed for legibility (distinct letterforms), which suits reading in the field.
+const body = Atkinson_Hyperlegible({ subsets: ["latin", "latin-ext"], variable: "--font-body", display: "swap", weight: ["400", "700"] });
+const display = Familjen_Grotesk({ subsets: ["latin", "latin-ext"], variable: "--font-display", display: "swap", weight: ["600", "700"] });
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { EmptyState, Notice, PageHeader, StatusPill } from "@metafarm/ui";
+import { PlotOutline } from "@/components/PlotOutline";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
@@ -67,8 +68,13 @@ function FarmList({ tenantId }: { tenantId: string }) {
               {items.map((f) => (
                 <tr key={f.id}>
                   <th scope="row">
-                    <Link href={`/farms/${f.id}`}>{f.name}</Link>
-                    {f.description && <p className="mf-hint">{f.description.length > 90 ? `${f.description.slice(0, 90)}…` : f.description}</p>}
+                    <div className="name-cell">
+                      <PlotOutline outline={f.outline} size={36} />
+                      <div>
+                        <Link href={`/farms/${f.id}`}>{f.name}</Link>
+                        {f.description && <p className="mf-hint">{f.description.length > 90 ? `${f.description.slice(0, 90)}…` : f.description}</p>}
+                      </div>
+                    </div>
                   </th>
                   <td>{f.currentBoundaryVersionId ? <StatusPill tone="ok">Validated</StatusPill> : <StatusPill tone="pending">Needs a boundary</StatusPill>}</td>
                   <td>{f.timezone}</td>

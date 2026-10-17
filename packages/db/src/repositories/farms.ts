@@ -13,13 +13,25 @@ export interface FarmRow {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Simplified outer ring of the current boundary ([lon, lat] pairs), for small drawings. */
+  outline: [number, number][] | null;
+  boundary_area_m2: number | null;
 }
 
 const FARM_COLUMNS = `
   f.id, f.tenant_id, f.name, f.description, f.timezone,
   CASE WHEN f.origin IS NULL THEN NULL
        ELSE json_build_object('lon', ST_X(f.origin), 'lat', ST_Y(f.origin)) END AS origin,
-  f.origin_provenance, f.current_boundary_version_id, f.archived_at, f.created_at, f.updated_at`;
+  f.origin_provenance, f.current_boundary_version_id, f.archived_at, f.created_at, f.updated_at,
+  (SELECT ST_AsGeoJSON(
+            ST_ExteriorRing(ST_GeometryN(ST_SimplifyPreserveTopology(b.geom,
+              GREATEST(ST_XMax(b.geom) - ST_XMin(b.geom), ST_YMax(b.geom) - ST_YMin(b.geom)) / 48), 1)), 6)::json -> 'coordinates'
+     FROM boundary_versions b
+    WHERE b.tenant_id = f.tenant_id AND b.id = f.current_boundary_version_id) AS outline,
+  (SELECT b.area_m2 FROM boundary_versions b
+    WHERE b.tenant_id = f.tenant_id AND b.id = f.current_boundary_version_id) AS boundary_area_m2`;
+// outline: the current boundary's first outer ring, simplified to ~1/48 of its extent
+// (enough to draw at icon size). Scalar subqueries so this also works in RETURNING.
 
 export async function createFarm(
   tx: TenantTx,

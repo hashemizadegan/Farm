@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { StatusPill } from "@metafarm/ui";
+import { PlotOutline } from "@/components/PlotOutline";
 import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
 import { useTenant } from "@/lib/tenant";
@@ -30,10 +31,8 @@ export function FarmNav({ farmId }: { farmId: string }) {
   return (
     <>
       <div className="farm-head">
-        <span className="farm-head__plot" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="28" height="28">
-            <path d="M3 6.5 12 3l9 4.5-1.5 11L10 21l-7-4z" fill="currentColor" fillOpacity=".14" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-          </svg>
+        <span className="farm-head__plot">
+          <PlotOutline outline={f?.outline} size={44} title={f?.outline ? "Outline of the current boundary" : undefined} />
         </span>
         <div className="farm-head__text">
           <nav aria-label="Breadcrumb" className="crumbs">
