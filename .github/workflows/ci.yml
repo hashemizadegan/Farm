@@ -196,6 +196,8 @@ jobs:
       AUTH_PROVIDER: dev
       CORS_ORIGINS: http://localhost:3000
       NEXT_PUBLIC_API_URL: http://localhost:4000
+      # Every browser in the run shares one client IP; the production per-IP limit would throttle the suite.
+      RATE_LIMIT_MAX: "10000"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

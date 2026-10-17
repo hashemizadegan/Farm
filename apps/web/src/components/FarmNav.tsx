@@ -12,6 +12,7 @@ const TABS = [
   ["", "overview"],
   ["/tasks", "tasks"],
   ["/harvests", "harvests"],
+  ["/inputs", "inputs"],
   ["/boundary", "boundary"],
   ["/scenarios", "scenarios"],
   ["/observations", "observations"],

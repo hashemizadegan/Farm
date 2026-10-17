@@ -70,6 +70,22 @@ export const completeTaskSchema = z
     note: z.string().trim().max(4_000).optional(),
     /** Photos already uploaded to this farm (e.g. the finished work). */
     mediaIds: z.array(z.string().uuid()).max(10).default([]),
+    /** Inputs used doing the task, recorded as stock use on the task's farm and parcel. */
+    inputs: z
+      .array(
+        z
+          .object({
+            itemId: z.string().uuid(),
+            quantity: z
+              .string()
+              .trim()
+              .regex(/^\d{1,11}(\.\d{1,3})?$/, "a positive number with up to 3 decimals")
+              .refine((q) => Number(q) > 0, "must be greater than zero"),
+          })
+          .strict(),
+      )
+      .max(10)
+      .default([]),
   })
   .strict();
 export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;

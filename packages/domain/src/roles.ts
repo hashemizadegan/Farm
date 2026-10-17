@@ -32,6 +32,10 @@ export const PERMISSIONS = [
   "harvest:record",
   /** Void a harvest batch and retry its registration. */
   "harvest:manage",
+  /** Add input items, record deliveries and stock corrections. */
+  "inventory:manage",
+  /** Record inputs used on a farm. */
+  "inventory:use",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -40,7 +44,7 @@ const READ: Permission[] = ["farm:read", "asset:read", "observation:read", "aler
 export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   viewer: new Set(READ),
   // Field workers run the day-to-day work: their tasks, observations and photos. They cannot change the farm's setup.
-  worker: new Set([...READ, "observation:write", "media:upload", "task:work", "harvest:record"]),
+  worker: new Set([...READ, "observation:write", "media:upload", "task:work", "harvest:record", "inventory:use"]),
   // Verifiers upload the evidence file that verification requires.
   verifier: new Set([...READ, "boundary:verify", "media:upload"]),
   manager: new Set([
@@ -58,6 +62,8 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "task:work",
     "harvest:record",
     "harvest:manage",
+    "inventory:manage",
+    "inventory:use",
   ]),
   admin: new Set([
     ...READ,
@@ -77,6 +83,8 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "task:work",
     "harvest:record",
     "harvest:manage",
+    "inventory:manage",
+    "inventory:use",
   ]),
   owner: new Set(PERMISSIONS),
 };

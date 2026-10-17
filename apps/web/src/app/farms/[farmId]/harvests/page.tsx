@@ -193,6 +193,16 @@ function HarvestForm({ tenantId, farmId, onRecorded }: { tenantId: string; farmI
   const [errors, setErrors] = useState<{ field?: string; message: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const parcels = plan.data?.parcels ?? [];
+  const { fmt } = useI18n();
+  // Products still inside their pre-harvest interval on this parcel and day: a warning, not a block (the label is the authority).
+  const phi = useQuery(/^\d{4}-\d{2}-\d{2}$/.test(date) ? `phi:${farmId}:${parcel.trim()}:${date}` : null, () =>
+    unwrap(
+      api.GET("/v1/tenants/{tenantId}/farms/{farmId}/phi", {
+        params: { path: { tenantId, farmId }, query: { on: date, ...(parcel.trim() ? { parcel: parcel.trim() } : {}) } },
+      }),
+    ),
+  );
+  const phiItems = phi.data?.items ?? [];
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -280,6 +290,17 @@ function HarvestForm({ tenantId, farmId, onRecorded }: { tenantId: string; farmI
         </p>
         <textarea id="harvest-notes" aria-describedby="harvest-notes-hint" rows={2} maxLength={4000} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
+      {phiItems.length > 0 && (
+        <div className="phi-warning" role="status">
+          <Notice tone="warning" title={t.phiTitle}>
+            <ul>
+              {phiItems.map((p) => (
+                <li key={p.itemId}>{t.phiItem(p.itemName, fmt.day(p.appliedOn), fmt.day(p.harvestAllowedFrom))}</li>
+              ))}
+            </ul>
+          </Notice>
+        </div>
+      )}
       <Notice>{t.published}</Notice>
       <Button type="submit" variant="primary" busy={busy}>
         {t.submit}

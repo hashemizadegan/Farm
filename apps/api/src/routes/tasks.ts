@@ -14,6 +14,7 @@ import {
 } from "@metafarm/domain";
 import { z } from "zod";
 import { HttpError, forbidden, notFound, parse } from "../lib/http";
+import { recordUse } from "./inventory";
 
 const farmParams = z.object({ tenantId: uuid, farmId: uuid });
 const taskParams = farmParams.extend({ taskId: uuid });
@@ -150,10 +151,14 @@ export async function taskRoutes(app: FastifyInstance) {
         }
       }
       await markTaskDone(tx, farmId, taskId, { note: body.note, mediaIds: [...new Set(body.mediaIds)], userId: req.user!.id });
+      if (body.inputs.length && !can(ctx.role, "inventory:use")) throw forbidden();
+      const today = dayInZone(app.deps.now(), task.farm_timezone);
+      for (const input of body.inputs) {
+        await recordUse(tx, { ...input, occurredOn: today, farmId, parcelLabel: task.parcel_label, taskId, userId: req.user!.id });
+      }
 
       let nextId: string | undefined;
       if (task.repeat_every_days) {
-        const today = dayInZone(app.deps.now(), task.farm_timezone);
         nextId = await insertTask(
           tx,
           farmId,
@@ -175,7 +180,7 @@ export async function taskRoutes(app: FastifyInstance) {
         action: "task.completed",
         targetType: "farm_task",
         targetId: taskId,
-        metadata: { farmId, photos: body.mediaIds.length, nextTaskId: nextId ?? null },
+        metadata: { farmId, photos: body.mediaIds.length, inputs: body.inputs.length, nextTaskId: nextId ?? null },
       });
       return {
         task: toTask((await getTask(tx, farmId, taskId))!),
