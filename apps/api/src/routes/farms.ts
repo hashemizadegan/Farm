@@ -11,6 +11,8 @@ import {
   listBoundaryVersions,
   listFarms,
   listUserTenants,
+  setFarmArchived,
+  updateFarm,
   overlappingBoundaries,
   withSystem,
   writeSystemAudit,
@@ -20,6 +22,7 @@ import {
   QUEUES,
   createFarmSchema,
   createWorkspaceSchema,
+  updateFarmSchema,
   workspaceSlug,
   paginationSchema,
   submitBoundarySchema,
@@ -82,9 +85,9 @@ export async function farmRoutes(app: FastifyInstance) {
   });
 
   app.get("/v1/tenants/:tenantId/farms", async (req) => {
-    const q = parse(paginationSchema, req.query);
+    const q = parse(paginationSchema.extend({ status: z.enum(["active", "archived"]).default("active") }), req.query);
     return app.inTenant(req, "farm:read", async (tx) => {
-      const rows = await listFarms(tx, q.limit + 1, q.cursor);
+      const rows = await listFarms(tx, q.limit + 1, q.cursor, q.status);
       const page = rows.slice(0, q.limit);
       return {
         items: page.map(toFarm),
@@ -111,6 +114,29 @@ export async function farmRoutes(app: FastifyInstance) {
       return toFarm(f);
     });
   });
+
+  app.patch("/v1/tenants/:tenantId/farms/:farmId", async (req) => {
+    const { farmId } = parse(farmParams, req.params);
+    const body = parse(updateFarmSchema, req.body);
+    return app.inTenant(req, "farm:write", async (tx) => {
+      const f = await updateFarm(tx, farmId, body);
+      if (!f) throw notFound("farm");
+      await app.audit(req, tx, { action: "farm.updated", targetType: "farm", targetId: f.id, metadata: { fields: Object.keys(body) } });
+      return toFarm(f);
+    });
+  });
+
+  for (const [action, archived] of [["archive", true], ["restore", false]] as const) {
+    app.post(`/v1/tenants/:tenantId/farms/:farmId/${action}`, async (req) => {
+      const { farmId } = parse(farmParams, req.params);
+      return app.inTenant(req, "farm:write", async (tx) => {
+        const f = await setFarmArchived(tx, farmId, archived);
+        if (!f) throw notFound("farm");
+        await app.audit(req, tx, { action: archived ? "farm.archived" : "farm.restored", targetType: "farm", targetId: f.id });
+        return toFarm(f);
+      });
+    });
+  }
 
   app.get("/v1/tenants/:tenantId/farms/:farmId/boundaries", async (req) => {
     const { farmId } = parse(farmParams, req.params);

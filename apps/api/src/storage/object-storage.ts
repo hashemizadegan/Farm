@@ -21,6 +21,8 @@ export interface ObjectStorage {
   presignPut(key: string, opts: { contentType: string; byteSize: number; ttlSeconds: number }): Promise<PresignedUpload>;
   presignGet(key: string, ttlSeconds: number): Promise<string>;
   putObject(key: string, body: Buffer, contentType: string): Promise<void>;
+  /** Reads an object for streaming to an authorised client. Undefined when it does not exist. */
+  getObject(key: string): Promise<{ body: NodeJS.ReadableStream | Buffer; contentType?: string; byteSize?: number } | undefined>;
   head(key: string): Promise<StoredObjectInfo | undefined>;
   delete(key: string): Promise<void>;
   ping(): Promise<boolean>;

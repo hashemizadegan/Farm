@@ -276,6 +276,127 @@ d("API authorization", () => {
     }
   });
 
+  it("edits, archives and restores a farm", async () => {
+    const h = await auth("owner");
+    const created = (await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/farms`, headers: h, payload: { name: "To edit" } })).json();
+    const edited = await app.inject({
+      method: "PATCH",
+      url: `/v1/tenants/${tenantId}/farms/${created.id}`,
+      headers: h,
+      payload: { name: "Edited", description: "North field", timezone: "Asia/Tehran" },
+    });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json()).toMatchObject({ name: "Edited", description: "North field", timezone: "Asia/Tehran", archivedAt: null });
+
+    const badTz = await app.inject({ method: "PATCH", url: `/v1/tenants/${tenantId}/farms/${created.id}`, headers: h, payload: { timezone: "Mars/Olympus" } });
+    expect(badTz.statusCode).toBe(400);
+    const viewer = await app.inject({ method: "PATCH", url: `/v1/tenants/${tenantId}/farms/${created.id}`, headers: await auth("viewer"), payload: { name: "x" } });
+    expect(viewer.statusCode).toBe(403);
+
+    const archived = await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/farms/${created.id}/archive`, headers: h });
+    expect(archived.json().archivedAt).not.toBeNull();
+    const active = (await app.inject({ method: "GET", url: `/v1/tenants/${tenantId}/farms?limit=100`, headers: h })).json();
+    expect(active.items.map((f: { id: string }) => f.id)).not.toContain(created.id);
+    const archivedList = (await app.inject({ method: "GET", url: `/v1/tenants/${tenantId}/farms?status=archived`, headers: h })).json();
+    expect(archivedList.items.map((f: { id: string }) => f.id)).toContain(created.id);
+
+    const restored = await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/farms/${created.id}/restore`, headers: h });
+    expect(restored.json().archivedAt).toBeNull();
+  });
+
+  it("invites by single-use link and enforces role-change rules", async () => {
+    const h = await auth("owner");
+    const members = (await app.inject({ method: "GET", url: `/v1/tenants/${tenantId}/members`, headers: await auth("viewer") })).json();
+    expect(members.items.map((m: { role: string }) => m.role)).toEqual(expect.arrayContaining(["owner", "viewer", "verifier"]));
+
+    expect((await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/invitations`, headers: await auth("viewer"), payload: { email: "a@b.co", role: "viewer" } })).statusCode).toBe(403);
+
+    const inv = await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/invitations`, headers: h, payload: { email: "New.Person@Example.com", role: "manager" } });
+    expect(inv.statusCode).toBe(201);
+    const { token, email, id: invitationId } = inv.json();
+    expect(email).toBe("new.person@example.com");
+    const stored = await pool.query(`SELECT token_hash FROM invitations WHERE id = $1`, [invitationId]);
+    expect(stored.rows[0].token_hash).not.toBe(token);
+
+    const pending = (await app.inject({ method: "GET", url: `/v1/tenants/${tenantId}/invitations`, headers: h })).json();
+    expect(pending.items.map((i: { id: string }) => i.id)).toContain(invitationId);
+
+    const joiner = { authorization: `Bearer ${await tokenFor(`joiner-${sfx}`)}` };
+    const accepted = await app.inject({ method: "POST", url: "/v1/me/invitations/accept", headers: joiner, payload: { token } });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toMatchObject({ tenantId, role: "manager", alreadyMember: false });
+    const again = await app.inject({ method: "POST", url: "/v1/me/invitations/accept", headers: joiner, payload: { token } });
+    expect(again.statusCode).toBe(410);
+    const bogus = await app.inject({ method: "POST", url: "/v1/me/invitations/accept", headers: joiner, payload: { token: "x".repeat(40) } });
+    expect(bogus.statusCode).toBe(404);
+
+    const joinerId = (await app.inject({ method: "GET", url: "/v1/me", headers: joiner })).json().userId;
+    // A manager cannot manage members; the owner can.
+    expect((await app.inject({ method: "PATCH", url: `/v1/tenants/${tenantId}/members/${joinerId}`, headers: joiner, payload: { role: "admin" } })).statusCode).toBe(403);
+    expect((await app.inject({ method: "PATCH", url: `/v1/tenants/${tenantId}/members/${joinerId}`, headers: h, payload: { role: "admin" } })).statusCode).toBe(200);
+
+    // An admin cannot grant owner, and the last owner cannot be demoted or removed.
+    expect((await app.inject({ method: "PATCH", url: `/v1/tenants/${tenantId}/members/${joinerId}`, headers: joiner, payload: { role: "owner" } })).statusCode).toBe(403);
+    const ownerId = (await app.inject({ method: "GET", url: "/v1/me", headers: h })).json().userId;
+    expect((await app.inject({ method: "PATCH", url: `/v1/tenants/${tenantId}/members/${ownerId}`, headers: h, payload: { role: "admin" } })).statusCode).toBe(409);
+    expect((await app.inject({ method: "DELETE", url: `/v1/tenants/${tenantId}/members/${ownerId}`, headers: h })).statusCode).toBe(409);
+
+    // Members can leave on their own.
+    expect((await app.inject({ method: "DELETE", url: `/v1/tenants/${tenantId}/members/${joinerId}`, headers: joiner })).statusCode).toBe(204);
+    expect((await app.inject({ method: "GET", url: `/v1/tenants/${tenantId}/farms`, headers: joiner })).statusCode).toBe(404);
+
+    // Revoked invitations cannot be used.
+    const inv2 = (await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/invitations`, headers: h, payload: { email: "c@d.co", role: "viewer" } })).json();
+    expect((await app.inject({ method: "DELETE", url: `/v1/tenants/${tenantId}/invitations/${inv2.id}`, headers: h })).statusCode).toBe(204);
+    expect((await app.inject({ method: "POST", url: "/v1/me/invitations/accept", headers: joiner, payload: { token: inv2.token } })).statusCode).toBe(404);
+  });
+
+  it("renames the workspace and updates the caller's profile", async () => {
+    const renamed = await app.inject({ method: "PATCH", url: `/v1/tenants/${tenantId}/settings`, headers: await auth("owner"), payload: { name: "Renamed T" } });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json().name).toBe("Renamed T");
+    expect((await app.inject({ method: "PATCH", url: `/v1/tenants/${tenantId}/settings`, headers: await auth("viewer"), payload: { name: "Nope" } })).statusCode).toBe(403);
+
+    const profile = await app.inject({ method: "PATCH", url: "/v1/me/profile", headers: await auth("viewer"), payload: { displayName: "Vera Viewer", email: "Vera@Example.com" } });
+    expect(profile.json()).toEqual({ displayName: "Vera Viewer", email: "vera@example.com" });
+    const members = (await app.inject({ method: "GET", url: `/v1/tenants/${tenantId}/members`, headers: await auth("owner") })).json();
+    expect(members.items).toEqual(expect.arrayContaining([expect.objectContaining({ displayName: "Vera Viewer", role: "viewer" })]));
+  });
+
+  it("lists a farm's files and serves their bytes only to members", async () => {
+    const { app: proxyApp } = await buildTestApp({ pool, env: { UPLOAD_MODE: "proxy" } });
+    try {
+      const h = await auth("verifier");
+      const bytes = Buffer.from("%PDF-1.4 test");
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
+      const t = (
+        await proxyApp.inject({
+          method: "POST",
+          url: `/v1/tenants/${tenantId}/uploads`,
+          headers: h,
+          payload: { filename: "survey <1>.pdf", contentType: "application/pdf", byteSize: bytes.length, purpose: "verification-evidence", sha256, farmId },
+        })
+      ).json();
+      expect(t.mediaId).toBeDefined();
+      await proxyApp.inject({ method: "PUT", url: new URL(t.uploadUrl).pathname, headers: { ...h, "content-type": "application/pdf" }, payload: bytes });
+      await proxyApp.inject({ method: "POST", url: `/v1/tenants/${tenantId}/uploads/${t.mediaId}/complete`, headers: h });
+
+      const list = (await proxyApp.inject({ method: "GET", url: `/v1/tenants/${tenantId}/farms/${farmId}/media?purpose=verification-evidence`, headers: await auth("viewer") })).json();
+      expect(list.items.map((m: { id: string }) => m.id)).toContain(t.mediaId);
+
+      const file = await proxyApp.inject({ method: "GET", url: `/v1/tenants/${tenantId}/media/${t.mediaId}/content`, headers: await auth("viewer") });
+      expect(file.statusCode).toBe(200);
+      expect(file.rawPayload.equals(bytes)).toBe(true);
+      expect(file.headers["content-disposition"]).toBe('inline; filename="survey _1_.pdf"');
+      expect(file.headers["x-content-type-options"]).toBe("nosniff");
+
+      const outsider = await proxyApp.inject({ method: "GET", url: `/v1/tenants/${tenantId}/media/${t.mediaId}/content`, headers: await auth("outsider") });
+      expect(outsider.statusCode).toBe(404);
+    } finally {
+      await proxyApp.close();
+    }
+  });
+
   it("restricts audit events to admins and owners", async () => {
     const viewer = await app.inject({ method: "GET", url: `/v1/tenants/${tenantId}/audit-events`, headers: await auth("viewer") });
     expect(viewer.statusCode).toBe(403);

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { createPendingMedia, getFarm, getMedia, listAudit, setMediaStatus } from "@metafarm/db";
+import { createPendingMedia, getFarm, getMedia, listAudit, listFarmMedia, setMediaStatus } from "@metafarm/db";
 import { createUploadSchema, uuid } from "@metafarm/domain";
 import { z } from "zod";
 import { HttpError, notFound, parse } from "../lib/http";
@@ -116,6 +116,41 @@ export async function mediaRoutes(app: FastifyInstance) {
       await app.audit(req, tx, { action: "media.uploaded", targetType: "media_object", targetId: m.id });
       return toMedia({ ...m, status: "uploaded" });
     });
+  });
+
+  app.get("/v1/tenants/:tenantId/farms/:farmId/media", async (req) => {
+    const { farmId } = parse(z.object({ tenantId: uuid, farmId: uuid }), req.params);
+    const { purpose } = parse(z.object({ purpose: z.enum(Object.keys(ALLOWED) as [string, ...string[]]).optional() }), req.query);
+    return app.inTenant(req, "farm:read", async (tx) => {
+      if (!(await getFarm(tx, farmId))) throw notFound("farm");
+      return { items: (await listFarmMedia(tx, farmId, purpose)).map((m) => ({ ...toMedia(m), uploadedBy: m.uploaded_by_name })) };
+    });
+  });
+
+  /**
+   * Streams a confirmed file to a member of its workspace. Files are served as
+   * attachments except images and PDFs, and never sniffed, so an uploaded file
+   * cannot run as a page on the API's origin.
+   */
+  app.get("/v1/tenants/:tenantId/media/:mediaId/content", async (req, reply) => {
+    const { mediaId } = parse(z.object({ tenantId: uuid, mediaId: uuid }), req.params);
+    const m = await app.inTenant(req, "farm:read", async (tx) => {
+      const row = await getMedia(tx, mediaId);
+      if (!row || row.status !== "uploaded") throw notFound("file");
+      return row;
+    });
+    const obj = await app.deps.storage.getObject(m.storage_key);
+    if (!obj) throw notFound("file");
+    const inline = m.content_type.startsWith("image/") || m.content_type === "application/pdf";
+    const safeName = m.filename.replace(/[^\w.\- ]+/g, "_").slice(0, 120) || "file";
+    return reply
+      .header("content-type", m.content_type)
+      .header("content-length", String(m.byte_size))
+      .header("x-content-type-options", "nosniff")
+      .header("content-security-policy", "default-src 'none'; sandbox")
+      .header("cache-control", "private, max-age=300")
+      .header("content-disposition", `${inline ? "inline" : "attachment"}; filename="${safeName}"`)
+      .send(obj.body);
   });
 
   app.get("/v1/tenants/:tenantId/audit-events", async (req) => {

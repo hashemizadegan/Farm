@@ -19,17 +19,37 @@ function Overview({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   return (
     <>
       <h1>{f.name}</h1>
-      {f.description && <p>{f.description}</p>}
-      <dl className="card">
-        <dt>Origin point</dt>
-        <dd>
-          {f.origin ? `${f.origin.lat.toFixed(6)}, ${f.origin.lon.toFixed(6)}` : "Not set"} <ProvenanceBadge label={f.originProvenance} />
-        </dd>
-        <dt>Boundary</dt>
-        <dd>{f.currentBoundaryVersionId ? "A validated boundary is in place." : <Link href={`/farms/${farmId}/boundary`}>No validated boundary yet — review submissions</Link>}</dd>
-        <dt>Time zone</dt>
-        <dd>{f.timezone}</dd>
-      </dl>
+      {f.description && <p className="mf-page-header__desc">{f.description}</p>}
+      <div className="card" style={{ marginTop: "1.25rem" }}>
+        <dl className="facts">
+          <div>
+            <dt>Origin point</dt>
+            <dd>
+              {f.origin ? `${f.origin.lat.toFixed(6)}, ${f.origin.lon.toFixed(6)}` : "Not set"} <ProvenanceBadge label={f.originProvenance} />
+            </dd>
+          </div>
+          <div>
+            <dt>Boundary</dt>
+            <dd>
+              {f.currentBoundaryVersionId ? (
+                <Link href={`/farms/${farmId}/boundary`}>Validated. Review versions</Link>
+              ) : (
+                <Link href={`/farms/${farmId}/boundary`}>Not validated yet. Review submissions</Link>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>Time zone</dt>
+            <dd>{f.timezone.replace(/_/g, " ")}</dd>
+          </div>
+          <div>
+            <dt>Created</dt>
+            <dd>
+              <time dateTime={f.createdAt}>{new Date(f.createdAt).toLocaleDateString()}</time>
+            </dd>
+          </div>
+        </dl>
+      </div>
       <PlanEditor tenantId={tenantId} farmId={farmId} />
     </>
   );

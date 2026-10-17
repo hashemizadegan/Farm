@@ -49,3 +49,16 @@ export async function getMedia(tx: TenantTx, id: string): Promise<MediaRow | und
 export async function setMediaStatus(tx: TenantTx, id: string, status: MediaRow["status"]) {
   await tx.query(`UPDATE media_objects SET status = $3 WHERE tenant_id = $1 AND id = $2`, [tx.tenantId, id, status]);
 }
+
+/** Uploaded (confirmed) files attached to a farm, newest first, optionally filtered by purpose. */
+export async function listFarmMedia(tx: TenantTx, farmId: string, purpose?: string, limit = 100): Promise<(MediaRow & { uploaded_by_name: string | null })[]> {
+  const r = await tx.query<MediaRow & { uploaded_by_name: string | null }>(
+    `SELECT m.id, m.farm_id, m.storage_key, m.filename, m.content_type, m.byte_size, m.sha256, m.purpose, m.status, m.created_at,
+            coalesce(u.display_name, u.email::text) AS uploaded_by_name
+       FROM media_objects m LEFT JOIN users u ON u.id = m.uploaded_by
+      WHERE m.tenant_id = $1 AND m.farm_id = $2 AND m.status = 'uploaded' AND ($3::text IS NULL OR m.purpose = $3)
+      ORDER BY m.created_at DESC LIMIT $4`,
+    [tx.tenantId, farmId, purpose ?? null, limit],
+  );
+  return r.rows;
+}

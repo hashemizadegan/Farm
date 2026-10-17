@@ -31,7 +31,8 @@ const READ: Permission[] = ["farm:read", "asset:read", "observation:read", "aler
 
 export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   viewer: new Set(READ),
-  verifier: new Set([...READ, "boundary:verify"]),
+  // Verifiers upload the evidence file that verification requires.
+  verifier: new Set([...READ, "boundary:verify", "media:upload"]),
   manager: new Set([
     ...READ,
     "farm:write",

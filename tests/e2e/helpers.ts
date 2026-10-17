@@ -14,7 +14,8 @@ export async function signIn(page: Page, who: "owner" | "other" = "owner") {
   await page.goto("/sign-in");
   await page.getByLabel("Development token").fill(tokens()[who]);
   await page.getByRole("button", { name: "Sign in" }).press("Enter");
-  await page.waitForURL("**/farms");
+  // Signing in lands on the workspace overview.
+  await page.waitForURL((url) => url.pathname === "/");
 }
 
 export const API = process.env.E2E_API_URL ?? "http://localhost:4000";

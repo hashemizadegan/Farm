@@ -9,6 +9,7 @@ export const toFarm = (f: FarmRow) => ({
   origin: f.origin,
   originProvenance: f.origin_provenance,
   currentBoundaryVersionId: f.current_boundary_version_id,
+  archivedAt: f.archived_at ? new Date(f.archived_at).toISOString() : null,
   createdAt: new Date(f.created_at).toISOString(),
 });
 

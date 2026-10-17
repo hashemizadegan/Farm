@@ -34,6 +34,7 @@ tags:
   - name: observations
   - name: alerts
   - name: media
+  - name: team
   - name: audit
   - name: wallet
   - name: nft
@@ -83,6 +84,64 @@ paths:
               schema: { $ref: "#/components/schemas/Me" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/me/invitations/accept:
+    post:
+      tags: [team]
+      summary: Accept an invitation with its token and join the workspace
+      operationId: acceptInvitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              additionalProperties: false
+              properties:
+                token: { type: string }
+      responses:
+        "200":
+          description: Joined (or already a member)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tenantId, name, role, alreadyMember]
+                properties:
+                  tenantId: { type: string, format: uuid }
+                  name: { type: string }
+                  role: { $ref: "#/components/schemas/Role" }
+                  alreadyMember: { type: boolean }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "410": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/me/profile:
+    patch:
+      tags: [identity]
+      summary: Set the name and email other members see (self-reported)
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                displayName: { type: [string, "null"], maxLength: 120 }
+                email: { type: [string, "null"], format: email, maxLength: 320 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [displayName, email]
+                properties:
+                  displayName: { type: [string, "null"] }
+                  email: { type: [string, "null"] }
+
   /v1/me/workspaces:
     post:
       tags: [identity]
@@ -125,6 +184,7 @@ paths:
       parameters:
         - { $ref: "#/components/parameters/Limit" }
         - { $ref: "#/components/parameters/Cursor" }
+        - { name: status, in: query, schema: { type: string, enum: [active, archived], default: active } }
       responses:
         "200":
           description: OK
@@ -171,6 +231,255 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Farm" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [farms]
+      summary: Update a farm's name, description or time zone
+      operationId: updateFarm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+                description: { type: [string, "null"], maxLength: 2000 }
+                timezone: { type: string, description: IANA time zone, e.g. Asia/Tehran }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Farm" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/archive:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    post:
+      tags: [farms]
+      summary: Archive a farm (hidden from the default list; data is kept)
+      operationId: archiveFarm
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Farm" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/restore:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    post:
+      tags: [farms]
+      summary: Restore an archived farm
+      operationId: restoreFarm
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Farm" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/media:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [media]
+      summary: List confirmed files attached to a farm
+      operationId: listFarmMedia
+      parameters:
+        - { name: purpose, in: query, schema: { type: string, enum: [boundary-import, observation-photo, verification-evidence, asset-model] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      allOf:
+                        - { $ref: "#/components/schemas/MediaObject" }
+                        - type: object
+                          properties:
+                            uploadedBy: { type: [string, "null"] }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/media/{mediaId}/content:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: mediaId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [media]
+      summary: Download a confirmed file (members of the workspace only)
+      operationId: getMediaContent
+      responses:
+        "200":
+          description: The file bytes, with its stored content type
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/settings:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    patch:
+      tags: [team]
+      summary: Rename the workspace (admin/owner)
+      operationId: updateWorkspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tenantId, slug, name]
+                properties:
+                  tenantId: { type: string, format: uuid }
+                  slug: { type: string }
+                  name: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/members:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [team]
+      summary: List workspace members
+      operationId: listMembers
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Member" } }
+
+  /v1/tenants/{tenantId}/members/{userId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [team]
+      summary: Change a member's role (only owners can grant or change the owner role; the last owner cannot be demoted)
+      operationId: updateMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              additionalProperties: false
+              properties:
+                role: { $ref: "#/components/schemas/Role" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [userId, role]
+                properties:
+                  userId: { type: string, format: uuid }
+                  role: { $ref: "#/components/schemas/Role" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+    delete:
+      tags: [team]
+      summary: Remove a member, or leave the workspace when userId is yourself
+      operationId: removeMember
+      responses:
+        "204": { description: Removed }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/invitations:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [team]
+      summary: List pending invitations (admin/owner)
+      operationId: listInvitations
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Invitation" } }
+    post:
+      tags: [team]
+      summary: Create a single-use invitation link (valid 7 days). The token is returned once; nothing is emailed.
+      operationId: createInvitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              additionalProperties: false
+              properties:
+                email: { type: string, format: email, maxLength: 320 }
+                role: { $ref: "#/components/schemas/Role" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/Invitation" }
+                  - type: object
+                    required: [token]
+                    properties:
+                      token: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/invitations/{invitationId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: invitationId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [team]
+      summary: Revoke a pending invitation
+      operationId: revokeInvitation
+      responses:
+        "204": { description: Revoked }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/tenants/{tenantId}/farms/{farmId}/boundaries:
@@ -808,6 +1117,28 @@ components:
             - { type: "null" }
         originProvenance: { $ref: "#/components/schemas/ProvenanceLabel" }
         currentBoundaryVersionId: { type: [string, "null"], format: uuid }
+        archivedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    Member:
+      type: object
+      required: [userId, role, displayName, email, joinedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        role: { $ref: "#/components/schemas/Role" }
+        displayName: { type: [string, "null"], description: Self-reported by the member. }
+        email: { type: [string, "null"], description: Self-reported by the member; not verified. }
+        joinedAt: { type: string, format: date-time }
+
+    Invitation:
+      type: object
+      required: [id, email, role, invitedBy, expiresAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        invitedBy: { type: [string, "null"] }
+        expiresAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
 
     SubmitBoundary:

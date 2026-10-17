@@ -56,6 +56,16 @@ export function createS3Storage(opts: S3StorageOptions): ObjectStorage {
         new PutObjectCommand({ Bucket: opts.bucket, Key: key, Body: body, ContentType: contentType, ContentLength: body.length }),
       );
     },
+    async getObject(key) {
+      try {
+        const r = await client.send(new GetObjectCommand({ Bucket: opts.bucket, Key: key }));
+        if (!r.Body) return undefined;
+        return { body: r.Body as NodeJS.ReadableStream, contentType: r.ContentType, byteSize: r.ContentLength };
+      } catch (err) {
+        if ((err as { name?: string }).name === "NoSuchKey") return undefined;
+        throw err;
+      }
+    },
     async presignGet(key, ttlSeconds) {
       return getSignedUrl(client, new GetObjectCommand({ Bucket: opts.bucket, Key: key }), { expiresIn: ttlSeconds });
     },
