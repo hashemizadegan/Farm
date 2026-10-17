@@ -46,7 +46,7 @@ describe("field worker role", () => {
   it("can do field work but not change the farm or the team", () => {
     const w = ROLE_PERMISSIONS.worker;
     expect([...w].sort()).toEqual(
-      ["alert:read", "asset:read", "farm:read", "harvest:record", "media:upload", "observation:read", "observation:write", "task:work"].sort(),
+      ["alert:read", "asset:read", "farm:read", "harvest:record", "inventory:use", "media:upload", "observation:read", "observation:write", "task:work"].sort(),
     );
     expect(ROLE_PERMISSIONS.manager.has("task:manage")).toBe(true);
     expect(ROLE_PERMISSIONS.viewer.has("task:work")).toBe(false);

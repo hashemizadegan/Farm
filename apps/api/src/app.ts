@@ -14,6 +14,7 @@ import { observationRoutes } from "./routes/observations";
 import { planningRoutes } from "./routes/planning";
 import { taskRoutes } from "./routes/tasks";
 import { harvestRoutes } from "./routes/harvests";
+import { inventoryRoutes } from "./routes/inventory";
 
 export interface BuildOptions {
   deps: Deps;
@@ -68,6 +69,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(teamRoutes);
   await app.register(taskRoutes);
   await app.register(harvestRoutes);
+  await app.register(inventoryRoutes);
   await app.register(chainRoutes);
 
   return app;

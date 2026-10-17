@@ -15,6 +15,7 @@ import {
   PROVENANCE_LABELS,
   ROLES,
   TASK_KINDS,
+  INPUT_CATEGORIES,
 } from "@metafarm/domain";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -45,6 +46,10 @@ describe("openapi.yaml", () => {
   it("matches domain provenance labels and roles", () => {
     expect(schemas.ProvenanceLabel.enum).toEqual([...PROVENANCE_LABELS]);
     expect(schemas.Role.enum).toEqual([...ROLES]);
+  });
+
+  it("matches input categories", () => {
+    expect(schemas.InputCategory.enum).toEqual([...INPUT_CATEGORIES]);
   });
 
   it("matches task kinds", () => {

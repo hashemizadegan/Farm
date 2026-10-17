@@ -10,3 +10,4 @@ export * from "./repositories/ops";
 export * from "./repositories/team";
 export * from "./repositories/tasks";
 export * from "./repositories/harvests";
+export * from "./repositories/inventory";

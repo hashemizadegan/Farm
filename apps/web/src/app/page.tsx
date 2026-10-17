@@ -120,8 +120,10 @@ function TodayWork({ tenantId }: { tenantId: string }) {
       }),
     ),
   );
+  const stock = useQuery(`inventory:${tenantId}:dashboard`, () => unwrap(api.GET("/v1/tenants/{tenantId}/inventory/items", { params: { path: { tenantId } } })));
   if (!tasks.data) return null;
   const g = groupTasks(tasks.data.items);
+  const low = (stock.data?.items ?? []).filter((i) => i.lowStock || Number(i.onHand) < 0).length;
   return (
     <section className="card today-work" aria-labelledby="today-work-heading">
       <h2 id="today-work-heading">{t.heading}</h2>
@@ -130,6 +132,11 @@ function TodayWork({ tenantId }: { tenantId: string }) {
         <li>{t.dueToday(g.today.length)}</li>
         <li>{t.upcoming(g.upcoming.length)}</li>
       </ul>
+      {low > 0 && (
+        <p className="today-work__stock">
+          <Link href="/inventory">{m.inventory.lowStockN(low)}</Link>
+        </p>
+      )}
       <p className="today-work__links">
         <Link href="/tasks">{t.mine}</Link>
         <Link href="/schedule">{t.schedule}</Link>

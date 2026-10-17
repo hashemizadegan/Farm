@@ -35,6 +35,7 @@ tags:
   - name: alerts
   - name: tasks
   - name: harvests
+  - name: inventory
   - name: media
   - name: team
   - name: audit
@@ -1016,6 +1017,133 @@ paths:
               schema: { $ref: "#/components/schemas/PublicHarvest" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/tenants/{tenantId}/inventory/items:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [inventory]
+      summary: Input items with stock on hand
+      operationId: listInputItems
+      parameters:
+        - { name: includeArchived, in: query, schema: { type: string, enum: ["true", "false"] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/InputItem" } }
+    post:
+      tags: [inventory]
+      summary: Add an input item (inventory:manage)
+      operationId: createInputItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InputItemInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InputItem" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: An item with this name exists }
+
+  /v1/tenants/{tenantId}/inventory/items/{itemId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [inventory]
+      summary: Change or archive an input item (inventory:manage)
+      operationId: updateInputItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InputItemUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InputItem" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/inventory/movements:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [inventory]
+      summary: Stock movements (deliveries, use, corrections)
+      operationId: listStockMovements
+      parameters:
+        - { name: itemId, in: query, schema: { type: string, format: uuid } }
+        - { name: farmId, in: query, schema: { type: string, format: uuid } }
+        - { name: kind, in: query, schema: { type: string, enum: [receive, use, adjust] } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 200 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/StockMovement" } }
+    post:
+      tags: [inventory]
+      summary: Record a delivery, use or stock correction
+      description: "`use` needs inventory:use; `receive` and `adjust` need inventory:manage. The log is append-only."
+      operationId: recordStockMovement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StockMovementInput" }
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [movement, item]
+                properties:
+                  movement: { $ref: "#/components/schemas/StockMovement" }
+                  item: { $ref: "#/components/schemas/InputItem" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/phi:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [inventory]
+      summary: Pre-harvest intervals still running on a parcel on a given day
+      operationId: listPhiRestrictions
+      parameters:
+        - { name: parcel, in: query, schema: { type: string, maxLength: 80 } }
+        - { name: "on", in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/PhiRestriction" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/tenants/{tenantId}/uploads:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     post:
@@ -1680,6 +1808,17 @@ components:
       properties:
         note: { type: string, maxLength: 4000 }
         mediaIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+        inputs:
+          type: array
+          maxItems: 10
+          description: Inputs used doing the task, recorded as stock use on the task's farm and parcel (inventory:use).
+          items:
+            type: object
+            additionalProperties: false
+            required: [itemId, quantity]
+            properties:
+              itemId: { type: string, format: uuid }
+              quantity: { $ref: "#/components/schemas/Quantity" }
 
     Task:
       type: object
@@ -1801,6 +1940,135 @@ components:
                 voidedOnChain: { type: boolean }
             - { type: "null" }
         voidedAt: { type: [string, "null"], format: date-time }
+
+    Quantity:
+      type: string
+      pattern: "^\\d{1,11}(\\.\\d{1,3})?$"
+      description: "Positive decimal as text, up to 3 decimals"
+
+    InputCategory:
+      type: string
+      enum: [seed, fertilizer, crop-protection, fuel, packaging, other]
+
+    InputItemInput:
+      type: object
+      additionalProperties: false
+      required: [name, category, unit]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        category: { $ref: "#/components/schemas/InputCategory" }
+        unit: { type: string, minLength: 1, maxLength: 16 }
+        reorderLevel: { type: [string, "null"] }
+        preHarvestIntervalDays: { type: [integer, "null"], minimum: 0, maximum: 365 }
+        reEntryHours: { type: [integer, "null"], minimum: 0, maximum: 720 }
+        notes: { type: [string, "null"], maxLength: 2000 }
+
+    InputItemUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        category: { $ref: "#/components/schemas/InputCategory" }
+        unit: { type: string, minLength: 1, maxLength: 16 }
+        reorderLevel: { type: [string, "null"] }
+        preHarvestIntervalDays: { type: [integer, "null"], minimum: 0, maximum: 365 }
+        reEntryHours: { type: [integer, "null"], minimum: 0, maximum: 720 }
+        notes: { type: [string, "null"], maxLength: 2000 }
+        archived: { type: boolean }
+
+    InputItem:
+      type: object
+      required: [id, name, category, unit, archived, onHand, lowStock, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        category: { $ref: "#/components/schemas/InputCategory" }
+        unit: { type: string }
+        reorderLevel: { type: [string, "null"] }
+        preHarvestIntervalDays: { type: [integer, "null"] }
+        reEntryHours: { type: [integer, "null"] }
+        notes: { type: [string, "null"] }
+        archived: { type: boolean }
+        onHand: { type: string, description: Signed decimal; negative means use was recorded before the delivery }
+        lowStock: { type: boolean }
+        lastMovementOn: { type: [string, "null"], format: date }
+        createdAt: { type: string, format: date-time }
+
+    StockMovementInput:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [kind, itemId, quantity, occurredOn]
+          properties:
+            kind: { type: string, enum: [receive] }
+            itemId: { type: string, format: uuid }
+            quantity: { $ref: "#/components/schemas/Quantity" }
+            occurredOn: { type: string, format: date }
+            supplier: { type: [string, "null"], maxLength: 120 }
+            lot: { type: [string, "null"], maxLength: 60 }
+            expiresOn: { type: [string, "null"], format: date }
+            cost: { type: [string, "null"] }
+            currency: { type: [string, "null"], pattern: "^[A-Z]{3}$" }
+            note: { type: [string, "null"], maxLength: 1000 }
+        - type: object
+          additionalProperties: false
+          required: [kind, itemId, quantity, occurredOn, farmId]
+          properties:
+            kind: { type: string, enum: [use] }
+            itemId: { type: string, format: uuid }
+            quantity: { $ref: "#/components/schemas/Quantity" }
+            occurredOn: { type: string, format: date }
+            farmId: { type: string, format: uuid }
+            parcelLabel: { type: [string, "null"], maxLength: 80 }
+            taskId: { type: [string, "null"], format: uuid }
+            note: { type: [string, "null"], maxLength: 1000 }
+        - type: object
+          additionalProperties: false
+          required: [kind, itemId, quantity, occurredOn, note]
+          properties:
+            kind: { type: string, enum: [adjust] }
+            itemId: { type: string, format: uuid }
+            quantity: { type: string, pattern: "^-?\\d{1,11}(\\.\\d{1,3})?$" }
+            occurredOn: { type: string, format: date }
+            note: { type: string, minLength: 3, maxLength: 1000 }
+
+    StockMovement:
+      type: object
+      required: [id, itemId, itemName, itemUnit, itemCategory, kind, quantity, occurredOn, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        itemId: { type: string, format: uuid }
+        itemName: { type: string }
+        itemUnit: { type: string }
+        itemCategory: { $ref: "#/components/schemas/InputCategory" }
+        kind: { type: string, enum: [receive, use, adjust] }
+        quantity: { type: string, description: "Signed change to stock" }
+        occurredOn: { type: string, format: date }
+        farmId: { type: [string, "null"], format: uuid }
+        farmName: { type: [string, "null"] }
+        parcelLabel: { type: [string, "null"] }
+        taskId: { type: [string, "null"], format: uuid }
+        taskTitle: { type: [string, "null"] }
+        supplier: { type: [string, "null"] }
+        lot: { type: [string, "null"] }
+        expiresOn: { type: [string, "null"], format: date }
+        cost: { type: [string, "null"] }
+        currency: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        recordedByName: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+
+    PhiRestriction:
+      type: object
+      required: [itemId, itemName, appliedOn, preHarvestIntervalDays, harvestAllowedFrom]
+      properties:
+        itemId: { type: string, format: uuid }
+        itemName: { type: string }
+        parcelLabel: { type: [string, "null"] }
+        appliedOn: { type: string, format: date }
+        preHarvestIntervalDays: { type: integer }
+        harvestAllowedFrom: { type: string, format: date }
 
     UploadRequest:
       type: object

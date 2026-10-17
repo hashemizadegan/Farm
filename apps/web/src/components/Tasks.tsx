@@ -214,18 +214,28 @@ function CompletePanel({ task, tenantId, onDone, onBack }: { task: Task; tenantI
   const noteId = useId();
   const [note, setNote] = useState("");
   const [mediaIds, setMediaIds] = useState<string[]>([]);
+  const [inputs, setInputs] = useState<{ itemId: string; quantity: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const stock = useQuery(can("inventory:use") ? `inventory:${tenantId}:for-task` : null, () =>
+    unwrap(api.GET("/v1/tenants/{tenantId}/inventory/items", { params: { path: { tenantId } } })),
+  );
+  const items = stock.data?.items ?? [];
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    const used = inputs.filter((i) => i.itemId || i.quantity.trim()).map((i) => ({ itemId: i.itemId, quantity: i.quantity.trim().replace(",", ".") }));
+    if (used.some((i) => !i.itemId || !/^\d{1,11}(\.\d{1,3})?$/.test(i.quantity) || !(Number(i.quantity) > 0))) {
+      setError(m.inventory.numberInvalid);
+      return;
+    }
     setBusy(true);
     setError(undefined);
     try {
       const r = await unwrap(
         api.POST("/v1/tenants/{tenantId}/farms/{farmId}/tasks/{taskId}/complete", {
           params: { path: { tenantId, farmId: task.farmId, taskId: task.id } },
-          body: { ...(note.trim() ? { note: note.trim() } : {}), mediaIds },
+          body: { ...(note.trim() ? { note: note.trim() } : {}), mediaIds, inputs: used },
         }),
       );
       announce(r.next ? t.doneNext(fmt.day(r.next.dueDate)) : t.done);
@@ -245,6 +255,33 @@ function CompletePanel({ task, tenantId, onDone, onBack }: { task: Task; tenantI
         </p>
         <textarea id={noteId} aria-describedby={`${noteId}-hint`} rows={3} maxLength={4000} value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
+      {items.length > 0 && (
+        <fieldset className="task__inputs">
+          <legend>{t.inputs}</legend>
+          <p className="mf-hint">{t.inputsHint}</p>
+          {inputs.map((row, n) => {
+            const unit = items.find((i) => i.id === row.itemId)?.unit;
+            const set = (patch: Partial<typeof row>) => setInputs((rows) => rows.map((r, k) => (k === n ? { ...r, ...patch } : r)));
+            return (
+              <div key={n} className="task__input-row">
+                <SelectField label={t.inputItem(n + 1)} value={row.itemId} onChange={(e) => set({ itemId: e.target.value })}>
+                  <option value="">{m.farmInputs.choose}</option>
+                  {items.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name} ({i.unit})
+                    </option>
+                  ))}
+                </SelectField>
+                <TextField label={unit ? `${t.inputQty(n + 1)} (${unit})` : t.inputQty(n + 1)} inputMode="decimal" value={row.quantity} onChange={(e) => set({ quantity: e.target.value })} />
+                <Button variant="danger" onClick={() => setInputs((rows) => rows.filter((_, k) => k !== n))}>
+                  {t.removeInput(n + 1)}
+                </Button>
+              </div>
+            );
+          })}
+          {inputs.length < 10 && <Button onClick={() => setInputs((rows) => [...rows, { itemId: "", quantity: "" }])}>{t.addInput}</Button>}
+        </fieldset>
+      )}
       {can("media:upload") && (
         <FileUploader
           tenantId={tenantId}
