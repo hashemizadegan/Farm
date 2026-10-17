@@ -134,7 +134,7 @@ a {
 
 .mf-skip-link {
   position: absolute;
-  left: 0.5rem;
+  inset-inline-start: 0.5rem;
   top: -3rem;
   padding: 0.5rem 1rem;
   background: var(--mf-surface);
@@ -237,7 +237,7 @@ a {
 .mf-notice {
   padding: 0.75rem 1rem;
   border-radius: var(--mf-radius);
-  border-left: 4px solid var(--mf-border);
+  border-inline-start: 4px solid var(--mf-border);
   background: var(--mf-info-bg);
   margin: 0 0 var(--mf-space);
 }
@@ -246,7 +246,7 @@ a {
 }
 .mf-notice--error {
   background: var(--mf-error-bg);
-  border-left-color: var(--mf-danger);
+  border-inline-start-color: var(--mf-danger);
 }
 
 .mf-error-summary {
@@ -262,7 +262,7 @@ table {
 }
 th,
 td {
-  text-align: left;
+  text-align: start;
   padding: 0.65rem 0.75rem;
   border-bottom: 1px solid var(--mf-line);
   vertical-align: top;

@@ -5,13 +5,14 @@ import { Button, ErrorSummary, Notice, PageHeader, TextField, useAnnounce } from
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap } from "@/lib/api";
 import { useCan } from "@/lib/can";
-import { ROLE_LABELS } from "@/lib/roles";
 import { useTenant } from "@/lib/tenant";
+import { useI18n } from "@/i18n/provider";
 
 export default function WorkspaceSettingsPage() {
+  const { m } = useI18n();
   return (
     <>
-      <PageHeader title="Workspace settings" />
+      <PageHeader title={m.wsSettings.title} />
       <RequireTenant>{(tenantId) => <Settings tenantId={tenantId} />}</RequireTenant>
     </>
   );
@@ -21,6 +22,8 @@ function Settings({ tenantId }: { tenantId: string }) {
   const { me, reloadMe } = useTenant();
   const can = useCan();
   const announce = useAnnounce();
+  const { m } = useI18n();
+  const t = m.wsSettings;
   const ws = me?.tenants.find((t) => t.tenantId === tenantId);
   const [name, setName] = useState(ws?.name ?? "");
   const [errors, setErrors] = useState<{ field?: string; message: string }[]>([]);
@@ -31,7 +34,7 @@ function Settings({ tenantId }: { tenantId: string }) {
   async function save(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      setErrors([{ field: "ws-name", message: "Enter a workspace name." }]);
+      setErrors([{ field: "ws-name", message: t.nameRequired }]);
       return;
     }
     setBusy(true);
@@ -40,7 +43,7 @@ function Settings({ tenantId }: { tenantId: string }) {
     try {
       await unwrap(api.PATCH("/v1/tenants/{tenantId}/settings", { params: { path: { tenantId } }, body: { name: name.trim() } }));
       setSaved(true);
-      announce("Workspace name saved.");
+      announce(t.saved);
       reloadMe();
     } catch (err) {
       setErrors([{ message: (err as Error).message }]);
@@ -53,12 +56,12 @@ function Settings({ tenantId }: { tenantId: string }) {
   return (
     <>
       <section className="card" aria-labelledby="ws-heading">
-        <h2 id="ws-heading">General</h2>
+        <h2 id="ws-heading">{t.general}</h2>
         <dl className="facts">
-          <dt>Your role</dt>
-          <dd>{ROLE_LABELS[ws.role].label}</dd>
-          <dt>Workspace ID</dt>
-          <dd>
+          <dt>{t.yourRole}</dt>
+          <dd>{m.roles[ws.role].label}</dd>
+          <dt>{t.id}</dt>
+          <dd className="ltr">
             <code>{ws.slug}</code>
           </dd>
         </dl>
@@ -67,7 +70,7 @@ function Settings({ tenantId }: { tenantId: string }) {
             <ErrorSummary errors={errors} />
             <TextField
               id="ws-name"
-              label="Workspace name"
+              label={t.name}
               value={name}
               maxLength={200}
               onChange={(e) => {
@@ -77,19 +80,19 @@ function Settings({ tenantId }: { tenantId: string }) {
               error={errors.find((x) => x.field === "ws-name")?.message}
             />
             <Button type="submit" variant="primary" busy={busy}>
-              Save
+              {m.common.save}
             </Button>
-            {saved && <p role="status">Saved.</p>}
+            {saved && <p role="status">{m.common.saved}</p>}
           </form>
         ) : (
-          <p>
-            Name: <strong>{ws.name}</strong>. Only owners and admins can change workspace settings.
-          </p>
+          <p>{t.readonly(() => <strong>{ws.name}</strong>)}</p>
         )}
       </section>
-      <Notice title="People and access">
-        Invite people, change roles or leave this workspace on the <Link href="/team">Team</Link> page. Your own name and
-        email are on <Link href="/account">your account</Link>.
+      <Notice title={t.peopleTitle}>
+        {t.people(
+          (x) => <Link href="/team">{x}</Link>,
+          (x) => <Link href="/account">{x}</Link>,
+        )}
       </Notice>
     </>
   );

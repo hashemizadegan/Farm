@@ -5,12 +5,14 @@ import { Button, ErrorSummary, Notice, TextField, useAnnounce } from "@metafarm/
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
+import { useI18n } from "@/i18n/provider";
 
 export default function FarmSettingsPage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const { m } = useI18n();
   return (
     <>
-      <h1>Farm settings</h1>
+      <h1>{m.farmSettings.title}</h1>
       <RequireTenant>{(tenantId) => <Settings tenantId={tenantId} farmId={farmId} />}</RequireTenant>
     </>
   );
@@ -26,6 +28,8 @@ function Settings({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   const router = useRouter();
   const announce = useAnnounce();
   const can = useCan();
+  const { m, fmt } = useI18n();
+  const t = m.farmSettings;
   const farm = useQuery(`farm:${farmId}:settings`, () =>
     unwrap(api.GET("/v1/tenants/{tenantId}/farms/{farmId}", { params: { path: { tenantId, farmId } } })),
   );
@@ -43,9 +47,9 @@ function Settings({ tenantId, farmId }: { tenantId: string; farmId: string }) {
     setTimezone(farm.data.timezone);
   }, [farm.data]);
 
-  if (farm.loading && !farm.data) return <p role="status">Loading…</p>;
-  if (farm.error) return <Notice tone="error" title="Could not load this farm.">{farm.error.message}</Notice>;
-  if (!can("farm:write")) return <Notice>Your role can view this farm but not change its settings.</Notice>;
+  if (farm.loading && !farm.data) return <p role="status">{m.common.loading}</p>;
+  if (farm.error) return <Notice tone="error" title={m.farm.couldNotLoad}>{farm.error.message}</Notice>;
+  if (!can("farm:write")) return <Notice>{t.cannot}</Notice>;
   const f = farm.data!;
   const zones = timeZones();
 
@@ -53,7 +57,7 @@ function Settings({ tenantId, farmId }: { tenantId: string; farmId: string }) {
     e.preventDefault();
     setSaved(false);
     if (!name.trim()) {
-      setErrors([{ field: "farm-name", message: "Enter a name for the farm project." }]);
+      setErrors([{ field: "farm-name", message: t.nameRequired }]);
       requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-error-summary]")?.focus());
       return;
     }
@@ -67,7 +71,7 @@ function Settings({ tenantId, farmId }: { tenantId: string; farmId: string }) {
         }),
       );
       setSaved(true);
-      announce("Farm settings saved.");
+      announce(t.saved);
       farm.reload();
     } catch (err) {
       setErrors([{ message: (err as Error).message }]);
@@ -79,7 +83,7 @@ function Settings({ tenantId, farmId }: { tenantId: string; farmId: string }) {
 
   async function toggleArchive() {
     const archiving = !f.archivedAt;
-    if (archiving && !window.confirm(`Archive "${f.name}"? It will be hidden from the farm list. Nothing is deleted and you can restore it.`)) return;
+    if (archiving && !window.confirm(t.archiveConfirm(f.name))) return;
     setBusy(true);
     try {
       await unwrap(
@@ -87,7 +91,7 @@ function Settings({ tenantId, farmId }: { tenantId: string; farmId: string }) {
           params: { path: { tenantId, farmId } },
         }),
       );
-      announce(archiving ? "Farm archived." : "Farm restored.");
+      announce(archiving ? t.archivedAnnounce : t.restoredAnnounce);
       if (archiving) router.push("/farms");
       else farm.reload();
     } catch (err) {
@@ -101,24 +105,24 @@ function Settings({ tenantId, farmId }: { tenantId: string; farmId: string }) {
     <>
       <form onSubmit={save} noValidate className="card" aria-labelledby="details-heading" style={{ maxWidth: "44rem" }}>
         <h2 id="details-heading" style={{ marginTop: 0 }}>
-          Details
+          {t.details}
         </h2>
         <ErrorSummary errors={errors} />
-        {saved && <Notice title="Saved.">The farm&apos;s details are updated.</Notice>}
-        <TextField id="farm-name" label="Farm project name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required error={errors.find((x) => x.field === "farm-name")?.message} />
+        {saved && <Notice title={t.savedTitle}>{t.savedText}</Notice>}
+        <TextField id="farm-name" label={t.name} value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required error={errors.find((x) => x.field === "farm-name")?.message} />
         <div className="mf-field">
-          <label htmlFor="farm-description">Description</label>
+          <label htmlFor="farm-description">{t.description}</label>
           <p id="farm-description-hint" className="mf-hint">
-            Optional. Where it is, what it is for, anything teammates should know.
+            {t.descriptionHint}
           </p>
           <textarea id="farm-description" aria-describedby="farm-description-hint" rows={4} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
         <div className="mf-field">
-          <label htmlFor="farm-timezone">Time zone</label>
+          <label htmlFor="farm-timezone">{t.timezone}</label>
           <p id="farm-timezone-hint" className="mf-hint">
-            Used for observation times and alert schedules on this farm.
+            {t.timezoneHint}
           </p>
-          <select id="farm-timezone" aria-describedby="farm-timezone-hint" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+          <select id="farm-timezone" dir="ltr" aria-describedby="farm-timezone-hint" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
             {!zones.includes(timezone) && <option value={timezone}>{timezone}</option>}
             {zones.map((z) => (
               <option key={z} value={z}>
@@ -128,19 +132,17 @@ function Settings({ tenantId, farmId }: { tenantId: string; farmId: string }) {
           </select>
         </div>
         <Button type="submit" variant="primary" busy={busy}>
-          Save changes
+          {t.save}
         </Button>
       </form>
 
       <section className="danger-zone" aria-labelledby="archive-heading" style={{ maxWidth: "44rem" }}>
-        <h2 id="archive-heading">{f.archivedAt ? "Restore this farm" : "Archive this farm"}</h2>
+        <h2 id="archive-heading">{f.archivedAt ? t.restoreHeading : t.archiveHeading}</h2>
         <p>
-          {f.archivedAt
-            ? `Archived on ${new Date(f.archivedAt).toLocaleDateString()}. Restoring puts it back in the farm list.`
-            : "Archiving hides the farm from the farm list. Its boundary, plan, observations and files are kept, and you can restore it at any time."}
+          {f.archivedAt ? t.archivedOn(fmt.date(f.archivedAt)) : t.archiveText}
         </p>
         <Button variant={f.archivedAt ? "secondary" : "danger"} onClick={toggleArchive} busy={busy}>
-          {f.archivedAt ? "Restore farm" : "Archive farm"}
+          {f.archivedAt ? t.restore : t.archive}
         </Button>
       </section>
     </>

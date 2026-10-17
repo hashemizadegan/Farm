@@ -5,8 +5,9 @@ import { useEffect, useState } from "react";
 import { Button, Notice, PageHeader } from "@metafarm/ui";
 import { api, unwrap } from "@/lib/api";
 import { rememberReturnTo } from "@/lib/return-to";
-import { ROLE_LABELS, type Role } from "@/lib/roles";
+import type { Role } from "@/lib/roles";
 import { useTenant } from "@/lib/tenant";
+import { useI18n } from "@/i18n/provider";
 
 /**
  * Opens an invitation link (/invite#token=…). The token sits in the URL
@@ -16,6 +17,8 @@ import { useTenant } from "@/lib/tenant";
 export default function InvitePage() {
   const router = useRouter();
   const { signedIn, setTenantId, reloadMe } = useTenant();
+  const { m } = useI18n();
+  const t = m.invite;
   const [token, setToken] = useState<string | null | undefined>(undefined);
   const [state, setState] = useState<"idle" | "busy" | "error">("idle");
   const [error, setError] = useState<string>();
@@ -50,35 +53,33 @@ export default function InvitePage() {
 
   return (
     <>
-      <PageHeader title="Join a workspace" />
+      <PageHeader title={t.title} />
       {token === undefined ? (
-        <p role="status">Reading invitation…</p>
+        <p role="status">{t.reading}</p>
       ) : token === null ? (
-        <Notice tone="error" title="This link is incomplete.">
-          The invitation link should end with <code>#token=</code> followed by a long code. Copy the whole link again, or
-          ask for a new one.
+        <Notice tone="error" title={t.incompleteTitle}>
+          {t.incomplete((x) => <code>{x}</code>)}
         </Notice>
       ) : joined ? (
-        <Notice title={joined.alreadyMember ? "You were already a member." : "You have joined."}>
-          {joined.alreadyMember ? "You already belong to" : "You are now a member of"} <strong>{joined.name}</strong> as{" "}
-          {ROLE_LABELS[joined.role]?.label ?? joined.role}.{" "}
+        <Notice title={joined.alreadyMember ? t.alreadyTitle : t.joinedTitle}>
+          {(joined.alreadyMember ? t.already : t.joined)(() => <strong>{joined.name}</strong>, m.roles[joined.role]?.label ?? joined.role)}{" "}
           <Button variant="primary" onClick={() => router.push("/farms")}>
-            Go to farms
+            {t.goToFarms}
           </Button>
         </Notice>
       ) : !signedIn ? (
         <>
-          <p>You have been invited to a workspace. Sign in or create an account first; you will come back here to accept.</p>
+          <p>{t.signedOut}</p>
           <Link href="/sign-in" className="mf-button mf-button--primary">
-            Sign in to accept
+            {t.signInToAccept}
           </Link>
         </>
       ) : (
         <>
-          <p>Accept this invitation to join the workspace with the role chosen by the person who invited you.</p>
-          {state === "error" && error && <Notice tone="error" title="Could not accept the invitation.">{error}</Notice>}
+          <p>{t.acceptIntro}</p>
+          {state === "error" && error && <Notice tone="error" title={t.couldNotAccept}>{error}</Notice>}
           <Button variant="primary" busy={state === "busy"} onClick={accept}>
-            Accept invitation
+            {t.accept}
           </Button>
         </>
       )}

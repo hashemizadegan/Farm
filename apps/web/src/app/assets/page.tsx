@@ -2,30 +2,33 @@
 import { Notice, ProvenanceBadge } from "@metafarm/ui";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
+import { useI18n } from "@/i18n/provider";
 
 export default function AssetsPage() {
+  const t = useI18n().m.assets;
   return (
     <>
-      <h1>Asset catalogue</h1>
-      <p className="mf-muted">Models and procedural shapes used to draw the 3D scene. All are illustrative.</p>
+      <h1>{t.title}</h1>
+      <p className="mf-muted">{t.intro}</p>
       <RequireTenant>{(tenantId) => <Catalog tenantId={tenantId} />}</RequireTenant>
     </>
   );
 }
 
 function Catalog({ tenantId }: { tenantId: string }) {
+  const t = useI18n().m.assets;
   const assets = useQuery(`assets:${tenantId}`, () => unwrap(api.GET("/v1/tenants/{tenantId}/assets", { params: { path: { tenantId } } })));
-  if (assets.loading) return <p role="status">Loading catalogue…</p>;
+  if (assets.loading) return <p role="status">{t.loading}</p>;
   if (assets.error) return <Notice tone="error">{assets.error.message}</Notice>;
   return (
     <table>
       <thead>
         <tr>
-          <th scope="col">Name</th>
-          <th scope="col">Kind</th>
-          <th scope="col">Scope</th>
-          <th scope="col">Licence</th>
-          <th scope="col">Provenance</th>
+          <th scope="col">{t.colName}</th>
+          <th scope="col">{t.colKind}</th>
+          <th scope="col">{t.colScope}</th>
+          <th scope="col">{t.colLicence}</th>
+          <th scope="col">{t.colProvenance}</th>
         </tr>
       </thead>
       <tbody>

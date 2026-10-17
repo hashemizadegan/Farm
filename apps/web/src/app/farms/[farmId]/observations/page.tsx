@@ -7,24 +7,26 @@ import { FileUploader } from "@/components/FileUploader";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
+import { useI18n } from "@/i18n/provider";
 
 const METRICS = [
-  ["soil_moisture", "Soil moisture", ["percent_vwc", "fraction_vwc"]],
-  ["air_temperature", "Air temperature", ["celsius", "fahrenheit", "kelvin"]],
-  ["soil_temperature", "Soil temperature", ["celsius", "fahrenheit", "kelvin"]],
-  ["rainfall", "Rainfall", ["mm", "cm", "in"]],
-  ["relative_humidity", "Relative humidity", ["percent", "fraction"]],
-  ["ndvi", "NDVI", ["index"]],
-  ["note", "Field note", ["text"]],
+  ["soil_moisture", ["percent_vwc", "fraction_vwc"]],
+  ["air_temperature", ["celsius", "fahrenheit", "kelvin"]],
+  ["soil_temperature", ["celsius", "fahrenheit", "kelvin"]],
+  ["rainfall", ["mm", "cm", "in"]],
+  ["relative_humidity", ["percent", "fraction"]],
+  ["ndvi", ["index"]],
+  ["note", ["text"]],
 ] as const;
 
 type Metric = (typeof METRICS)[number][0];
 
 export default function ObservationsPage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const { m } = useI18n();
   return (
     <>
-      <h1>Observations</h1>
+      <h1>{m.observations.title}</h1>
       <RequireTenant>
         {(tenantId) => (
           <>
@@ -39,8 +41,10 @@ export default function ObservationsPage() {
 
 function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   const announce = useAnnounce();
+  const { m, fmt } = useI18n();
+  const t = m.observations;
   const [metric, setMetric] = useState<Metric>("soil_moisture");
-  const units = METRICS.find((m) => m[0] === metric)![2];
+  const units = METRICS.find((x) => x[0] === metric)![1];
   const [unit, setUnit] = useState<string>(units[0]);
   const [value, setValue] = useState("");
   const [observedAt, setObservedAt] = useState(() => new Date().toISOString().slice(0, 16));
@@ -57,7 +61,7 @@ function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }
     const isNote = metric === "note";
     const v = isNote ? value.trim() : Number(value);
     if ((isNote && !v) || (!isNote && (value === "" || !Number.isFinite(v)))) {
-      setErrors([{ message: isNote ? "Enter a note." : "Enter a numeric value." }]);
+      setErrors([{ message: isNote ? t.noteRequired : t.numberRequired }]);
       return;
     }
     setBusy(true);
@@ -70,7 +74,7 @@ function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }
       );
       setValue("");
       setErrors([]);
-      announce("Observation recorded. It will appear in the table once processed.");
+      announce(t.recorded);
       setTimeout(list.reload, 1_500);
     } catch (err) {
       setErrors([{ message: (err as Error).message }]);
@@ -82,65 +86,65 @@ function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }
   return (
     <div className="grid-2">
       <form className="card" onSubmit={submit} noValidate aria-labelledby="obs-form">
-        <h2 id="obs-form">Record an observation</h2>
+        <h2 id="obs-form">{t.formHeading}</h2>
         <ErrorSummary errors={errors} />
         <SelectField
-          label="Measurement"
+          label={t.measurement}
           value={metric}
           onChange={(e) => {
-            const m = e.target.value as Metric;
-            setMetric(m);
-            setUnit(METRICS.find((x) => x[0] === m)![2][0]);
+            const next = e.target.value as Metric;
+            setMetric(next);
+            setUnit(METRICS.find((x) => x[0] === next)![1][0]);
           }}
         >
-          {METRICS.map(([id, label]) => (
+          {METRICS.map(([id]) => (
             <option key={id} value={id}>
-              {label}
+              {t.metrics[id]}
             </option>
           ))}
         </SelectField>
-        <SelectField label="Unit" value={unit} onChange={(e) => setUnit(e.target.value)}>
+        <SelectField label={t.unit} value={unit} onChange={(e) => setUnit(e.target.value)}>
           {units.map((u) => (
             <option key={u} value={u}>
-              {u}
+              {t.units[u] ?? u}
             </option>
           ))}
         </SelectField>
-        <TextField label={metric === "note" ? "Note" : "Value"} inputMode={metric === "note" ? "text" : "decimal"} value={value} onChange={(e) => setValue(e.target.value)} />
-        <TextField label="Observed at (your local time)" type="datetime-local" value={observedAt} onChange={(e) => setObservedAt(e.target.value)} />
-        <p className="mf-hint">Observations you enter are labelled user-entered.</p>
+        <TextField label={metric === "note" ? t.note : t.value} inputMode={metric === "note" ? "text" : "decimal"} value={value} onChange={(e) => setValue(e.target.value)} />
+        <TextField label={t.observedAt} type="datetime-local" value={observedAt} onChange={(e) => setObservedAt(e.target.value)} />
+        <p className="mf-hint">{t.userEntered}</p>
         <Button type="submit" variant="primary" busy={busy}>
-          Save observation
+          {t.save}
         </Button>
       </form>
 
       <section aria-labelledby="obs-table">
-        <h2 id="obs-table">Recent observations</h2>
+        <h2 id="obs-table">{t.recentHeading}</h2>
         {list.error && <Notice tone="error">{list.error.message}</Notice>}
-        {list.data?.items.length === 0 && <p>No observations recorded. This application does not generate readings.</p>}
+        {list.data?.items.length === 0 && <p>{t.none}</p>}
         {list.data && list.data.items.length > 0 && (
           <table>
             <thead>
               <tr>
-                <th scope="col">When</th>
-                <th scope="col">Measurement</th>
-                <th scope="col">Value</th>
-                <th scope="col">Source</th>
-                <th scope="col">Flags</th>
+                <th scope="col">{t.colWhen}</th>
+                <th scope="col">{t.colMeasurement}</th>
+                <th scope="col">{t.colValue}</th>
+                <th scope="col">{t.colSource}</th>
+                <th scope="col">{t.colFlags}</th>
               </tr>
             </thead>
             <tbody>
               {list.data.items.map((o) => (
                 <tr key={o.id}>
                   <td>
-                    <time dateTime={o.observedAt}>{new Date(o.observedAt).toLocaleString()}</time>
+                    <time dateTime={o.observedAt}>{fmt.dateTime(o.observedAt)}</time>
                   </td>
-                  <td>{o.metric}</td>
-                  <td>{o.value !== null ? `${o.value} ${o.unit}` : o.text}</td>
+                  <td>{t.metrics[o.metric] ?? o.metric}</td>
+                  <td>{o.value !== null ? `${fmt.number(o.value)} ${t.units[o.unit] ?? o.unit}` : o.text}</td>
                   <td>
                     <ProvenanceBadge label={o.provenance} />
                   </td>
-                  <td>{o.qualityFlags.length ? o.qualityFlags.join(", ") : "—"}</td>
+                  <td>{o.qualityFlags.length ? fmt.list(o.qualityFlags.map((f) => t.flags[f] ?? f)) : m.common.none}</td>
                 </tr>
               ))}
             </tbody>
@@ -153,21 +157,22 @@ function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }
 
 function FieldPhotos({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   const can = useCan();
+  const t = useI18n().m.observations;
   const [reloadKey, setReloadKey] = useState(0);
   return (
     <section className="card" aria-labelledby="photos-heading" style={{ marginTop: "1.5rem" }}>
-      <h2 id="photos-heading">Field photos</h2>
+      <h2 id="photos-heading">{t.photosHeading}</h2>
       {can("media:upload") && (
         <FileUploader
           tenantId={tenantId}
           farmId={farmId}
           purpose="observation-photo"
-          label="Add photos"
-          hint="Photos go to this farm's Files, newest first."
+          label={t.addPhotos}
+          hint={t.photosHint}
           onUploaded={() => setReloadKey((k) => k + 1)}
         />
       )}
-      <FileList tenantId={tenantId} farmId={farmId} purpose="observation-photo" reloadKey={reloadKey} emptyTitle="No photos yet" />
+      <FileList tenantId={tenantId} farmId={farmId} purpose="observation-photo" reloadKey={reloadKey} emptyTitle={t.noPhotos} />
     </section>
   );
 }

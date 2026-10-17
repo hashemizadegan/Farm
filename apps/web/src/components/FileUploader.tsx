@@ -2,7 +2,8 @@
 import { useId, useRef, useState, type ChangeEvent } from "react";
 import { useAnnounce } from "@metafarm/ui";
 import type { Schemas } from "@/lib/api";
-import { ACCEPT, MAX_UPLOAD_BYTES, describeSize, uploadFile, type UploadPurpose } from "@/lib/upload";
+import { ACCEPT, MAX_UPLOAD_BYTES, uploadFile, type UploadPurpose } from "@/lib/upload";
+import { useI18n } from "@/i18n/provider";
 
 type Item = { key: string; name: string; state: "uploading" | "done" | "error"; message?: string };
 
@@ -33,6 +34,8 @@ export function FileUploader(props: {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const announce = useAnnounce();
+  const { m, fmt } = useI18n();
+  const t = m.upload;
   const [items, setItems] = useState<Item[]>([]);
   const busy = items.some((i) => i.state === "uploading");
   const types = ACCEPT[purpose];
@@ -44,7 +47,7 @@ export function FileUploader(props: {
     if (files.length === 0) return;
     const batch: Item[] = files.map((f, n) => ({ key: `${Date.now()}-${n}`, name: f.name, state: "uploading" }));
     setItems((prev) => [...batch, ...prev].slice(0, 20));
-    announce(`Uploading ${files.length} file${files.length > 1 ? "s" : ""}.`);
+    announce(t.uploadingN(files.length));
 
     const done: Schemas["MediaObject"][] = [];
     let failed = 0;
@@ -52,18 +55,16 @@ export function FileUploader(props: {
     for (const [n, file] of files.entries()) {
       const key = batch[n]!.key;
       try {
-        done.push(await uploadFile({ tenantId, file, purpose, farmId }));
+        done.push(await uploadFile({ tenantId, file, purpose, farmId, text: { ...t, size: fmt.size } }));
         setItems((prev) => prev.map((i) => (i.key === key ? { ...i, state: "done" } : i)));
       } catch (err) {
         failed++;
-        const message = err instanceof Error ? err.message : "Upload failed.";
+        const message = err instanceof Error ? err.message : t.failedGeneric;
         setItems((prev) => prev.map((i) => (i.key === key ? { ...i, state: "error", message } : i)));
       }
     }
     announce(
-      failed === 0
-        ? `${done.length} file${done.length === 1 ? "" : "s"} uploaded.`
-        : `${done.length} uploaded, ${failed} failed. See the list for details.`,
+      failed === 0 ? t.uploadedN(done.length) : t.partial(done.length, failed),
     );
     if (done.length > 0) onUploaded?.(done);
   }
@@ -75,7 +76,7 @@ export function FileUploader(props: {
       </label>
       <p id={`${id}-hint`} className="mf-hint">
         {hint ? `${hint} ` : ""}
-        Accepted: {typeText}. Up to {describeSize(MAX_UPLOAD_BYTES)} each.
+        {t.accepted(typeText, fmt.size(MAX_UPLOAD_BYTES))}
       </p>
       <input
         ref={input}
@@ -89,12 +90,12 @@ export function FileUploader(props: {
         className="uploader__input"
       />
       {items.length > 0 && (
-        <ul className="uploader__status" aria-label="Upload results">
+        <ul className="uploader__status" aria-label={t.results}>
           {items.map((i) => (
             <li key={i.key} data-state={i.state}>
               <span className="uploader__name">{i.name}</span>
               <span className="uploader__state">
-                {i.state === "uploading" ? "Uploading…" : i.state === "done" ? "Uploaded" : `Failed: ${i.message}`}
+                {i.state === "uploading" ? t.uploading : i.state === "done" ? t.uploaded : t.failed(i.message ?? "")}
               </span>
             </li>
           ))}

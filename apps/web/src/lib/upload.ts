@@ -14,10 +14,13 @@ export const ACCEPT: Record<UploadPurpose, string[]> = {
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
-export function describeSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} bytes`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+/** Messages for client-side upload errors, supplied in the user's language. */
+export interface UploadText {
+  wrongType: (name: string, type: string, accepted: string) => string;
+  empty: (name: string) => string;
+  tooBig: (name: string, size: string, limit: string) => string;
+  putFailed: (name: string, status: number) => string;
+  size: (bytes: number) => string;
 }
 
 async function sha256Hex(data: ArrayBuffer): Promise<string> {
@@ -30,13 +33,13 @@ async function sha256Hex(data: ArrayBuffer): Promise<string> {
  * bytes (to storage directly, or to the API in proxy mode), then confirm.
  * Returns the confirmed media object.
  */
-export async function uploadFile(opts: { tenantId: string; file: File; purpose: UploadPurpose; farmId?: string }): Promise<Schemas["MediaObject"]> {
-  const { tenantId, file, purpose, farmId } = opts;
+export async function uploadFile(opts: { tenantId: string; file: File; purpose: UploadPurpose; farmId?: string; text: UploadText }): Promise<Schemas["MediaObject"]> {
+  const { tenantId, file, purpose, farmId, text } = opts;
   if (!ACCEPT[purpose].includes(file.type)) {
-    throw new Error(`${file.name} is a ${file.type || "file of unknown type"}. Accepted: ${ACCEPT[purpose].join(", ")}.`);
+    throw new Error(text.wrongType(file.name, file.type, ACCEPT[purpose].join(", ")));
   }
-  if (file.size === 0) throw new Error(`${file.name} is empty.`);
-  if (file.size > MAX_UPLOAD_BYTES) throw new Error(`${file.name} is ${describeSize(file.size)}. The limit is ${describeSize(MAX_UPLOAD_BYTES)}.`);
+  if (file.size === 0) throw new Error(text.empty(file.name));
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error(text.tooBig(file.name, text.size(file.size), text.size(MAX_UPLOAD_BYTES)));
 
   const bytes = await file.arrayBuffer();
   const ticket = await unwrap(
@@ -60,7 +63,7 @@ export async function uploadFile(opts: { tenantId: string; file: File; purpose: 
     if (token) headers.authorization = `Bearer ${token}`;
   }
   const put = await fetch(ticket.uploadUrl, { method: "PUT", headers, body: bytes });
-  if (!put.ok) throw new Error(`Uploading ${file.name} failed (${put.status}). Try again.`);
+  if (!put.ok) throw new Error(text.putFailed(file.name, put.status));
 
   return unwrap(
     api.POST("/v1/tenants/{tenantId}/uploads/{mediaId}/complete", { params: { path: { tenantId, mediaId: ticket.mediaId } } }),

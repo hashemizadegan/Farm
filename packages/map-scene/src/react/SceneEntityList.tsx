@@ -1,11 +1,13 @@
 import { useId, useMemo, useState } from "react";
 import type { SceneDescription } from "../core/scene-builder";
+import { EN_SCENE_LABELS, type SceneLabels } from "./labels";
 
 interface Props {
   scene: SceneDescription;
   selectedId?: string;
   onSelect: (id: string) => void;
   pageSize?: number;
+  labels?: SceneLabels;
 }
 
 /**
@@ -13,7 +15,8 @@ interface Props {
  * Every action available in 3D (inspect and select an element) is available
  * here with standard controls. Paginated so very large plans stay usable.
  */
-export function SceneEntityList({ scene, selectedId, onSelect, pageSize = 50 }: Props) {
+export function SceneEntityList({ scene, selectedId, onSelect, pageSize = 50, labels = EN_SCENE_LABELS }: Props) {
+  const L = labels;
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const filterId = useId();
@@ -30,9 +33,9 @@ export function SceneEntityList({ scene, selectedId, onSelect, pageSize = 50 }: 
 
   return (
     <section aria-labelledby={captionId} className="mf-scene-list">
-      <h3 id={captionId}>Scene elements ({filtered.length})</h3>
-      <p className="mf-muted">{scene.disclaimer}</p>
-      <label htmlFor={filterId}>Filter elements</label>
+      <h3 id={captionId}>{L.listHeading(filtered.length)}</h3>
+      <p className="mf-muted">{L.disclaimer ?? scene.disclaimer}</p>
+      <label htmlFor={filterId}>{L.filter}</label>
       <input
         id={filterId}
         type="search"
@@ -44,16 +47,16 @@ export function SceneEntityList({ scene, selectedId, onSelect, pageSize = 50 }: 
       />
       <table>
         <caption className="mf-visually-hidden">
-          Scene elements, page {current + 1} of {pages}. Positions are metres from the farm origin.
+          {L.caption(current + 1, pages)}
         </caption>
         <thead>
           <tr>
-            <th scope="col">Element</th>
-            <th scope="col">East (m)</th>
-            <th scope="col">North (m)</th>
-            <th scope="col">Provenance</th>
+            <th scope="col">{L.element}</th>
+            <th scope="col">{L.east}</th>
+            <th scope="col">{L.north}</th>
+            <th scope="col">{L.provenance}</th>
             <th scope="col">
-              <span className="mf-visually-hidden">Action</span>
+              <span className="mf-visually-hidden">{L.action}</span>
             </th>
           </tr>
         </thead>
@@ -65,10 +68,10 @@ export function SceneEntityList({ scene, selectedId, onSelect, pageSize = 50 }: 
                 <th scope="row">{e.label ?? e.id}</th>
                 <td>{e.x.toFixed(1)}</td>
                 <td>{(-e.z).toFixed(1)}</td>
-                <td>{e.provenance}</td>
+                <td>{L.provenanceName?.(e.provenance) ?? e.provenance}</td>
                 <td>
                   <button type="button" aria-pressed={selected} onClick={() => onSelect(e.id)}>
-                    {selected ? "Selected" : "Select"}
+                    {selected ? L.selected : L.select}
                     <span className="mf-visually-hidden"> {e.label ?? e.id}</span>
                   </button>
                 </td>
@@ -77,15 +80,15 @@ export function SceneEntityList({ scene, selectedId, onSelect, pageSize = 50 }: 
           })}
         </tbody>
       </table>
-      <nav aria-label="Scene element pages" className="mf-pager">
+      <nav aria-label={L.pages} className="mf-pager">
         <button type="button" onClick={() => setPage(current - 1)} disabled={current === 0}>
-          Previous page
+          {L.previous}
         </button>
         <span aria-live="polite">
-          Page {current + 1} of {pages}
+          {L.pageOf(current + 1, pages)}
         </span>
         <button type="button" onClick={() => setPage(current + 1)} disabled={current >= pages - 1}>
-          Next page
+          {L.next}
         </button>
       </nav>
     </section>

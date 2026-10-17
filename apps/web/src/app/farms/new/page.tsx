@@ -6,14 +6,16 @@ import { Button, ErrorSummary, Notice, TextField, useAnnounce } from "@metafarm/
 import { BoundaryMap } from "@/components/BoundaryMap";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap } from "@/lib/api";
+import { useI18n } from "@/i18n/provider";
 
 type Method = "coordinates" | "drawn" | "imported";
 const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 
 export default function NewFarmPage() {
+  const { m } = useI18n();
   return (
     <>
-      <h1>Create a farm project</h1>
+      <h1>{m.newFarm.title}</h1>
       <RequireTenant>{(tenantId) => <Onboarding tenantId={tenantId} />}</RequireTenant>
     </>
   );
@@ -23,6 +25,9 @@ function Onboarding({ tenantId }: { tenantId: string }) {
   const router = useRouter();
   const announce = useAnnounce();
   const summaryRef = useRef<HTMLDivElement>(null);
+  const { m, fmt } = useI18n();
+  const t = m.newFarm;
+  const issueToError = (i: GeometryIssue) => ({ message: m.geometryIssue(i) });
 
   const [name, setName] = useState("");
   const [method, setMethod] = useState<Method>("coordinates");
@@ -53,28 +58,28 @@ function Onboarding({ tenantId }: { tenantId: string }) {
 
   const fail = (list: { field?: string; message: string }[]) => {
     setErrors(list);
-    announce(`${list.length} problem${list.length === 1 ? "" : "s"} found.`, "assertive");
+    announce(m.common.problems(list.length), "assertive");
     requestAnimationFrame(() => summaryRef.current?.querySelector<HTMLElement>("[data-error-summary]")?.focus());
   };
 
   const onImport = async (file: File | undefined) => {
     if (!file) return;
-    if (file.size > MAX_IMPORT_BYTES) return fail([{ field: "import", message: "GeoJSON files must be 2 MB or smaller." }]);
+    if (file.size > MAX_IMPORT_BYTES) return fail([{ field: "import", message: t.importTooBig }]);
     try {
       setImported(JSON.parse(await file.text()));
       setErrors([]);
-      announce("File loaded. Review the validation result below.");
+      announce(t.fileLoaded);
     } catch {
-      fail([{ field: "import", message: "The file is not valid JSON." }]);
+      fail([{ field: "import", message: t.notJson }]);
     }
   };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const problems: { field?: string; message: string }[] = [];
-    if (!name.trim()) problems.push({ field: "farm-name", message: "Enter a name for the farm project." });
-    if (method === "coordinates" && !origin) problems.push({ field: "lat", message: "Enter a latitude between -90 and 90 and a longitude between -180 and 180." });
-    if (!geometry) problems.push({ message: "Provide a boundary using one of the three methods." });
+    if (!name.trim()) problems.push({ field: "farm-name", message: t.nameRequired });
+    if (method === "coordinates" && !origin) problems.push({ field: "lat", message: t.latLonRequired });
+    if (!geometry) problems.push({ message: t.boundaryRequired });
     if (preview && !preview.valid) problems.push(...preview.issues.map(issueToError));
     if (problems.length) return fail(problems);
 
@@ -97,7 +102,7 @@ function Onboarding({ tenantId }: { tenantId: string }) {
           body: { geojson: geometry as Record<string, unknown>, source: method },
         }),
       );
-      announce("Farm created. Boundary submitted for validation.");
+      announce(t.created);
       router.push(`/farms/${farmId}/boundary`);
     } catch (err) {
       const body = (err as { body?: { details?: GeometryIssue[] } }).body;
@@ -112,34 +117,25 @@ function Onboarding({ tenantId }: { tenantId: string }) {
       <div ref={summaryRef}>
         <ErrorSummary errors={errors} />
       </div>
-      <Notice>
-        Coordinates and boundaries you submit are stored and shown as <strong>user-entered</strong>. They are not checked against land
-        registries or surveys unless a verifier later attaches evidence.
-      </Notice>
+      <Notice>{t.notice((x) => <strong>{x}</strong>)}</Notice>
 
-      <TextField id="farm-name" label="Farm project name" value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
+      <TextField id="farm-name" label={t.name} value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
 
       <fieldset>
-        <legend>How do you want to define the boundary?</legend>
-        {(
-          [
-            ["coordinates", "Enter GPS coordinates (creates a square around the point)"],
-            ["drawn", "Draw on the map, or type each corner"],
-            ["imported", "Import a GeoJSON file"],
-          ] as const
-        ).map(([value, label]) => (
+        <legend>{t.methodLegend}</legend>
+        {(["coordinates", "drawn", "imported"] as const).map((value) => (
           <div key={value}>
             <input type="radio" id={`method-${value}`} name="method" value={value} checked={method === value} onChange={() => setMethod(value)} />
-            <label htmlFor={`method-${value}`}> {label}</label>
+            <label htmlFor={`method-${value}`}> {t.methods[value]}</label>
           </div>
         ))}
       </fieldset>
 
       {method === "coordinates" && (
         <div className="grid-2">
-          <TextField id="lat" label="Latitude (decimal degrees)" hint="North is positive, e.g. 45.4642" inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} />
-          <TextField id="lon" label="Longitude (decimal degrees)" hint="East is positive, e.g. 9.19" inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} />
-          <TextField id="side" label="Square side length (metres)" type="number" min={10} max={20000} value={sideM} onChange={(e) => setSideM(e.target.value)} />
+          <TextField id="lat" label={t.lat} hint={t.latHint} inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} />
+          <TextField id="lon" label={t.lon} hint={t.lonHint} inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} />
+          <TextField id="side" label={t.side} type="number" min={10} max={20000} value={sideM} onChange={(e) => setSideM(e.target.value)} />
         </div>
       )}
 
@@ -149,13 +145,13 @@ function Onboarding({ tenantId }: { tenantId: string }) {
 
       {method === "imported" && (
         <div className="mf-field">
-          <label htmlFor="import">GeoJSON file (Polygon, MultiPolygon, or a single Feature; WGS 84)</label>
+          <label htmlFor="import">{t.importLabel}</label>
           <input id="import" type="file" accept=".geojson,.json,application/geo+json,application/json" onChange={(e) => onImport(e.target.files?.[0])} />
         </div>
       )}
 
       <BoundaryMap
-        label="Map preview of the boundary"
+        label={t.mapLabel}
         center={origin}
         boundary={preview?.valid ? (preview.geometry as BoundaryGeometry) : null}
         draft={method === "drawn" ? draft : undefined}
@@ -163,25 +159,20 @@ function Onboarding({ tenantId }: { tenantId: string }) {
       />
 
       <section aria-live="polite" className="card" style={{ margin: "1rem 0" }}>
-        <h2>Boundary check</h2>
-        {!preview && <p>No boundary yet.</p>}
-        {preview?.valid && (
-          <p>
-            Looks valid: {preview.vertexCount} vertices, about {(preview.areaM2! / 10_000).toFixed(2)} ha (geodesic estimate, not a survey). The server will
-            re-check it.
-          </p>
-        )}
+        <h2>{t.checkHeading}</h2>
+        {!preview && <p>{t.noBoundary}</p>}
+        {preview?.valid && <p>{t.looksValid(preview.vertexCount, fmt.ha(preview.areaM2!))}</p>}
         {preview && !preview.valid && (
           <ul>
             {preview.issues.map((i, n) => (
-              <li key={n}>{i.message}</li>
+              <li key={n}>{m.geometryIssue(i)}</li>
             ))}
           </ul>
         )}
       </section>
 
       <Button type="submit" variant="primary" busy={busy}>
-        Create farm and submit boundary
+        {t.submit}
       </Button>
     </form>
   );
@@ -190,6 +181,7 @@ function Onboarding({ tenantId }: { tenantId: string }) {
 function DrawPanel({ draft, setDraft }: { draft: [number, number][]; setDraft: (f: (d: [number, number][]) => [number, number][]) => void }) {
   const [lat, setLat] = useState("");
   const [lon, setLon] = useState("");
+  const t = useI18n().m.newFarm;
   const add = () => {
     const la = Number(lat);
     const lo = Number(lon);
@@ -200,20 +192,20 @@ function DrawPanel({ draft, setDraft }: { draft: [number, number][]; setDraft: (
   };
   return (
     <div className="card" style={{ marginBottom: "1rem" }}>
-      <h2>Corners</h2>
-      <p className="mf-hint">Add at least three corners in order around the boundary. The ring is closed automatically.</p>
+      <h2>{t.cornersHeading}</h2>
+      <p className="mf-hint">{t.cornersHint}</p>
       <div className="grid-2">
-        <TextField label="Corner latitude" inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} />
-        <TextField label="Corner longitude" inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} />
+        <TextField label={t.cornerLat} inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} />
+        <TextField label={t.cornerLon} inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} />
       </div>
-      <Button onClick={add}>Add corner</Button>{" "}
+      <Button onClick={add}>{t.addCorner}</Button>{" "}
       <Button onClick={() => setDraft((d) => d.slice(0, -1))} disabled={draft.length === 0}>
-        Remove last corner
+        {t.removeLast}
       </Button>{" "}
       <Button variant="danger" onClick={() => setDraft(() => [])} disabled={draft.length === 0}>
-        Clear
+        {t.clear}
       </Button>
-      <ol aria-label="Boundary corners">
+      <ol aria-label={t.cornersList} className="ltr">
         {draft.map(([lo, la], i) => (
           <li key={i}>
             {la.toFixed(6)}, {lo.toFixed(6)}
@@ -222,8 +214,4 @@ function DrawPanel({ draft, setDraft }: { draft: [number, number][]; setDraft: (
       </ol>
     </div>
   );
-}
-
-function issueToError(i: GeometryIssue) {
-  return { message: i.message };
 }

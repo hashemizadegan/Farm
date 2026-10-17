@@ -1,48 +1,44 @@
 import type { Metadata } from "next";
-import { NFT_DISCLOSURE } from "@metafarm/domain/nft";
-import { PROVENANCE_DESCRIPTIONS, PROVENANCE_LABELS } from "@metafarm/domain/provenance";
-import { SCENARIO_DISCLAIMER } from "@metafarm/domain/scenarios";
+import { PROVENANCE_LABELS } from "@metafarm/domain/provenance";
+import { en } from "@/i18n/messages/en";
+import { fa } from "@/i18n/messages/fa";
+import { getLocale } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Disclosures" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: ((await getLocale()) === "fa" ? fa : en).meta.disclosures };
+}
 
 /**
  * User-facing summary of docs/data-provenance-and-legal.md.
- * TODO(legal-review): have counsel in each jurisdiction you operate in review this text.
+ * TODO(legal-review): have counsel in each jurisdiction you operate in review this text, including the Persian translation.
  */
-export default function DisclosuresPage() {
+export default async function DisclosuresPage() {
+  const m = (await getLocale()) === "fa" ? fa : en;
+  const t = m.disclosures;
   return (
     <>
-      <h1>Disclosures</h1>
+      <h1>{t.title}</h1>
+      {t.authoritative && <p className="mf-notice">{t.authoritative}</p>}
 
-      <h2>Land boundaries and coordinates</h2>
-      <p>
-        Coordinates and boundaries are submitted by users. Unless a boundary is marked <strong>Independently verified</strong> — which requires
-        attached evidence reviewed by a verifier — it has not been checked against any land registry, cadastre or survey. Areas are geodesic
-        estimates computed from the submitted shape.
-      </p>
+      <h2>{t.landHeading}</h2>
+      <p>{t.land((x) => <strong>{x}</strong>)}</p>
 
-      <h2>3D scenes</h2>
-      <p>
-        The 3D scene is an illustration generated from your plan. Plant positions, sizes, equipment and terrain are not a survey, an inventory,
-        or evidence of real-world conditions.
-      </p>
+      <h2>{t.sceneHeading}</h2>
+      <p>{t.scene}</p>
 
-      <h2>Crop and income scenarios</h2>
-      <p>{SCENARIO_DISCLAIMER}</p>
+      <h2>{t.scenarioHeading}</h2>
+      <p>{t.scenario}</p>
 
-      <h2>Digital collectibles (NFTs)</h2>
-      <p>{NFT_DISCLOSURE}</p>
-      <p>
-        In particular, a collectible does not convey land title, crop ownership or a profit share, and nothing in this application promises that
-        a token will have or keep any value.
-      </p>
+      <h2>{t.nftHeading}</h2>
+      <p>{t.nft}</p>
+      <p>{t.nftExtra}</p>
 
-      <h2>Provenance labels</h2>
+      <h2>{t.provenanceHeading}</h2>
       <dl>
         {PROVENANCE_LABELS.map((l) => (
           <div key={l}>
-            <dt>{PROVENANCE_DESCRIPTIONS[l].short}</dt>
-            <dd>{PROVENANCE_DESCRIPTIONS[l].long}</dd>
+            <dt>{m.ui.provenance[l].short}</dt>
+            <dd>{m.ui.provenance[l].long}</dd>
           </div>
         ))}
       </dl>

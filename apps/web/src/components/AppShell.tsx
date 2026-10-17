@@ -5,6 +5,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnnouncerProvider, SkipLink } from "@metafarm/ui";
 import { session } from "@/lib/auth";
 import { TenantProvider, useTenant } from "@/lib/tenant";
+import { useI18n } from "@/i18n/provider";
+import { LanguageSwitch } from "./LanguageSwitch";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 /** Routes that render without the app chrome (sign-in and the OIDC callback). */
@@ -13,10 +15,11 @@ const BARE = ["/sign-in", "/auth/callback"];
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const bare = BARE.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const { m } = useI18n();
   return (
     <AnnouncerProvider>
       <TenantProvider>
-        <SkipLink />
+        <SkipLink>{m.shell.skip}</SkipLink>
         {bare ? (
           <RouteFocus className="bare-main">{children}</RouteFocus>
         ) : (
@@ -48,17 +51,18 @@ function RouteFocus({ children, className }: { children: ReactNode; className?: 
   );
 }
 
-const NAV: { href: string; label: string; match?: (p: string) => boolean }[] = [
-  { href: "/", label: "Overview", match: (p) => p === "/" },
-  { href: "/farms", label: "Farms" },
-  { href: "/assets", label: "Asset catalogue" },
-  { href: "/team", label: "Team" },
-  { href: "/settings", label: "Workspace settings" },
+const NAV: { href: string; key: "overview" | "farms" | "assets" | "team" | "settings"; match?: (p: string) => boolean }[] = [
+  { href: "/", key: "overview", match: (p) => p === "/" },
+  { href: "/farms", key: "farms" },
+  { href: "/assets", key: "assets" },
+  { href: "/team", key: "team" },
+  { href: "/settings", key: "settings" },
 ];
 
 function Frame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { signedIn } = useTenant();
+  const { m } = useI18n();
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
 
@@ -84,7 +88,7 @@ function Frame({ children }: { children: ReactNode }) {
       <div className="topbar">
         <Link href="/" className="brand">
           <BrandMark />
-          Metafarm
+          {m.meta.title}
         </Link>
         <button
           ref={toggleRef}
@@ -94,22 +98,22 @@ function Frame({ children }: { children: ReactNode }) {
           aria-controls="sidebar"
           onClick={() => setOpen((o) => !o)}
         >
-          {open ? "Close menu" : "Menu"}
+          {open ? m.shell.closeMenu : m.shell.menu}
         </button>
       </div>
 
-      <aside id="sidebar" className="sidebar" aria-label="Workspace">
+      <aside id="sidebar" className="sidebar" aria-label={m.shell.sidebar}>
         <Link href="/" className="brand brand--sidebar">
           <BrandMark />
-          Metafarm
+          {m.meta.title}
         </Link>
         {signedIn && <WorkspaceSwitcher />}
-        <nav aria-label="Main">
+        <nav aria-label={m.shell.mainNav}>
           <ul className="sidenav">
             {NAV.map((item) => (
               <li key={item.href}>
                 <Link href={item.href} aria-current={isCurrent(item) ? "page" : undefined}>
-                  {item.label}
+                  {m.shell.nav[item.key]}
                 </Link>
               </li>
             ))}
@@ -117,20 +121,21 @@ function Frame({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar__foot">
           <Link href="/about/disclosures" aria-current={pathname === "/about/disclosures" ? "page" : undefined}>
-            Data &amp; disclosures
+            {m.shell.disclosures}
           </Link>
           {signedIn && (
             <Link href="/account" aria-current={pathname === "/account" ? "page" : undefined}>
-              Your account
+              {m.shell.account}
             </Link>
           )}
           {signedIn ? (
             <button type="button" className="sidebar__signout" onClick={() => void session.signOut()}>
-              Sign out
+              {m.shell.signOut}
             </button>
           ) : (
-            <Link href="/sign-in">Sign in</Link>
+            <Link href="/sign-in">{m.common.signIn}</Link>
           )}
+          <LanguageSwitch className="sidebar__lang" />
         </div>
       </aside>
       {open && <div className="scrim" aria-hidden="true" onClick={() => setOpen(false)} />}
