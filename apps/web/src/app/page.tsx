@@ -7,6 +7,7 @@ import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
 import { useTenant } from "@/lib/tenant";
 import { useI18n } from "@/i18n/provider";
+import { groupTasks } from "@/components/Tasks";
 
 export default function OverviewPage() {
   const { me, tenantId } = useTenant();
@@ -71,6 +72,8 @@ function Overview({ tenantId }: { tenantId: string }) {
         </div>
       </dl>
 
+      <TodayWork tenantId={tenantId} />
+
       <div className="split">
         <section aria-labelledby="recent-heading">
           <div className="mf-page-header" style={{ marginBottom: "0.75rem" }}>
@@ -101,6 +104,37 @@ function Overview({ tenantId }: { tenantId: string }) {
         </section>
       </div>
     </>
+  );
+}
+
+/** Open field work at a glance: the whole team's for managers, one's own otherwise. */
+function TodayWork({ tenantId }: { tenantId: string }) {
+  const can = useCan();
+  const { m } = useI18n();
+  const t = m.tasks.today;
+  const team = can("task:manage");
+  const tasks = useQuery(`today-work:${tenantId}:${team}`, () =>
+    unwrap(
+      api.GET("/v1/tenants/{tenantId}/tasks", {
+        params: { path: { tenantId }, query: { status: "open", limit: 500, ...(team ? {} : { assignee: "me" }) } },
+      }),
+    ),
+  );
+  if (!tasks.data) return null;
+  const g = groupTasks(tasks.data.items);
+  return (
+    <section className="card today-work" aria-labelledby="today-work-heading">
+      <h2 id="today-work-heading">{t.heading}</h2>
+      <ul className="today-work__counts">
+        <li data-tone={g.overdue.length ? "problem" : undefined}>{t.overdue(g.overdue.length)}</li>
+        <li>{t.dueToday(g.today.length)}</li>
+        <li>{t.upcoming(g.upcoming.length)}</li>
+      </ul>
+      <p className="today-work__links">
+        <Link href="/tasks">{t.mine}</Link>
+        <Link href="/schedule">{t.schedule}</Link>
+      </p>
+    </section>
   );
 }
 

@@ -867,3 +867,201 @@ html[lang="fa"] body {
 [dir="rtl"] dd.ltr {
   text-align: right;
 }
+
+/* ---------- Field tasks ---------- */
+.task-group {
+  margin-block: 1.25rem 1.5rem;
+}
+.task-group__heading {
+  font-size: 1.1rem;
+  margin: 0 0 0.6rem;
+}
+.task-group[data-group="overdue"] .task-group__heading {
+  color: var(--mf-danger);
+}
+.task-group__count {
+  color: var(--mf-muted);
+  font-weight: 400;
+}
+.tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.task {
+  position: relative;
+  background: var(--mf-surface);
+  border: 1px solid var(--mf-line);
+  border-inline-start: 4px solid var(--mf-border);
+  border-radius: var(--mf-radius);
+  padding: 0.8rem 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+.task[data-priority="high"] {
+  border-inline-start-color: var(--mf-marker);
+}
+.task[data-status="done"],
+.task[data-status="cancelled"] {
+  border-inline-start-color: var(--mf-line);
+}
+.task[data-status="cancelled"] .task__title {
+  text-decoration: line-through;
+}
+.task__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+.task__title {
+  margin: 0;
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+.task__due {
+  color: var(--mf-muted);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.task__due[data-overdue] {
+  color: var(--mf-danger);
+  font-weight: 700;
+}
+.task__meta,
+.task__notes {
+  margin: 0;
+  color: var(--mf-muted);
+  font-size: 0.925rem;
+  overflow-wrap: anywhere;
+}
+.task__notes {
+  white-space: pre-line;
+  color: var(--mf-text);
+}
+.task__status:empty {
+  display: none;
+}
+.task__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.task__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.task__complete {
+  border-top: 1px solid var(--mf-line);
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+}
+.mf-error {
+  color: var(--mf-danger);
+  margin: 0;
+}
+
+/* ---------- Week schedule ---------- */
+.week-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+}
+.week-nav__range {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.week-nav__person {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+.week {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+}
+.week-day {
+  background: var(--mf-surface);
+  border: 1px solid var(--mf-line);
+  border-radius: var(--mf-radius-lg);
+  padding: 0.75rem 0.9rem;
+}
+.week-day[data-today] {
+  border-color: var(--mf-primary);
+  box-shadow: inset 0 3px 0 var(--mf-marker);
+}
+.week-day__heading {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+.week-day__today {
+  color: var(--mf-primary);
+}
+.week-day__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.week-item {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: start;
+  padding-block: 0.4rem;
+  border-top: 1px solid var(--mf-line);
+}
+.week-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.week-item[data-status="done"] .week-item__title {
+  text-decoration: line-through;
+  color: var(--mf-muted);
+}
+.week-item__title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.week-item__meta {
+  color: var(--mf-muted);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.today-work {
+  margin-bottom: 1.5rem;
+}
+.today-work h2 {
+  margin-top: 0;
+}
+.today-work__counts {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.today-work__counts [data-tone="problem"] {
+  color: var(--mf-danger);
+}
+.today-work__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+}

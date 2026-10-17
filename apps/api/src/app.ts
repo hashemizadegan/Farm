@@ -12,6 +12,7 @@ import { mediaRoutes } from "./routes/media";
 import { teamRoutes } from "./routes/team";
 import { observationRoutes } from "./routes/observations";
 import { planningRoutes } from "./routes/planning";
+import { taskRoutes } from "./routes/tasks";
 
 export interface BuildOptions {
   deps: Deps;
@@ -64,6 +65,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(observationRoutes);
   await app.register(mediaRoutes);
   await app.register(teamRoutes);
+  await app.register(taskRoutes);
   await app.register(chainRoutes);
 
   return app;

@@ -51,8 +51,10 @@ function RouteFocus({ children, className }: { children: ReactNode; className?: 
   );
 }
 
-const NAV: { href: string; key: "overview" | "farms" | "assets" | "team" | "settings"; match?: (p: string) => boolean }[] = [
+const NAV: { href: string; key: "overview" | "myTasks" | "schedule" | "farms" | "assets" | "team" | "settings"; match?: (p: string) => boolean }[] = [
   { href: "/", key: "overview", match: (p) => p === "/" },
+  { href: "/tasks", key: "myTasks" },
+  { href: "/schedule", key: "schedule" },
   { href: "/farms", key: "farms" },
   { href: "/assets", key: "assets" },
   { href: "/team", key: "team" },

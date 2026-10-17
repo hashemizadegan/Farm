@@ -7,3 +7,4 @@ export * from "./wallet-auth";
 export * from "./observations";
 export * from "./jobs";
 export * from "./schemas";
+export * from "./tasks";

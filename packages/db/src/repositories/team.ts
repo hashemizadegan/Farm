@@ -15,7 +15,7 @@ export async function listMembers(tx: TenantTx): Promise<MemberRow[]> {
     `SELECT m.user_id, m.role, u.display_name, u.email::text AS email, m.created_at AS joined_at
        FROM memberships m JOIN users u ON u.id = m.user_id
       WHERE m.tenant_id = $1 AND (m.expires_at IS NULL OR m.expires_at > now())
-      ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'manager' THEN 2 WHEN 'verifier' THEN 3 ELSE 4 END,
+      ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'manager' THEN 2 WHEN 'verifier' THEN 3 WHEN 'worker' THEN 4 ELSE 5 END,
                lower(coalesce(u.display_name, u.email, '')), m.created_at`,
     [tx.tenantId],
   );

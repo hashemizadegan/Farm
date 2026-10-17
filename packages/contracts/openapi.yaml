@@ -33,6 +33,7 @@ tags:
   - name: assets
   - name: observations
   - name: alerts
+  - name: tasks
   - name: media
   - name: team
   - name: audit
@@ -779,6 +780,134 @@ paths:
               schema: { $ref: "#/components/schemas/Alert" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/tenants/{tenantId}/tasks:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [tasks]
+      summary: Tasks across all active farms (my tasks, team schedule)
+      description: Date ranges are limited to 92 days. Dates are calendar days in each farm's time zone.
+      operationId: listWorkspaceTasks
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [open, done, cancelled, all], default: open }, description: "open = todo and in_progress" }
+        - { name: assignee, in: query, schema: { type: string }, description: '"me" or a user id' }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: includeOverdue, in: query, schema: { type: string, enum: ["true", "false"] }, description: With a date range, also return open tasks due before `from`. }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 200 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Task" } }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/tasks:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [tasks]
+      summary: List a farm's tasks
+      operationId: listFarmTasks
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [open, done, cancelled, all], default: open }, description: "open = todo and in_progress" }
+        - { name: assignee, in: query, schema: { type: string }, description: '"me" or a user id' }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: includeOverdue, in: query, schema: { type: string, enum: ["true", "false"] }, description: With a date range, also return open tasks due before `from`. }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 200 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Task" } }
+    post:
+      tags: [tasks]
+      summary: Create a task (task:manage)
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/tasks/{taskId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: taskId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [tasks]
+      summary: Change a task
+      description: |
+        Managers may change any field. A field worker may only set `status` to
+        `todo` or `in_progress` on a task assigned to them; starting an unassigned
+        task assigns it to them.
+      operationId: updateTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: The task is already completed }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/tasks/{taskId}/complete:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: taskId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [tasks]
+      summary: Complete a task
+      description: Repeating tasks create their next occurrence, kept on the original rhythm.
+      operationId: completeTask
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskCompletion" }
+      responses:
+        "200":
+          description: Completed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [task, next]
+                properties:
+                  task: { $ref: "#/components/schemas/Task" }
+                  next:
+                    oneOf:
+                      - { $ref: "#/components/schemas/Task" }
+                      - { type: "null" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Already completed or cancelled }
+
   /v1/tenants/{tenantId}/uploads:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     post:
@@ -1068,7 +1197,7 @@ components:
 
     Role:
       type: string
-      enum: [owner, admin, manager, verifier, viewer]
+      enum: [owner, admin, manager, verifier, worker, viewer]
 
     Me:
       type: object
@@ -1403,6 +1532,71 @@ components:
         evidenceObservationIds: { type: array, items: { type: string, format: uuid } }
         acknowledgedAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
+
+    TaskKind:
+      type: string
+      enum: [irrigation, fertilizing, spraying, planting, weeding, pruning, harvest, scouting, maintenance, other]
+
+    TaskInput:
+      type: object
+      additionalProperties: false
+      required: [title, kind, dueDate]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        kind: { $ref: "#/components/schemas/TaskKind" }
+        parcelLabel: { type: [string, "null"], maxLength: 80 }
+        assigneeUserId: { type: [string, "null"], format: uuid }
+        dueDate: { type: string, format: date, description: Calendar day in the farm's time zone }
+        priority: { type: string, enum: [low, normal, high], default: normal }
+        notes: { type: [string, "null"], maxLength: 4000 }
+        repeatEveryDays: { type: [integer, "null"], minimum: 1, maximum: 365 }
+
+    TaskUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        kind: { $ref: "#/components/schemas/TaskKind" }
+        parcelLabel: { type: [string, "null"], maxLength: 80 }
+        assigneeUserId: { type: [string, "null"], format: uuid }
+        dueDate: { type: string, format: date }
+        priority: { type: string, enum: [low, normal, high] }
+        notes: { type: [string, "null"], maxLength: 4000 }
+        repeatEveryDays: { type: [integer, "null"], minimum: 1, maximum: 365 }
+        status: { type: string, enum: [todo, in_progress, cancelled] }
+
+    TaskCompletion:
+      type: object
+      additionalProperties: false
+      properties:
+        note: { type: string, maxLength: 4000 }
+        mediaIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+
+    Task:
+      type: object
+      required: [id, farmId, farmName, title, kind, dueDate, priority, status, completionMediaIds, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: string, format: uuid }
+        farmName: { type: string }
+        title: { type: string }
+        kind: { $ref: "#/components/schemas/TaskKind" }
+        parcelLabel: { type: [string, "null"] }
+        assigneeUserId: { type: [string, "null"], format: uuid }
+        assigneeName: { type: [string, "null"] }
+        dueDate: { type: string, format: date }
+        priority: { type: string, enum: [low, normal, high] }
+        status: { type: string, enum: [todo, in_progress, done, cancelled] }
+        notes: { type: [string, "null"] }
+        repeatEveryDays: { type: [integer, "null"] }
+        previousTaskId: { type: [string, "null"], format: uuid }
+        completionNote: { type: [string, "null"] }
+        completionMediaIds: { type: array, items: { type: string, format: uuid } }
+        completedAt: { type: [string, "null"], format: date-time }
+        completedByName: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
 
     UploadRequest:
       type: object

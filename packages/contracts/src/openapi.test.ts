@@ -14,6 +14,7 @@ import {
   NFT_UTILITIES,
   PROVENANCE_LABELS,
   ROLES,
+  TASK_KINDS,
 } from "@metafarm/domain";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -44,6 +45,10 @@ describe("openapi.yaml", () => {
   it("matches domain provenance labels and roles", () => {
     expect(schemas.ProvenanceLabel.enum).toEqual([...PROVENANCE_LABELS]);
     expect(schemas.Role.enum).toEqual([...ROLES]);
+  });
+
+  it("matches task kinds", () => {
+    expect(schemas.TaskKind.enum).toEqual([...TASK_KINDS]);
   });
 
   it("matches observation metrics", () => {
