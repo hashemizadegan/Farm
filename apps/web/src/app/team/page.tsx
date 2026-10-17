@@ -221,7 +221,7 @@ function Invite({ tenantId, onCreated }: { tenantId: string; onCreated: () => vo
         signs in joins with the role you choose, so share it only with that person.
       </p>
       <ErrorSummary errors={errors} />
-      <form onSubmit={submit} noValidate className="inline-form">
+      <form onSubmit={submit} noValidate>
         <TextField
           id="invite-email"
           label="Their email address"
