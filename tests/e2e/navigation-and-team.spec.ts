@@ -12,6 +12,9 @@ test.describe("navigation and team", () => {
       const res = await page.goto(href);
       expect(res?.status(), `${href} should not be 404`).toBeLessThan(400);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      // Nothing may be wider than the screen: phones zoom the whole page out and taps miss.
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow, `${href} is wider than the viewport`).toBeLessThanOrEqual(0);
     }
   });
 
@@ -21,8 +24,7 @@ test.describe("navigation and team", () => {
     await expect(page.getByRole("heading", { name: /Members/ })).toBeVisible();
     await page.getByLabel("Their email address").fill(`${unique("invitee").replace(/\s+/g, "-").toLowerCase()}@example.com`);
     await page.getByLabel("Role", { exact: true }).selectOption("viewer");
-    // Submit from the keyboard (on the mobile project a click on the button was reported as intercepted by the email label; checked by hand on staging).
-    await page.getByLabel("Their email address").press("Enter");
+    await page.getByRole("button", { name: "Create invitation link" }).click();
     const link = await page.getByLabel("Invitation link").inputValue();
     expect(link).toMatch(/\/invite#token=[A-Za-z0-9_-]{32,}/);
     await expect(page.getByRole("heading", { name: "Pending invitations" })).toBeVisible();
