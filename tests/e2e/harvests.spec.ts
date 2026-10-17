@@ -31,7 +31,8 @@ test.describe("harvest traceability", () => {
 
     // The public page needs no sign-in.
     const origin = new URL(page.url()).origin;
-    const visitor = await page.context().browser()!.newPage();
+    const visitorContext = await page.context().browser()!.newContext();
+    const visitor = await visitorContext.newPage();
     await visitor.goto(`${origin}/verify/${code}`);
     await expect(visitor.getByRole("heading", { level: 1 })).toContainText("Pistachio");
     await expect(visitor.getByText(farmName).first()).toBeVisible();
@@ -45,6 +46,6 @@ test.describe("harvest traceability", () => {
 
     await visitor.goto(`${origin}/verify/AAAAAAAAAA`);
     await expect(visitor.getByText(/no batch with this code/)).toBeVisible();
-    await visitor.close();
+    await visitorContext.close();
   });
 });
