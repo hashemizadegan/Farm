@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { EmptyState, Notice, PageHeader, StatusPill } from "@metafarm/ui";
+import { EmptyState, Notice, PageHeader } from "@metafarm/ui";
 import { PlotOutline } from "@/components/PlotOutline";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
