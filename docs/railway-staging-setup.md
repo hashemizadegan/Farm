@@ -80,6 +80,7 @@ WALLET_AUTH_DOMAIN=<web-domain>
 WALLET_AUTH_URI=https://<web-domain>
 WALLET_ALLOWED_CHAIN_IDS=<chain id, e.g. 11155111 for Sepolia, or 31337 if unused>
 AUDIT_IP_SALT=<generate a long random value>
+UPLOAD_MODE=proxy
 ```
 
 **`worker` only**
@@ -96,19 +97,19 @@ NEXT_PUBLIC_OIDC_AUTHORITY=https://<your-tenant>.us.auth0.com
 NEXT_PUBLIC_OIDC_CLIENT_ID=<SPA client id>
 NEXT_PUBLIC_OIDC_AUDIENCE=https://api.metafarm-staging
 NEXT_PUBLIC_WALLET_CHAIN_ID=<same chain id as the API>
-# Free basemap, no key (https://openfreemap.org); attribution required by its terms.
+# Free basemap, no key (https://openfreemap.org). Its style already carries the
+# required attribution, so NEXT_PUBLIC_MAP_ATTRIBUTION stays unset.
 NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
-NEXT_PUBLIC_MAP_ATTRIBUTION=OpenFreeMap © OpenMapTiles Data from OpenStreetMap
 NEXT_PUBLIC_MAP_CONNECT_SRC=https://tiles.openfreemap.org
-# The bucket origin presigned uploads go to (shown in an upload URL, e.g. https://<bucket>.t3.storageapi.dev).
-NEXT_PUBLIC_UPLOAD_CONNECT_SRC=https://<bucket host>
 ```
 
 Generate random values locally with `openssl rand -hex 32`. Do not reuse them between staging and production.
 
-## 5. Bucket CORS (needed for browser uploads)
+## 5. Uploads: set `UPLOAD_MODE=proxy` on `api`
 
-Uploads go straight from the browser to the bucket with a presigned **PUT**. The bucket must allow `PUT` from `https://<web-domain>` with the `content-type` header. Railway's documentation does not yet describe bucket CORS settings, so check the bucket's settings in the dashboard. If browser uploads fail with a CORS error and the bucket offers no CORS setting, the fallback is an external S3-compatible bucket that does (for example Cloudflare R2); only the `S3_*` variables change.
+Railway buckets do not accept a CORS policy (tested on staging: the browser's preflight to the bucket gets no `Access-Control-Allow-Origin`; a Railway community thread also reports `PutBucketCors` returning 403 with the bucket's credentials). So browsers cannot PUT to a presigned bucket URL. Set **`UPLOAD_MODE=proxy`** on the `api` service: the upload URL the API returns then points at the API itself (`PUT /v1/tenants/{tenantId}/uploads/{mediaId}/content`), which checks type, size and SHA-256 and writes to the bucket.
+
+If you later move to a bucket that supports CORS (AWS S3, Cloudflare R2), switch back to `UPLOAD_MODE=direct`, allow `PUT` from `https://<web-domain>` with the `content-type` header in the bucket's CORS policy, and add the bucket origin to the web service as `NEXT_PUBLIC_UPLOAD_CONNECT_SRC`.
 
 ## 6. First deploy and checks
 

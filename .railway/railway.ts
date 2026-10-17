@@ -62,6 +62,8 @@ export default defineRailway((ctx) => {
     S3_ACCESS_KEY_ID: "${{uploads.ACCESS_KEY_ID}}",
     S3_SECRET_ACCESS_KEY: "${{uploads.SECRET_ACCESS_KEY}}",
     S3_FORCE_PATH_STYLE: "false",
+    // Railway buckets cannot be given a CORS policy, so browser uploads go through the API.
+    UPLOAD_MODE: "proxy",
   };
 
   const api = service("api", {

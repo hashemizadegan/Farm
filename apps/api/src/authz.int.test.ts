@@ -2,6 +2,7 @@
  * API authorization and workflow integration tests against a real
  * PostgreSQL + PostGIS database (DATABASE_URL). Queue and storage are in-memory.
  */
+import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createPool, migrateUp, upsertUserBySubject, withSystem, createTenantWithOwner, type Pool } from "@metafarm/db";
@@ -175,6 +176,64 @@ d("API authorization", () => {
     const done = await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/uploads/${t2.mediaId}/complete`, headers: await auth("owner") });
     expect(done.statusCode).toBe(200);
     expect(done.json().status).toBe("uploaded");
+  });
+
+  it("accepts upload bytes through the API in proxy mode and checks them", async () => {
+    const { app: proxyApp } = await buildTestApp({ pool, env: { UPLOAD_MODE: "proxy" } });
+    try {
+      const bytes = Buffer.from('{"type":"FeatureCollection","features":[]}');
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
+      const ticket = (
+        await proxyApp.inject({
+          method: "POST",
+          url: `/v1/tenants/${tenantId}/uploads`,
+          headers: await auth("owner"),
+          payload: { filename: "b.geojson", contentType: "application/geo+json", byteSize: bytes.length, purpose: "boundary-import", sha256 },
+        })
+      ).json();
+      expect(ticket.uploadUrl).toContain(`/v1/tenants/${tenantId}/uploads/${ticket.mediaId}/content`);
+      const contentPath = new URL(ticket.uploadUrl).pathname;
+
+      const tampered = await proxyApp.inject({
+        method: "PUT",
+        url: contentPath,
+        headers: { ...(await auth("owner")), "content-type": "application/geo+json" },
+        payload: Buffer.from('{"type":"FeatureCollection","features":[1]}'),
+      });
+      expect(tampered.statusCode).toBe(422);
+
+      const viewer = await proxyApp.inject({
+        method: "PUT",
+        url: contentPath,
+        headers: { ...(await auth("viewer")), "content-type": "application/geo+json" },
+        payload: bytes,
+      });
+      expect(viewer.statusCode).toBe(403);
+
+      const put = await proxyApp.inject({
+        method: "PUT",
+        url: contentPath,
+        headers: { ...(await auth("owner")), "content-type": "application/geo+json" },
+        payload: bytes,
+      });
+      expect(put.statusCode).toBe(204);
+
+      const done = await proxyApp.inject({ method: "POST", url: `/v1/tenants/${tenantId}/uploads/${ticket.mediaId}/complete`, headers: await auth("owner") });
+      expect(done.statusCode).toBe(200);
+      expect(done.json().status).toBe("uploaded");
+    } finally {
+      await proxyApp.close();
+    }
+  });
+
+  it("does not expose the upload content route in direct mode", async () => {
+    const r = await app.inject({
+      method: "PUT",
+      url: `/v1/tenants/${tenantId}/uploads/00000000-0000-4000-8000-000000000000/content`,
+      headers: { ...(await auth("owner")), "content-type": "image/png" },
+      payload: Buffer.from("x"),
+    });
+    expect(r.statusCode).toBe(404);
   });
 
   it("restricts audit events to admins and owners", async () => {

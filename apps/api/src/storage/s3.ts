@@ -51,6 +51,11 @@ export function createS3Storage(opts: S3StorageOptions): ObjectStorage {
         expiresAt: new Date(Date.now() + ttlSeconds * 1000),
       };
     },
+    async putObject(key, body, contentType) {
+      await client.send(
+        new PutObjectCommand({ Bucket: opts.bucket, Key: key, Body: body, ContentType: contentType, ContentLength: body.length }),
+      );
+    },
     async presignGet(key, ttlSeconds) {
       return getSignedUrl(client, new GetObjectCommand({ Bucket: opts.bucket, Key: key }), { expiresIn: ttlSeconds });
     },

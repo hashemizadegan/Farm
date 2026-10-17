@@ -1,8 +1,9 @@
 /**
  * Object storage behind an interface so the API can run against any
  * S3-compatible service (AWS S3, Cloudflare R2, MinIO, …) or an in-memory
- * fake in tests. The API only issues short-lived signed URLs; file bytes go
- * directly from the browser to storage.
+ * fake in tests. In UPLOAD_MODE=direct the API only issues short-lived signed
+ * URLs and file bytes go straight from the browser to storage; in proxy mode
+ * the API receives the bytes and writes them with putObject.
  */
 export interface PresignedUpload {
   url: string;
@@ -19,6 +20,7 @@ export interface StoredObjectInfo {
 export interface ObjectStorage {
   presignPut(key: string, opts: { contentType: string; byteSize: number; ttlSeconds: number }): Promise<PresignedUpload>;
   presignGet(key: string, ttlSeconds: number): Promise<string>;
+  putObject(key: string, body: Buffer, contentType: string): Promise<void>;
   head(key: string): Promise<StoredObjectInfo | undefined>;
   delete(key: string): Promise<void>;
   ping(): Promise<boolean>;

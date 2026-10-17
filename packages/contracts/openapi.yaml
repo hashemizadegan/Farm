@@ -460,6 +460,33 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "413": { $ref: "#/components/responses/BadRequest" }
 
+  /v1/tenants/{tenantId}/uploads/{mediaId}/content:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: mediaId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [media]
+      summary: Upload file bytes through the API (only when the server runs with UPLOAD_MODE=proxy)
+      description: >-
+        In proxy mode the uploadUrl returned by createUpload points here. Send the
+        bytes with the declared content type and the same bearer token; the size
+        and SHA-256 must match what was declared. Then call completeUpload.
+      operationId: putUploadContent
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+          application/pdf: { schema: { type: string, format: binary } }
+          application/geo+json: { schema: { type: string, format: binary } }
+          model/gltf-binary: { schema: { type: string, format: binary } }
+      responses:
+        "204": { description: Stored }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+
   /v1/tenants/{tenantId}/uploads/{mediaId}/complete:
     parameters:
       - { $ref: "#/components/parameters/TenantId" }

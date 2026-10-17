@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { createPendingMedia, getFarm, getMedia, listAudit, setMediaStatus } from "@metafarm/db";
 import { createUploadSchema, uuid } from "@metafarm/domain";
@@ -32,11 +32,20 @@ export async function mediaRoutes(app: FastifyInstance) {
       if (body.farmId && !(await getFarm(tx, body.farmId))) throw notFound("farm");
       const key = buildStorageKey(tenantId, body.purpose, randomUUID());
       const m = await createPendingMedia(tx, { ...body, storageKey: key, userId: req.user!.id });
-      const t = await storage.presignPut(key, {
-        contentType: body.contentType,
-        byteSize: body.byteSize,
-        ttlSeconds: env.UPLOAD_URL_TTL_SECONDS,
-      });
+      const t =
+        env.UPLOAD_MODE === "proxy"
+          ? {
+              // The browser PUTs to the API (same bearer token); see the /content route below.
+              url: `${req.protocol}://${req.host}/v1/tenants/${tenantId}/uploads/${m.id}/content`,
+              method: "PUT" as const,
+              headers: { "content-type": body.contentType },
+              expiresAt: new Date(Date.now() + env.UPLOAD_URL_TTL_SECONDS * 1000),
+            }
+          : await storage.presignPut(key, {
+              contentType: body.contentType,
+              byteSize: body.byteSize,
+              ttlSeconds: env.UPLOAD_URL_TTL_SECONDS,
+            });
       await app.audit(req, tx, { action: "media.upload_requested", targetType: "media_object", targetId: m.id, metadata: { purpose: body.purpose, byteSize: body.byteSize } });
       return { media: m, ticket: t };
     });
@@ -47,6 +56,39 @@ export async function mediaRoutes(app: FastifyInstance) {
       method: ticket.method,
       headers: ticket.headers,
       expiresAt: ticket.expiresAt.toISOString(),
+    });
+  });
+
+  /**
+   * UPLOAD_MODE=proxy only: receives the file bytes for a pending upload and
+   * writes them to storage. The body must match the declared content type,
+   * size and SHA-256 exactly; the client then calls /complete as usual.
+   */
+  await app.register(async (scoped) => {
+    const types = [...new Set(Object.values(ALLOWED).flat())];
+    scoped.addContentTypeParser(types, { parseAs: "buffer", bodyLimit: app.deps.env.UPLOAD_MAX_BYTES }, (_req, body, done) => done(null, body));
+
+    scoped.put("/v1/tenants/:tenantId/uploads/:mediaId/content", { bodyLimit: app.deps.env.UPLOAD_MAX_BYTES }, async (req, reply) => {
+      if (app.deps.env.UPLOAD_MODE !== "proxy") throw notFound("route");
+      const { mediaId } = parse(z.object({ tenantId: uuid, mediaId: uuid }), req.params);
+      const body = req.body;
+      if (!Buffer.isBuffer(body)) throw new HttpError(415, "unsupported_media_type", "send the file bytes with its declared content type");
+      const contentType = String(req.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase();
+
+      const m = await app.inTenant(req, "media:upload", async (tx) => {
+        const row = await getMedia(tx, mediaId);
+        if (!row) throw notFound("upload");
+        if (row.status !== "pending") throw new HttpError(409, "upload_not_pending", "this upload is no longer accepting content");
+        const sha256 = createHash("sha256").update(body).digest("hex");
+        if (contentType !== row.content_type || body.length !== Number(row.byte_size) || sha256 !== row.sha256) {
+          throw new HttpError(422, "upload_mismatch", "content does not match the declared type, size or SHA-256");
+        }
+        return row;
+      });
+
+      // Written outside the transaction so a slow storage call does not hold a database connection.
+      await app.deps.storage.putObject(m.storage_key, body, m.content_type);
+      return reply.status(204).send();
     });
   });
 

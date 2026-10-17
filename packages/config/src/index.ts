@@ -49,6 +49,12 @@ const storage = {
   S3_SECRET_ACCESS_KEY: z.string().optional(),
   S3_FORCE_PATH_STYLE: bool.default("true"),
   UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  /**
+   * direct: the browser PUTs to a presigned storage URL (needs bucket CORS).
+   * proxy: the browser PUTs to the API, which writes to storage. Use when the
+   * bucket cannot be given a CORS policy (e.g. Railway buckets).
+   */
+  UPLOAD_MODE: z.enum(["direct", "proxy"]).default("direct"),
   UPLOAD_MAX_BYTES: z.coerce.number().int().min(1).default(25 * 1024 * 1024),
 };
 

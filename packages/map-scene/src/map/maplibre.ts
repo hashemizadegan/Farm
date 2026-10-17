@@ -26,7 +26,7 @@ export function createMapLibreAdapter(config: BasemapConfig = {}): MapAdapter {
         keyboard: true,
         fadeDuration: opts.reducedMotion ? 0 : 300,
       });
-      map.addControl(new maplibre.AttributionControl({ compact: true, customAttribution: config.attribution || MOCK_ATTRIBUTION }));
+      map.addControl(new maplibre.AttributionControl({ compact: true, customAttribution: config.styleUrl ? config.attribution || undefined : config.attribution || MOCK_ATTRIBUTION }));
       map.addControl(new maplibre.NavigationControl({ showCompass: false }), "top-right");
       map.getCanvas().setAttribute("aria-label", "Map. Use arrow keys to pan and plus or minus to zoom. Coordinates can also be entered in the form.");
 

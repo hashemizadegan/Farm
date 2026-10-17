@@ -12,6 +12,9 @@ export function createMemoryStorage() {
         expiresAt: new Date(Date.now() + ttlSeconds * 1000),
       };
     },
+    async putObject(key, body, contentType) {
+      objects.set(key, { byteSize: body.length, contentType });
+    },
     async presignGet(key) {
       return `memory://uploads/${encodeURIComponent(key)}`;
     },
