@@ -119,6 +119,11 @@ function Frame({ children }: { children: ReactNode }) {
           <Link href="/about/disclosures" aria-current={pathname === "/about/disclosures" ? "page" : undefined}>
             Data &amp; disclosures
           </Link>
+          {signedIn && (
+            <Link href="/account" aria-current={pathname === "/account" ? "page" : undefined}>
+              Your account
+            </Link>
+          )}
           {signedIn ? (
             <button type="button" className="sidebar__signout" onClick={() => void session.signOut()}>
               Sign out

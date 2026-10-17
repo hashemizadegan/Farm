@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { EmptyState, Notice, PageHeader, StatusPill } from "@metafarm/ui";
+import { EmptyState, Notice, PageHeader } from "@metafarm/ui";
+import { PlotOutline } from "@/components/PlotOutline";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
@@ -80,31 +81,19 @@ function Overview({ tenantId }: { tenantId: string }) {
             </h2>
             <Link href="/farms">All farms</Link>
           </div>
-          <div className="table-wrap">
-            <table>
-              <caption className="mf-visually-hidden">Most recently created farm projects</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Boundary</th>
-                  <th scope="col">Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((f) => (
-                  <tr key={f.id}>
-                    <th scope="row">
-                      <Link href={`/farms/${f.id}`}>{f.name}</Link>
-                    </th>
-                    <td>{f.currentBoundaryVersionId ? <StatusPill tone="ok">Validated</StatusPill> : <StatusPill tone="pending">Needs a boundary</StatusPill>}</td>
-                    <td>
-                      <time dateTime={f.createdAt}>{new Date(f.createdAt).toLocaleDateString()}</time>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="plots">
+            {recent.map((f) => (
+              <li key={f.id}>
+                <PlotOutline outline={f.outline} size={120} />
+                <div>
+                  <p className="plots__name">
+                    <Link href={`/farms/${f.id}`}>{f.name}</Link>
+                  </p>
+                  <p className="plots__meta">{f.boundaryAreaM2 != null ? `${formatHa(f.boundaryAreaM2)}, boundary validated` : "No validated boundary yet"}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
         </section>
         <section aria-labelledby="next-heading">
           <h2 id="next-heading" style={{ marginTop: 0 }}>
@@ -115,6 +104,12 @@ function Overview({ tenantId }: { tenantId: string }) {
       </div>
     </>
   );
+}
+
+/** Area in hectares, to a sensible precision for the size. */
+function formatHa(m2: number): string {
+  const ha = m2 / 10_000;
+  return `${ha < 10 ? ha.toFixed(2) : ha < 100 ? ha.toFixed(1) : Math.round(ha).toLocaleString()} ha`;
 }
 
 /** The real order of work in a project, with the steps already done ticked. */

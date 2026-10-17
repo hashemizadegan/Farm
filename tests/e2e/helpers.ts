@@ -5,12 +5,12 @@ import type { Page } from "@playwright/test";
 
 const tokensPath = path.join(path.dirname(fileURLToPath(import.meta.url)), ".tokens.json");
 
-export function tokens(): { owner: string; other: string } {
+export function tokens(): { owner: string; other: string; invitee: string } {
   return JSON.parse(readFileSync(tokensPath, "utf8"));
 }
 
 /** Signs in through the development sign-in form (keyboard only). */
-export async function signIn(page: Page, who: "owner" | "other" = "owner") {
+export async function signIn(page: Page, who: "owner" | "other" | "invitee" = "owner") {
   await page.goto("/sign-in");
   await page.getByLabel("Development token").fill(tokens()[who]);
   await page.getByRole("button", { name: "Sign in" }).press("Enter");

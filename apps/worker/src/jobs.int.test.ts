@@ -10,6 +10,7 @@ import {
   createFarm,
   createPool,
   createTenantWithOwner,
+  getFarm,
   insertBoundaryVersion,
   insertRawObservation,
   migrateUp,
@@ -63,6 +64,11 @@ d("worker jobs", () => {
     expect(r.status).toBe("valid");
     const farm = await withTenant(pool, tenantId, async (tx) => (await tx.query(`SELECT current_boundary_version_id FROM farms WHERE id = $1`, [farmId])).rows[0]);
     expect(farm.current_boundary_version_id).toBe(b.id);
+    // The farm now carries a drawable outline of that boundary: a closed ring of [lon, lat] pairs.
+    const withOutline = await withTenant(pool, tenantId, (tx) => getFarm(tx, farmId));
+    expect(withOutline!.outline!.length).toBeGreaterThanOrEqual(4);
+    expect(withOutline!.outline![0]).toEqual(withOutline!.outline!.at(-1));
+    expect(withOutline!.boundary_area_m2).toBeGreaterThan(0);
     // Running again is a no-op.
     expect(((await gisValidationHandler(pool)({ tenantId, farmId, boundaryVersionId: b.id }, ctx)) as { status: string }).status).toBe("valid");
   });

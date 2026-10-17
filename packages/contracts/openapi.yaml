@@ -1117,6 +1117,11 @@ components:
             - { type: "null" }
         originProvenance: { $ref: "#/components/schemas/ProvenanceLabel" }
         currentBoundaryVersionId: { type: [string, "null"], format: uuid }
+        outline:
+          description: Simplified outer ring of the current boundary as [lon, lat] pairs, for drawing small outlines. Not for measurement.
+          type: [array, "null"]
+          items: { type: array, items: { type: number }, minItems: 2, maxItems: 2 }
+        boundaryAreaM2: { type: [number, "null"], description: Geodesic area of the current boundary in m² (estimate from the submitted shape). }
         archivedAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
 

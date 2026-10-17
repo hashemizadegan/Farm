@@ -28,6 +28,10 @@
   --mf-sidebar-text: #e6efe8;
   --mf-sidebar-muted: #a9c0b0;
   --mf-sidebar-active: #2c5a3f;
+  /* Surveyor's marker yellow: vertices, the active place, one highlight at a time. Never text on light. */
+  --mf-marker: #e2b33c;
+  --mf-plot-ink: #24543a;
+  --mf-grid: rgb(36 84 58 / 0.09);
   --mf-radius: 6px;
   --mf-radius-lg: 10px;
   --mf-space: 1rem;
@@ -62,6 +66,9 @@
     --mf-sidebar-text: #e6efe8;
     --mf-sidebar-muted: #9fb6a6;
     --mf-sidebar-active: #1f3d2b;
+    --mf-marker: #f0c75a;
+    --mf-plot-ink: #8fd1a7;
+    --mf-grid: rgb(143 209 167 / 0.08);
     color-scheme: dark;
   }
 }
@@ -84,8 +91,8 @@ h1,
 h2,
 h3 {
   font-family: var(--mf-font-display);
-  line-height: 1.2;
-  letter-spacing: -0.01em;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
 }
 h1 {
   font-size: clamp(1.6rem, 1.2rem + 1.2vw, 2.1rem);

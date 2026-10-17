@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button, ErrorSummary, TextField, useAnnounce } from "@metafarm/ui";
 import { api, unwrap } from "@/lib/api";
@@ -9,7 +10,8 @@ import { useTenant } from "@/lib/tenant";
  * them its owner; they can invite others later. If the operator disabled
  * self-service, the API says so and the message is shown as-is.
  */
-export function CreateWorkspace() {
+export function CreateWorkspace({ intro = true, redirectTo }: { intro?: boolean; redirectTo?: string } = {}) {
+  const router = useRouter();
   const { reloadMe, setTenantId } = useTenant();
   const announce = useAnnounce();
   const [name, setName] = useState("");
@@ -30,6 +32,7 @@ export function CreateWorkspace() {
       setTenantId(created.tenantId);
       announce(`Workspace ${created.name} created.`);
       reloadMe();
+      if (redirectTo) router.push(redirectTo);
     } catch (err) {
       setErrors([{ message: err instanceof Error ? err.message : "Could not create the workspace." }]);
       requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-error-summary]")?.focus());
@@ -40,11 +43,15 @@ export function CreateWorkspace() {
 
   return (
     <section aria-labelledby="create-workspace-heading">
-      <h2 id="create-workspace-heading">Create your workspace</h2>
-      <p>
-        Your account is not part of a workspace yet. A workspace holds your farm projects and the people you work with. You
-        will be its owner.
-      </p>
+      <h2 id="create-workspace-heading" className={intro ? undefined : "mf-visually-hidden"}>
+        Create your workspace
+      </h2>
+      {intro && (
+        <p>
+          Your account is not part of a workspace yet. A workspace holds your farm projects and the people you work with.
+          You will be its owner. If someone invited you, open their invitation link instead.
+        </p>
+      )}
       <ErrorSummary errors={errors} />
       <form onSubmit={onSubmit} noValidate>
         <TextField
