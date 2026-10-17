@@ -142,6 +142,20 @@ jobs:
         with: { node-version: "${{ env.NODE_VERSION }}", cache: "${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}" }
       - run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install --no-frozen-lockfile; fi
       - run: pnpm build
+      - name: Smoke-test the bundled services (they must load and reach config validation)
+        # With no configuration each service should stop with its own config error, which
+        # proves every bundled module (including CommonJS dependencies) loads under Node.
+        run: |
+          set -u
+          check() {
+            out=$(env -i PATH="$PATH" node "$1" 2>&1 || true)
+            echo "$out" | grep -q "$2" || { echo "::error::$1 did not reach config validation"; echo "$out" | head -40; exit 1; }
+            echo "ok: $1"
+          }
+          check apps/api/dist/main.js "Invalid environment configuration"
+          check apps/api/dist/migrate.js "DATABASE_URL is required"
+          check apps/worker/dist/main.js "Invalid environment configuration"
+          check apps/scheduler/dist/main.js "Invalid environment configuration"
 
   e2e:
     name: Playwright
