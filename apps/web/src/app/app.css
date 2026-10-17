@@ -512,3 +512,47 @@ fieldset {
   color: var(--mf-text);
   font: inherit;
 }
+
+/* File uploader */
+.uploader {
+  margin: 0 0 1.25rem;
+  padding: 1rem;
+  border: 2px dashed var(--mf-line);
+  border-radius: var(--mf-radius);
+  background: var(--mf-sunken);
+}
+.uploader__label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.uploader__input {
+  display: block;
+  margin-top: 0.5rem;
+  min-height: 44px;
+  max-width: 100%;
+}
+.uploader__status {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+.uploader__status li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+.uploader__name {
+  overflow-wrap: anywhere;
+}
+.uploader__status [data-state="done"] .uploader__state {
+  color: var(--mf-ok, var(--mf-primary));
+}
+.uploader__status [data-state="error"] .uploader__state {
+  color: var(--mf-danger, #a3261c);
+  font-weight: 600;
+}

@@ -13,6 +13,7 @@ const TABS = [
   ["/observations", "Observations"],
   ["/alerts", "Alerts"],
   ["/scene", "3D scene"],
+  ["/files", "Files"],
   ["/settings", "Settings"],
 ] as const;
 
