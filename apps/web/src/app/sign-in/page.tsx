@@ -30,12 +30,15 @@ export default function SignInPage() {
 
 // An illustrative field, not real data: its outer edge is drawn once, corner by corner, then the parcels settle in.
 const FIELD: [number, number][] = [
-  [42, 74],
-  [208, 40],
-  [350, 90],
-  [366, 212],
-  [236, 262],
-  [68, 238],
+  [38, 92],
+  [176, 46],
+  [262, 58],
+  [270, 104],
+  [352, 116],
+  [368, 206],
+  [292, 252],
+  [150, 268],
+  [62, 222],
 ];
 
 function SurveyDrawing() {
@@ -49,9 +52,9 @@ function SurveyDrawing() {
       </defs>
       <path className="survey__fill" d={d} />
       <g className="survey__parcels" clipPath="url(#field-clip)">
-        <path d="M222 20 L240 290" />
-        <path d="M20 160 L380 148" />
-        <path d="M120 20 L132 290" />
+        <path d="M196 20 L214 290" />
+        <path d="M20 168 L380 150" />
+        <path d="M110 20 L118 290" />
       </g>
       <path className="survey__edge" d={d} pathLength={1} />
       {FIELD.map(([x, y], i) => (

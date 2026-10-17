@@ -155,6 +155,7 @@ a {
   cursor: pointer;
 }
 .mf-button {
+  position: relative; /* contains its visually hidden label text */
   display: inline-flex;
   align-items: center;
   justify-content: center;
