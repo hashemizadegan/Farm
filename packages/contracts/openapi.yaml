@@ -83,6 +83,39 @@ paths:
               schema: { $ref: "#/components/schemas/Me" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/me/workspaces:
+    post:
+      tags: [identity]
+      summary: Create a workspace and become its owner (self-service; may be disabled by the operator)
+      operationId: createWorkspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tenantId, slug, name, role]
+                properties:
+                  tenantId: { type: string, format: uuid }
+                  slug: { type: string }
+                  name: { type: string }
+                  role: { $ref: "#/components/schemas/Role" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+
   /v1/tenants/{tenantId}/farms:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     get:

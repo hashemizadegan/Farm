@@ -54,6 +54,11 @@ export async function listUserTenants(pool: Pool, userId: string) {
   return r.rows;
 }
 
+export async function countOwnedTenants(tx: SystemTx, userId: string): Promise<number> {
+  const r = await tx.query<{ n: string }>(`SELECT count(*)::text AS n FROM memberships WHERE user_id = $1 AND role = 'owner'`, [userId]);
+  return Number(r.rows[0]!.n);
+}
+
 export async function createTenantWithOwner(tx: SystemTx, input: { slug: string; name: string; ownerUserId: string }) {
   const t = await tx.query<{ id: string }>(`INSERT INTO tenants (slug, name) VALUES ($1, $2) RETURNING id`, [
     input.slug,

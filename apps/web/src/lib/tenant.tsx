@@ -10,6 +10,8 @@ interface TenantState {
   signedIn: boolean;
   loading: boolean;
   error: Error | undefined;
+  /** Re-fetch /v1/me, e.g. after creating a workspace. */
+  reloadMe: () => void;
 }
 
 const TenantContext = createContext<TenantState | null>(null);
@@ -42,7 +44,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TenantContext.Provider value={{ me: me.data, tenantId, setTenantId, signedIn: !!token, loading: me.loading, error: me.error }}>
+    <TenantContext.Provider value={{ me: me.data, tenantId, setTenantId, signedIn: !!token, loading: me.loading, error: me.error, reloadMe: me.reload }}>
       {children}
     </TenantContext.Provider>
   );

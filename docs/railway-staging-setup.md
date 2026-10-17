@@ -116,16 +116,7 @@ If you later move to a bucket that supports CORS (AWS S3, Cloudflare R2), switch
 1. Deploy `postgres`, `redis`, `uploads`, then `api` (its pre-deploy step runs the migrations), then `worker`, `scheduler`, `web`.
 2. `https://<api-domain>/readyz` should return `{"status":"ok", ...}` with `database`, `queue` and `storage` all `ok`.
 3. Open `https://<web-domain>/sign-in` → **Continue to sign in** → Auth0 → you return to `/farms`.
-4. Your account has no workspace yet. Create one (until a sign-up flow exists) by running against the staging database, replacing the subject with your Auth0 user id (shown in Auth0 → User Management → Users, e.g. `auth0|abc123`) after you have signed in once:
-
-   ```sql
-   WITH t AS (INSERT INTO tenants (slug, name) VALUES ('my-org', 'My Organisation') RETURNING id)
-   INSERT INTO memberships (tenant_id, user_id, role)
-   SELECT t.id, u.id, 'owner' FROM t, users u
-    WHERE u.oidc_issuer = 'https://<your-tenant>.us.auth0.com' AND u.oidc_subject = 'auth0|abc123';
-   ```
-
-   Use Railway's database connect panel or `railway connect postgres`.
+4. Your account has no workspace yet, so the app shows **Create your workspace**. Enter a name; you become its owner. (Set `SELF_SERVE_WORKSPACES=false` on `api` to turn this off and create workspaces yourself; `MAX_OWNED_WORKSPACES`, default 3, caps how many one person can own.)
 5. Create a farm, submit a boundary, confirm it becomes **Valid** (proves the worker, Redis and PostGIS work), save a plan and open the 3D scene.
 6. Upload a test evidence file to confirm the bucket and CORS.
 

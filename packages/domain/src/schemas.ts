@@ -76,6 +76,24 @@ export const createObservationSchema = z.object({
 
 export const ackAlertSchema = z.object({ note: z.string().max(1_000).optional() });
 
+export const createWorkspaceSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+});
+export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
+
+/** URL-safe slug from a workspace name plus a random suffix (names need not be unique). */
+export function workspaceSlug(name: string, suffix: string): string {
+  const base = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+  return `${base || "workspace"}-${suffix}`;
+}
+
 export const createUploadSchema = z.object({
   filename: z.string().trim().min(1).max(200),
   contentType: z.enum([

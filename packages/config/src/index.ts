@@ -95,6 +95,10 @@ export const apiEnvSchema = z
     RATE_LIMIT_WINDOW: z.string().default("1 minute"),
     TRUST_PROXY: bool.default("true"),
     WEBHOOK_SIGNING_SECRETS: csv.default(""),
+    /** Let a signed-in user with no workspace create one and become its owner. */
+    SELF_SERVE_WORKSPACES: bool.default("true"),
+    /** Cap on workspaces one user may own through self-service (abuse guard). */
+    MAX_OWNED_WORKSPACES: z.coerce.number().int().min(1).max(100).default(3),
     WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(15_000),
   })

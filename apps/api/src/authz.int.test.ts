@@ -236,6 +236,46 @@ d("API authorization", () => {
     expect(r.statusCode).toBe(404);
   });
 
+  it("lets a signed-in user create a workspace up to the configured cap", async () => {
+    const { app: wsApp } = await buildTestApp({ pool, env: { MAX_OWNED_WORKSPACES: "2" } });
+    const newbie = { authorization: `Bearer ${await tokenFor(`newbie-${sfx}`)}` };
+    try {
+      const empty = await wsApp.inject({ method: "GET", url: "/v1/me", headers: newbie });
+      expect(empty.json().tenants).toEqual([]);
+
+      const first = await wsApp.inject({ method: "POST", url: "/v1/me/workspaces", headers: newbie, payload: { name: "Ferme du Lac" } });
+      expect(first.statusCode).toBe(201);
+      expect(first.json().slug).toMatch(/^ferme-du-lac-[0-9a-f]{8}$/);
+
+      const me = await wsApp.inject({ method: "GET", url: "/v1/me", headers: newbie });
+      expect(me.json().tenants).toEqual([expect.objectContaining({ tenantId: first.json().tenantId, role: "owner" })]);
+
+      const farms = await wsApp.inject({ method: "GET", url: `/v1/tenants/${first.json().tenantId}/farms`, headers: newbie });
+      expect(farms.statusCode).toBe(200);
+
+      expect((await wsApp.inject({ method: "POST", url: "/v1/me/workspaces", headers: newbie, payload: { name: "Second" } })).statusCode).toBe(201);
+      const third = await wsApp.inject({ method: "POST", url: "/v1/me/workspaces", headers: newbie, payload: { name: "Third" } });
+      expect(third.statusCode).toBe(409);
+
+      const blank = await wsApp.inject({ method: "POST", url: "/v1/me/workspaces", headers: newbie, payload: { name: "  " } });
+      expect(blank.statusCode).toBe(400);
+    } finally {
+      await wsApp.close();
+    }
+  });
+
+  it("refuses self-service workspaces when disabled, and requires sign-in", async () => {
+    const { app: offApp } = await buildTestApp({ pool, env: { SELF_SERVE_WORKSPACES: "false" } });
+    try {
+      const off = await offApp.inject({ method: "POST", url: "/v1/me/workspaces", headers: await auth("viewer"), payload: { name: "X" } });
+      expect(off.statusCode).toBe(403);
+      const anon = await offApp.inject({ method: "POST", url: "/v1/me/workspaces", payload: { name: "X" } });
+      expect(anon.statusCode).toBe(401);
+    } finally {
+      await offApp.close();
+    }
+  });
+
   it("restricts audit events to admins and owners", async () => {
     const viewer = await app.inject({ method: "GET", url: `/v1/tenants/${tenantId}/audit-events`, headers: await auth("viewer") });
     expect(viewer.statusCode).toBe(403);

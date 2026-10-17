@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import {
   addVerificationEvidence,
   boundaryHashExists,
+  countOwnedTenants,
+  createTenantWithOwner,
   createFarm,
   getBoundaryVersion,
   getFarm,
@@ -10,11 +12,15 @@ import {
   listFarms,
   listUserTenants,
   overlappingBoundaries,
+  withSystem,
+  writeSystemAudit,
   type TenantTx,
 } from "@metafarm/db";
 import {
   QUEUES,
   createFarmSchema,
+  createWorkspaceSchema,
+  workspaceSlug,
   paginationSchema,
   submitBoundarySchema,
   uuid,
@@ -23,6 +29,7 @@ import {
   DEFAULT_GEOMETRY_LIMITS,
 } from "@metafarm/domain";
 import { geometryHash } from "@metafarm/domain/server";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { HttpError, notFound, parse } from "../lib/http";
 import { toBoundary, toFarm } from "../lib/mappers";
@@ -38,6 +45,40 @@ export async function farmRoutes(app: FastifyInstance) {
       displayName: req.user!.displayName,
       tenants: tenants.map((t) => ({ tenantId: t.tenant_id, slug: t.slug, name: t.name, role: t.role })),
     };
+  });
+
+  /**
+   * Self-service: a signed-in user creates a workspace and becomes its owner.
+   * Disabled with SELF_SERVE_WORKSPACES=false; capped by MAX_OWNED_WORKSPACES.
+   */
+  app.post("/v1/me/workspaces", async (req, reply) => {
+    await app.authenticate(req);
+    const { env } = app.deps;
+    if (!env.SELF_SERVE_WORKSPACES) {
+      throw new HttpError(403, "self_serve_disabled", "workspaces are created by an administrator on this deployment");
+    }
+    const body = parse(createWorkspaceSchema, req.body);
+    const userId = req.user!.id;
+    const slug = workspaceSlug(body.name, randomBytes(4).toString("hex"));
+
+    const tenantId = await withSystem(app.deps.pool, async (tx) => {
+      // Serialise per user so two parallel requests cannot both pass the cap.
+      await tx.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`workspace-create:${userId}`]);
+      if ((await countOwnedTenants(tx, userId)) >= env.MAX_OWNED_WORKSPACES) {
+        throw new HttpError(409, "workspace_limit", `you already own ${env.MAX_OWNED_WORKSPACES} workspaces`);
+      }
+      return createTenantWithOwner(tx, { slug, name: body.name, ownerUserId: userId });
+    });
+
+    await writeSystemAudit(app.deps.pool, tenantId, {
+      actorUserId: userId,
+      actorType: "user",
+      action: "tenant.created",
+      targetType: "tenant",
+      targetId: tenantId,
+      requestId: req.id,
+    });
+    return reply.status(201).send({ tenantId, slug, name: body.name, role: "owner" });
   });
 
   app.get("/v1/tenants/:tenantId/farms", async (req) => {
