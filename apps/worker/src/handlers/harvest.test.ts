@@ -66,7 +66,8 @@ function chain(opts: { wait?: "timeout" | "reverted" } = {}) {
     entryOf: async (id) => entries.get(id) ?? { recordHash: "0x" + "0".repeat(64), recordedAt: 0n, voidedAt: 0n },
     record: async (id, hash) => {
       sent.push(`record:${id}`);
-      if (opts.wait !== "reverted") entries.set(id, { recordHash: hash, recordedAt: 1n, voidedAt: 0n });
+      // A slow or reverted transaction has not changed the registry (yet).
+      if (!opts.wait) entries.set(id, { recordHash: hash, recordedAt: 1n, voidedAt: 0n });
       return `0x${(++n).toString(16).padStart(64, "0")}` as Hex;
     },
     voidBatch: async (id) => {
