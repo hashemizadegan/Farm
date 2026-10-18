@@ -32,6 +32,27 @@ tested against simulated nodes. Not wired into the API or worker yet; nothing is
 
 Financial tables block deleting their workspace: those records must be retained.
 
+## Parties, compliance and orders (migration `0012_rwa_orders`)
+
+- **`parties`** are investors (people or organisations) with a jurisdiction and a KYC status taken
+  from the KYC provider's case (verified needs the provider reference; documents stay with the
+  provider). **`party_wallets`** ties each address to one party.
+- **`compliance_screenings`** is the append-only log of sanctions screenings of parties and wallets,
+  each with the provider and its reference. There are no built-in lists.
+- **The gate** (`complianceDecision`) allows an order only with verified, unexpired KYC, a known
+  jurisdiction that the operator has not excluded, and a clear screening of the party and of every
+  wallet involved, each younger than the policy's maximum age. Anything missing, stale, under review
+  or blocked stops it, with reasons.
+- **`rwa_orders`** say what should happen: a subscription is paid on TRON and then issued on Solana;
+  a redemption is burned on Solana and then paid out on TRON; a distribution is paid out only. Every
+  intent and reconciliation case now belongs to an order (foreign key on `reconciliation_id`).
+- **Sequencing** (`secondLegMayStart`): the second leg starts only after the first completed exactly
+  once for exactly the ordered amount, and never while another second leg is under way.
+- **Reconciliation** (`reconcileOrder`) reports duplicates, amount mismatches (observed on chain
+  when known), a second leg that ran without the first (always), a second leg overdue past the SLA,
+  chain transactions confirmed for abandoned intents, and orders that sat idle. Each becomes at most
+  one open `reconciliation_cases` row per kind.
+
 ## Operation lifecycle
 
 ```
@@ -90,7 +111,8 @@ requested → policy_approved → prepared → submitted → observed → confir
 ## Next
 
 1. Bubblegum minting and transfers (tree creation, `mintV1`).
-2. Reconciliation and a `CompliancePort` implementation from a real KYC/sanctions provider.
+2. A `CompliancePort` adapter for the chosen KYC/sanctions provider, and the order workflow in the
+   API and worker (gate → first leg → second leg → reconciliation sweep).
 3. MQTT-over-TLS consumer in the worker writing to `iot_telemetry`.
 4. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
 
