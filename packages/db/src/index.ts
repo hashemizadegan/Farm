@@ -16,3 +16,4 @@ export * from "./repositories/equipment";
 export * from "./repositories/sensors";
 export * from "./repositories/notifications";
 export * from "./repositories/reports";
+export * from "./repositories/rwa";

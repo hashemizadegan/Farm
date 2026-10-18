@@ -16,9 +16,17 @@ import {
   REPRESENTATION_STATUSES,
   SETTLEMENT_PURPOSES,
   TRANSITIONS,
+  PARTY_KINDS,
+  KYC_STATUSES,
+  SCREENING_SUBJECTS,
+  SCREENING_OUTCOMES,
+  ORDER_KINDS,
+  ORDER_STATUSES,
 } from "@metafarm/domain";
 
-const sql = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../migrations/0011_rwa_rails.up.sql"), "utf8");
+const read = (name: string) => readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), `../migrations/${name}`), "utf8");
+const FILES = ["0011_rwa_rails.up.sql", "0012_rwa_orders.up.sql"];
+const sql = FILES.map(read).join("\n");
 
 /** The values of `CHECK (<column> IN (...))` inside one CREATE TABLE. */
 function checkList(table: string, column: string): string[] {
@@ -43,6 +51,13 @@ describe("RWA schema matches the domain", () => {
     ["chain_operations", "state", OPERATION_STATES],
     ["reconciliation_cases", "kind", RECONCILIATION_KINDS],
     ["reconciliation_cases", "status", RECONCILIATION_STATUSES],
+    ["parties", "kind", PARTY_KINDS],
+    ["parties", "kyc_status", KYC_STATUSES],
+    ["party_wallets", "network", NETWORKS],
+    ["compliance_screenings", "subject", SCREENING_SUBJECTS],
+    ["compliance_screenings", "outcome", SCREENING_OUTCOMES],
+    ["rwa_orders", "kind", ORDER_KINDS],
+    ["rwa_orders", "status", ORDER_STATUSES],
   ] as const)("%s.%s", (table, column, values) => {
     expect(checkList(table, column)).toEqual([...values]);
   });
@@ -53,9 +68,10 @@ describe("RWA schema matches the domain", () => {
     expect(pairs).toEqual(TRANSITIONS.map(([a, b]) => [a, b]));
   });
 
-  it("puts every new table behind row-level security", () => {
-    const tables = [...sql.matchAll(/^CREATE TABLE (\w+)/gm)].map((m) => m[1]);
-    const rls = /ARRAY\[([^\]]+)\]/.exec(sql.slice(sql.indexOf("Row-level security")))![1]!;
+  it.each(FILES)("%s puts every new table behind row-level security", (file) => {
+    const text = read(file);
+    const tables = [...text.matchAll(/^CREATE TABLE (\w+)/gm)].map((m) => m[1]);
+    const rls = /ARRAY\[([^\]]+)\]/.exec(text.slice(text.indexOf("ENABLE ROW LEVEL SECURITY") - 400))![1]!;
     for (const t of tables) expect(rls).toContain(`'${t}'`);
   });
 });

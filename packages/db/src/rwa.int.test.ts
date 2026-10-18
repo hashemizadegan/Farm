@@ -18,6 +18,7 @@ d("RWA rails schema", () => {
   let other: string;
   let farm: string;
   let representation: string;
+  let reconciliation: string;
 
   const inA = <T>(fn: (tx: TenantTx) => Promise<T>) => withTenant(pool, tenantA, fn);
   const newIntent = (tx: TenantTx, o: { requestedBy?: string; approvedBy?: string } = {}) =>
@@ -25,7 +26,7 @@ d("RWA rails schema", () => {
       .query<{ id: string }>(
         `INSERT INTO issuance_intents (tenant_id, representation_id, action, amount, holder_address, reconciliation_id, idempotency_key, requested_by, approved_by)
          VALUES ($1, $2, 'mint', 1000, 'HoLdEr1111111111111111111111111111111111111', $3, $4, $5, $6) RETURNING id`,
-        [tx.tenantId, representation, randomUUID(), randomUUID(), o.requestedBy ?? user, o.approvedBy ?? null],
+        [tx.tenantId, representation, reconciliation, randomUUID(), o.requestedBy ?? user, o.approvedBy ?? null],
       )
       .then((r) => r.rows[0]!.id);
   const newOp = (tx: TenantTx, intentId: string, attempt = 1) =>
@@ -61,6 +62,16 @@ d("RWA rails schema", () => {
           [tx.tenantId, asset],
         )
       ).rows[0]!.id;
+    });
+    reconciliation = await inA(async (tx) => {
+      const party = (await tx.query<{ id: string }>(`INSERT INTO parties (tenant_id, kind, display_name) VALUES ($1, 'person', 'Investor') RETURNING id`, [tx.tenantId])).rows[0]!.id;
+      return (
+        await tx.query<{ reconciliation_id: string }>(
+          `INSERT INTO rwa_orders (tenant_id, kind, party_id, representation_id, share_amount, settlement_network, token_contract, settlement_amount)
+           VALUES ($1, 'subscription', $2, $3, 1000, 'tron-nile', 'TXYZ', 50) RETURNING reconciliation_id`,
+          [tx.tenantId, party, representation],
+        )
+      ).rows[0]!.reconciliation_id;
     });
   });
 
