@@ -17,6 +17,7 @@ const TABS = [
   ["/boundary", "boundary"],
   ["/scenarios", "scenarios"],
   ["/observations", "observations"],
+  ["/sensors", "sensors"],
   ["/alerts", "alerts"],
   ["/scene", "scene"],
   ["/files", "files"],

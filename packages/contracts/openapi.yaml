@@ -38,6 +38,7 @@ tags:
   - name: inventory
   - name: seasons
   - name: equipment
+  - name: sensors
   - name: media
   - name: team
   - name: audit
@@ -1423,6 +1424,174 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/tenants/{tenantId}/farms/{farmId}/sensors:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [sensors]
+      summary: Sensors with their state and latest readings
+      operationId: listSensors
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: 
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Sensor" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [sensors]
+      summary: Register a sensor (sensor:manage); returns its device token once
+      operationId: createSensor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SensorInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SensorWithToken" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/sensors/{sensorId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: sensorId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [sensors]
+      summary: Rename, move, disable or change the silence allowance (sensor:manage)
+      operationId: updateSensor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SensorUpdate" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sensor" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/sensors/{sensorId}/rotate:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: sensorId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [sensors]
+      summary: Issue a new device token; the old one stops working (sensor:manage)
+      operationId: rotateSensorToken
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SensorWithToken" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/ingest/readings:
+    post:
+      tags: [sensors]
+      security: []
+      summary: Readings from a device (Authorization "Sensor <token>")
+      description: |
+        Devices send up to 200 numeric readings per request over HTTPS, with
+        `Authorization: Sensor <token>`. Readings are normalised like any other
+        observation and labelled `sensor-reported`.
+      operationId: ingestReadings
+      parameters:
+        - { name: authorization, in: header, required: true, schema: { type: string, pattern: "^Sensor mfs_" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IngestReadings" }
+      responses:
+        "202":
+          description: Accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/alert-rules:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [alerts]
+      summary: Alert rules of a farm
+      operationId: listAlertRules
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: 
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AlertRule" } }
+    post:
+      tags: [alerts]
+      summary: Add an alert rule (sensor:manage)
+      operationId: createAlertRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AlertRuleInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlertRule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/alert-rules/{ruleId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [alerts]
+      summary: Turn an alert rule on or off (sensor:manage)
+      operationId: updateAlertRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlertRule" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/tenants/{tenantId}/uploads:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     post:
@@ -2627,6 +2796,116 @@ components:
               cost: { type: [string, "null"] }
               currency: { type: [string, "null"] }
               recordedByName: { type: [string, "null"] }
+
+    SensorKind:
+      type: string
+      enum: [soil-moisture, weather-station, temperature, rain-gauge, humidity, multi, other]
+
+    SensorInput:
+      type: object
+      additionalProperties: false
+      required: [name, kind]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        kind: { $ref: "#/components/schemas/SensorKind" }
+        parcelLabel: { type: [string, "null"], maxLength: 80 }
+        location:
+          oneOf:
+            - { $ref: "#/components/schemas/LonLat" }
+            - { type: "null" }
+        silentAfterMinutes: { type: integer, minimum: 5, maximum: 10080, default: 180 }
+
+    SensorUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        parcelLabel: { type: [string, "null"], maxLength: 80 }
+        status: { type: string, enum: [active, disabled] }
+        silentAfterMinutes: { type: integer, minimum: 5, maximum: 10080 }
+
+    Sensor:
+      type: object
+      required: [id, farmId, name, kind, status, state, silentAfterMinutes, latest, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: string, format: uuid }
+        name: { type: string }
+        kind: { type: string }
+        parcelLabel: { type: [string, "null"] }
+        location:
+          oneOf:
+            - { $ref: "#/components/schemas/LonLat" }
+            - { type: "null" }
+        status: { type: string, enum: [active, disabled] }
+        state: { type: string, enum: [disabled, waiting, online, silent] }
+        lastSeenAt: { type: [string, "null"], format: date-time }
+        silentAfterMinutes: { type: integer }
+        credentialRotatedAt: { type: [string, "null"], format: date-time }
+        latest:
+          type: array
+          items:
+            type: object
+            required: [metric, value, unit, observedAt]
+            properties:
+              metric: { type: string }
+              value: { type: [number, "null"] }
+              unit: { type: string }
+              observedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    SensorWithToken:
+      type: object
+      required: [sensor, token]
+      properties:
+        sensor: { $ref: "#/components/schemas/Sensor" }
+        token: { type: string, description: "Device token; shown only in this response" }
+
+    IngestReadings:
+      type: object
+      additionalProperties: false
+      required: [readings]
+      properties:
+        readings:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [metric, value, unit, observedAt]
+            properties:
+              metric: { type: string, enum: [soil_moisture, air_temperature, soil_temperature, rainfall, relative_humidity, ndvi] }
+              value: { type: number }
+              unit: { type: string, maxLength: 32 }
+              observedAt: { type: string, format: date-time }
+
+    AlertRuleInput:
+      type: object
+      additionalProperties: false
+      required: [metric, comparator, threshold, severity]
+      properties:
+        metric: { type: string, enum: [soil_moisture, air_temperature, soil_temperature, rainfall, relative_humidity, ndvi] }
+        comparator: { type: string, enum: [lt, lte, gt, gte] }
+        threshold: { type: number, description: "In the metric's canonical unit" }
+        consecutive: { type: integer, minimum: 1, maximum: 50, default: 1 }
+        severity: { type: string, enum: [info, warning, critical] }
+        windowMinutes: { type: integer, minimum: 1, maximum: 43200, default: 60 }
+
+    AlertRule:
+      type: object
+      required: [id, metric, comparator, threshold, consecutive, severity, windowMinutes, enabled, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        metric: { type: string }
+        comparator: { type: string, enum: [lt, lte, gt, gte] }
+        threshold: { type: number }
+        consecutive: { type: integer }
+        severity: { type: string, enum: [info, warning, critical] }
+        windowMinutes: { type: integer }
+        enabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
 
     UploadRequest:
       type: object

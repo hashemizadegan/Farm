@@ -129,13 +129,13 @@ export async function listEnabledRules(tx: TenantTx, farmId: string): Promise<Al
 /** Insert an alert once per dedupe key. Returns whether a new alert was created. */
 export async function insertAlertOnce(
   tx: TenantTx,
-  a: { farmId: string; ruleId: string; severity: string; message: string; dedupeKey: string; evidence: string[] },
+  a: { farmId: string; ruleId?: string | null; sensorId?: string | null; severity: string; message: string; dedupeKey: string; evidence: string[] },
 ): Promise<boolean> {
   const r = await tx.query(
-    `INSERT INTO alerts (tenant_id, farm_id, rule_id, severity, message, dedupe_key, evidence_observation_ids)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO alerts (tenant_id, farm_id, rule_id, sensor_id, severity, message, dedupe_key, evidence_observation_ids)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (tenant_id, dedupe_key) DO NOTHING`,
-    [tx.tenantId, a.farmId, a.ruleId, a.severity, a.message, a.dedupeKey, a.evidence],
+    [tx.tenantId, a.farmId, a.ruleId ?? null, a.sensorId ?? null, a.severity, a.message, a.dedupeKey, a.evidence],
   );
   return (r.rowCount ?? 0) > 0;
 }
