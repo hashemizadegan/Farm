@@ -175,6 +175,6 @@ shutdown.register({ name: "health", close: () => new Promise<void>((r) => health
 // Telemetry flushes what it holds before the database closes.
 if (telemetry) shutdown.register({ name: "telemetry", close: () => telemetry.close() });
 // The engine finishes its current step before the database closes.
-if (rwaEngine) shutdown.register({ name: "rwa-engine", close: () => rwaEngine.close() });
+shutdown.register({ name: "rwa-engine", close: () => rwaEngine.close() });
 
 logger.info({ queues: Object.keys(processors), concurrency: env.WORKER_CONCURRENCY }, "worker started");

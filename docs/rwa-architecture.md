@@ -94,12 +94,13 @@ Financial tables block deleting their workspace: those records must be retained.
   `RWA_TRON_TREASURY` to the investor's screened TRON wallet, driven through the same operation
   lifecycle (TRON finality = solidified block). A leg that failed or was refused moves the order
   to `exception` for an operator; nothing is retried automatically after a definitive failure.
-- The TRON rail runs only when `RWA_TRON_API_URL`, `RWA_TRON_SIGNER_PRIVATE_KEY` and
+- The TRON rail runs only when `RWA_TRON_API_URL`, a TRON signer (`RWA_TRON_KMS_KEY` or, on testnets, `RWA_TRON_SIGNER_PRIVATE_KEY`) and
   `RWA_TRON_TREASURY` are all set and the key's address is the treasury; fees are capped by
   `RWA_TRON_MAX_FEE_LIMIT_SUN`.
-- **Signers**: devnet uses `RWA_SOLANA_SIGNER_SECRET` (a platform secret the operator sets),
-  refused whenever mainnets are enabled. Production needs a KMS/HSM signer behind the same
-  `Ed25519Signer` port.
+- **Signers**: Google Cloud KMS (`RWA_SOLANA_KMS_KEY`, Ed25519; `RWA_TRON_KMS_KEY`, secp256k1 in
+  an HSM) behind the same `Ed25519Signer` and `TronSigner` ports; the only option on mainnets.
+  Devnet and testnets may instead use `RWA_SOLANA_SIGNER_SECRET` / `RWA_TRON_SIGNER_PRIVATE_KEY`.
+  Setup: [kms-setup.md](kms-setup.md).
 
 ## Operation lifecycle
 
@@ -170,8 +171,7 @@ requested → policy_approved → prepared → submitted → observed → confir
 
 1. Trees and compressed NFTs in the database, engine and API: plan and create a tree per tenant,
    mint one leaf per verified tree, parcel or animal, and confirm it through DAS.
-2. A KMS/HSM signer (Ed25519 and secp256k1) and a `CompliancePort` adapter for a KYC/sanctions
-   provider; until then mainnets stay locked.
+2. A `CompliancePort` adapter for a KYC/sanctions provider; until then mainnets stay locked.
 3. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
 
-Keys for minting and settlement belong in a KMS/HSM set up by the operator; the app never stores them.
+Keys for minting and settlement live in Cloud KMS, set up by the operator; the app never holds them.

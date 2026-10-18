@@ -20,3 +20,4 @@ export * from "./solana/mint-account";
 export * from "./solana/prepare";
 export * from "./solana/bubblegum";
 export * from "./solana/bubblegum-adapter";
+export * from "./gcp-kms";
