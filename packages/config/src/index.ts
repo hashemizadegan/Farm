@@ -131,8 +131,32 @@ export const workerEnvSchema = z
     CHAIN_TX_TIMEOUT_SECONDS: z.coerce.number().int().min(10).max(900).default(120),
     HEALTH_PORT: z.coerce.number().int().min(1).max(65535).default(4100),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(30_000),
+    /** MQTT broker for sensor telemetry (mqtts:// or wss://). Unset: no MQTT consumer. */
+    MQTT_URL: z.string().url().optional(),
+    MQTT_CLIENT_ID: z.string().min(1).max(64).default("metafarm-worker"),
+    MQTT_USERNAME: z.string().min(1).optional(),
+    MQTT_PASSWORD: z.string().min(1).optional(),
+    /** PEM: the broker's CA, and this client's certificate and key for mutual TLS. */
+    MQTT_CA_PEM: z.string().min(1).optional(),
+    MQTT_CLIENT_CERT_PEM: z.string().min(1).optional(),
+    MQTT_CLIENT_KEY_PEM: z.string().min(1).optional(),
+    MQTT_TOPIC_PREFIX: z.string().regex(/^[a-z0-9_-]{1,32}$/).default("metafarm"),
+    MQTT_BATCH_SIZE: z.coerce.number().int().min(1).max(5_000).default(500),
+    MQTT_FLUSH_MS: z.coerce.number().int().min(50).max(60_000).default(1_000),
+    /** Local development only: allow mqtt:// and ws:// without TLS. */
+    MQTT_ALLOW_INSECURE: bool.default("false"),
   })
-  .superRefine(productionGuards);
+  .superRefine(productionGuards)
+  .superRefine((env, ctx) => {
+    if (!env.MQTT_URL) return;
+    const tls = /^(mqtts|wss):\/\//.test(env.MQTT_URL);
+    if (!tls && (!env.MQTT_ALLOW_INSECURE || env.APP_ENV === "production" || env.APP_ENV === "staging")) {
+      ctx.addIssue({ code: "custom", path: ["MQTT_URL"], message: "MQTT must use TLS (mqtts:// or wss://)" });
+    }
+    if (Boolean(env.MQTT_CLIENT_CERT_PEM) !== Boolean(env.MQTT_CLIENT_KEY_PEM)) {
+      ctx.addIssue({ code: "custom", path: ["MQTT_CLIENT_KEY_PEM"], message: "set both the client certificate and key, or neither" });
+    }
+  });
 
 export const schedulerEnvSchema = z
   .object({

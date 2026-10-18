@@ -13,6 +13,7 @@ import { createHarvestRegistryClient } from "./harvest-registry";
 import { imageryIngestionHandler, noImageryProvider } from "./handlers/imagery";
 import { observationNormalizationHandler } from "./handlers/observations";
 import { wrapHandler, type DeadLetterSink, type JobRunStore } from "./runner";
+import { startTelemetryConsumer } from "./telemetry/consumer";
 
 // On Railway the platform assigns PORT; the health server uses it unless HEALTH_PORT is set.
 const env = loadEnv(workerEnvSchema, { ...process.env, HEALTH_PORT: process.env.HEALTH_PORT ?? process.env.PORT });
@@ -140,11 +141,33 @@ const health = startHealthServer({
   ],
 });
 
+// Sensor telemetry over MQTT (TLS), when a broker is configured.
+const telemetry = env.MQTT_URL
+  ? startTelemetryConsumer(
+      {
+        url: env.MQTT_URL,
+        clientId: env.MQTT_CLIENT_ID,
+        username: env.MQTT_USERNAME,
+        password: env.MQTT_PASSWORD,
+        ca: env.MQTT_CA_PEM,
+        cert: env.MQTT_CLIENT_CERT_PEM,
+        key: env.MQTT_CLIENT_KEY_PEM,
+        prefix: env.MQTT_TOPIC_PREFIX,
+        batchSize: env.MQTT_BATCH_SIZE,
+        flushMs: env.MQTT_FLUSH_MS,
+      },
+      pool,
+      logger,
+    )
+  : undefined;
+
 shutdown.register({ name: "postgres", close: () => pool.end() });
 shutdown.register({ name: "redis", close: async () => void (await connection.quit()) });
 shutdown.register({ name: "producers", close: async () => void (await Promise.all([...producers.values(), deadLetterQueue].map((q) => q.close()))) });
 // Workers close first: stop taking new jobs and wait for in-flight ones to finish.
 shutdown.register({ name: "workers", close: async () => void (await Promise.all(workers.map((w) => w.close()))) });
 shutdown.register({ name: "health", close: () => new Promise<void>((r) => health.close(() => r())) });
+// Telemetry flushes what it holds before the database closes.
+if (telemetry) shutdown.register({ name: "telemetry", close: () => telemetry.close() });
 
 logger.info({ queues: Object.keys(processors), concurrency: env.WORKER_CONCURRENCY }, "worker started");
