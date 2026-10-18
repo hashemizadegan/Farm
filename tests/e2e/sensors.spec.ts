@@ -15,11 +15,11 @@ test.describe("live sensors", () => {
     await form.getByLabel("Name").fill("Block 1 probe");
     await form.getByRole("button", { name: "Register sensor" }).click();
 
-    const token = await page.getByLabel("Device token").inputValue();
+    const token = await page.getByRole("textbox", { name: "Device token" }).inputValue();
     expect(token).toMatch(/^mfs_/);
     await expect(page.getByText(/shown only once/)).toBeVisible();
     await page.getByRole("button", { name: "I have saved the token" }).click();
-    await expect(page.getByLabel("Device token")).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Device token" })).toHaveCount(0);
 
     const sent = await request.post(`${API}/v1/ingest/readings`, {
       headers: { authorization: `Sensor ${token}` },
