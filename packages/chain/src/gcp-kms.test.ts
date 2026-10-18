@@ -42,9 +42,8 @@ function fakeKms(t: Tamper = {}) {
     } else {
       const digest = fromBase64(String((body!.digest as { sha256: string }).sha256));
       expect(Number(body!.digestCrc32c)).toBe(crc32c(digest));
-      let sig = secp256k1.sign(digest, k1Secret);
-      if (t.highS) sig = new secp256k1.Signature(sig.r, secp256k1.CURVE.n - sig.s);
-      signature = sig.toDERRawBytes();
+      const sig = secp256k1.sign(digest, k1Secret);
+      signature = (t.highS ? new secp256k1.Signature(sig.r, secp256k1.CURVE.n - sig.s) : sig).toDERRawBytes();
     }
     const crc = crc32c(signature);
     if (corruptions-- > 0) signature = Uint8Array.from(signature, (b, i) => (i === 5 ? b ^ 1 : b));
