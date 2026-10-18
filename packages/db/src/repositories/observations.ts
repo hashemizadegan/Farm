@@ -3,14 +3,23 @@ import type { TenantTx } from "../tenant";
 
 export async function insertRawObservation(
   tx: TenantTx,
-  input: { farmId: string; sensorId?: string; payload: unknown; provenance: ProvenanceLabel; userId?: string },
+  input: { farmId: string; sensorId?: string; payload: unknown; provenance: ProvenanceLabel; userId?: string; clientRequestId?: string },
 ): Promise<{ id: string }> {
   const r = await tx.query<{ id: string }>(
-    `INSERT INTO raw_observations (tenant_id, farm_id, sensor_id, payload, provenance_label, received_by)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6) RETURNING id`,
-    [tx.tenantId, input.farmId, input.sensorId ?? null, JSON.stringify(input.payload), input.provenance, input.userId ?? null],
+    `INSERT INTO raw_observations (tenant_id, farm_id, sensor_id, payload, provenance_label, received_by, client_request_id)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7) RETURNING id`,
+    [tx.tenantId, input.farmId, input.sensorId ?? null, JSON.stringify(input.payload), input.provenance, input.userId ?? null, input.clientRequestId ?? null],
   );
   return r.rows[0]!;
+}
+
+/** An observation already received with this client request id (a resend from an offline queue). */
+export async function findObservationByRequest(tx: TenantTx, clientRequestId: string): Promise<{ id: string; farm_id: string; received_by: string | null } | undefined> {
+  const r = await tx.query<{ id: string; farm_id: string; received_by: string | null }>(
+    `SELECT id, farm_id, received_by FROM raw_observations WHERE tenant_id = $1 AND client_request_id = $2`,
+    [tx.tenantId, clientRequestId],
+  );
+  return r.rows[0];
 }
 
 export async function getRawObservation(tx: TenantTx, id: string) {

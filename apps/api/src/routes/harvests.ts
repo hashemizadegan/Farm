@@ -3,6 +3,7 @@ import {
   getFarm,
   getHarvest,
   findActiveSeason,
+  findHarvestByRequest,
   getHarvestByCode,
   getSeason,
   getTask,
@@ -27,7 +28,7 @@ import {
   type AnchorStatus,
 } from "@metafarm/domain";
 import { z } from "zod";
-import { HttpError, notFound, parse } from "../lib/http";
+import { HttpError, idempotencyKey, keyReused, notFound, parse } from "../lib/http";
 
 const farmParams = z.object({ tenantId: uuid, farmId: uuid });
 const batchParams = farmParams.extend({ batchId: uuid });
@@ -82,9 +83,19 @@ export async function harvestRoutes(app: FastifyInstance) {
     const { tenantId, farmId } = parse(farmParams, req.params);
     const body = parse(createHarvestSchema, req.body);
     const status: AnchorStatus = anchoringConfigured() ? "pending" : "not_configured";
+    const key = idempotencyKey(req);
+    let replay = false;
     const row = await app.inTenant(req, "harvest:record", async (tx) => {
       const farm = await getFarm(tx, farmId);
       if (!farm) throw notFound("farm");
+      if (key) {
+        const seen = await findHarvestByRequest(tx, key);
+        if (seen && (seen.farm_id !== farmId || seen.recorded_by !== req.user!.id)) throw keyReused();
+        if (seen) {
+          replay = true;
+          return seen;
+        }
+      }
       if (farm.archived_at) throw new HttpError(409, "farm_archived", "restore the farm before recording harvests");
       if (body.taskId && !(await getTask(tx, farmId, body.taskId))) throw new HttpError(400, "invalid_task", "the task must belong to this farm");
       let seasonId = body.seasonId ?? null;
@@ -98,7 +109,7 @@ export async function harvestRoutes(app: FastifyInstance) {
         const hash = await harvestRecordHash(record);
         try {
           await tx.query("SAVEPOINT harvest_code");
-          const id = await insertHarvest(tx, farmId, { ...body, code, record, hash, anchorStatus: status, userId: req.user!.id, seasonId });
+          const id = await insertHarvest(tx, farmId, { ...body, code, record, hash, anchorStatus: status, userId: req.user!.id, seasonId, clientRequestId: key });
           await app.audit(req, tx, { action: "harvest.recorded", targetType: "harvest_batch", targetId: id, metadata: { farmId, code, hash } });
           return (await getHarvest(tx, id))!;
         } catch (err) {
@@ -110,6 +121,7 @@ export async function harvestRoutes(app: FastifyInstance) {
         }
       }
     });
+    if (replay) return reply.status(200).send(toHarvest(row));
     if (status === "pending") await app.deps.jobs.enqueue(QUEUES.anchor, { tenantId, batchId: row.id, action: "record", attempt: row.anchor_attempt });
     return reply.status(201).send(toHarvest(row));
   });

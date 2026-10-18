@@ -724,6 +724,8 @@ paths:
       tags: [observations]
       summary: Record an observation (queued for normalisation)
       operationId: createObservation
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       requestBody:
         required: true
         content:
@@ -893,6 +895,8 @@ paths:
       summary: Complete a task
       description: Repeating tasks create their next occurrence, kept on the original rhythm.
       operationId: completeTask
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       requestBody:
         content:
           application/json:
@@ -942,6 +946,8 @@ paths:
         harvest registry is configured, the fingerprint is registered on-chain
         by a background job. The record can never be edited; void it instead.
       operationId: recordHarvest
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       requestBody:
         required: true
         content:
@@ -950,6 +956,11 @@ paths:
       responses:
         "201":
           description: Recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Harvest" }
+        "200":
+          description: Already recorded with this Idempotency-Key (a resend); the original batch
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Harvest" }
@@ -1897,6 +1908,15 @@ components:
       bearerFormat: JWT
 
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        A UUID chosen by the client. Phones working offline queue writes and resend them; a
+        resend with the same key returns the original result instead of recording twice.
+        Reusing a key for a different request is a 409.
+      schema: { type: string, format: uuid }
     TenantId:
       name: tenantId
       in: path

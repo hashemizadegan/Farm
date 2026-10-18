@@ -51,12 +51,12 @@ export async function tenantName(tx: TenantTx): Promise<string> {
 export async function insertHarvest(
   tx: TenantTx,
   farmId: string,
-  input: CreateHarvestInput & { code: string; record: HarvestPublicRecord; hash: string; anchorStatus: AnchorStatus; userId: string; seasonId?: string | null },
+  input: CreateHarvestInput & { code: string; record: HarvestPublicRecord; hash: string; anchorStatus: AnchorStatus; userId: string; seasonId?: string | null; clientRequestId?: string },
 ): Promise<string> {
   const r = await tx.query<{ id: string }>(
     `INSERT INTO harvest_batches (tenant_id, farm_id, code, crop_name, parcel_label, harvested_on, quantity, unit, quality_grade, notes, task_id,
-                                  public_record, record_hash, anchor_status, anchor_attempt, recorded_by, created_at, season_id)
-     VALUES ($1, $2, $3, $4, $5, $6::date, $7::numeric, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17::timestamptz, $18)
+                                  public_record, record_hash, anchor_status, anchor_attempt, recorded_by, created_at, season_id, client_request_id)
+     VALUES ($1, $2, $3, $4, $5, $6::date, $7::numeric, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17::timestamptz, $18, $19)
      RETURNING id`,
     [
       tx.tenantId,
@@ -77,6 +77,7 @@ export async function insertHarvest(
       input.userId,
       input.record.recordedAt,
       input.seasonId ?? null,
+      input.clientRequestId ?? null,
     ],
   );
   return r.rows[0]!.id;
@@ -174,4 +175,10 @@ export async function listHarvestsForExport(
     [tx.tenantId, f.farmId ?? null, f.from ?? null, f.to ?? null, f.limit],
   );
   return r.rows;
+}
+
+/** A harvest already recorded with this client request id (a resend from an offline queue). */
+export async function findHarvestByRequest(tx: TenantTx, clientRequestId: string): Promise<HarvestRow | undefined> {
+  const r = await tx.query<HarvestRow>(`${SELECT} WHERE h.tenant_id = $1 AND h.client_request_id = $2`, [tx.tenantId, clientRequestId]);
+  return r.rows[0];
 }

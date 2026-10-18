@@ -52,6 +52,14 @@ export function useQuery<T>(key: string | null, fn: () => Promise<T>, opts: { po
     };
   }, [key, tick]);
 
+  // Records queued offline reached the server (components/OfflineStatus): refresh.
+  useEffect(() => {
+    if (!key) return;
+    const refresh = () => setTick((t) => t + 1);
+    window.addEventListener("metafarm:synced", refresh);
+    return () => window.removeEventListener("metafarm:synced", refresh);
+  }, [key]);
+
   useEffect(() => {
     if (!key || !opts.pollMs) return;
     const id = setInterval(() => setTick((t) => t + 1), opts.pollMs);

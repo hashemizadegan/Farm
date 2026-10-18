@@ -1070,6 +1070,25 @@ export const en = {
     tooLarge: "That is too many rows for one file. Choose a shorter date range.",
   },
 
+  offline: {
+    region: "Connection and unsent records",
+    offline: "You're offline. You can still complete tasks and record observations and harvests: they are kept on this phone and sent when the connection is back.",
+    waiting: "Saved on this phone",
+    notSent: "Not sent",
+    waitingCount: (n: number) => (n === 1 ? "1 record is waiting to be sent." : `${n} records are waiting to be sent.`),
+    sendNow: "Send now",
+    sent: (n: number) => (n === 1 ? "1 saved record was sent." : `${n} saved records were sent.`),
+    failedCount: (n: number) => (n === 1 ? "1 record was refused and needs your attention" : `${n} records were refused and need your attention`),
+    kinds: { task: "Task completed", observation: "Observation", harvest: "Harvest" },
+    discard: "Discard",
+    savedTask: (title: string) => `${title}: saved on this phone. It will be sent when you're back online.`,
+    savedObservation: "Observation saved on this phone. It will be sent when you're back online.",
+    savedHarvest: "Harvest saved on this phone. Its label code is issued once it reaches the server.",
+    pageTitle: "You're offline",
+    pageBody: "This page hasn't been opened on this phone before, so it isn't available without a connection. Pages you have opened recently still work.",
+    pageLinks: "Open instead",
+  },
+
   farmSettings: {
     title: "Farm settings",
     cannot: "Your role can view this farm but not change its settings.",

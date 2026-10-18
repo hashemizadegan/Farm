@@ -11,8 +11,11 @@
  *    refuses development tokens in staging/production, so this cannot be used
  *    to sign in to a deployed environment.
  *
- * Tokens are kept in sessionStorage (cleared when the tab closes). Any script on
- * the page can read web storage, which is why the CSP in middleware.ts is strict.
+ * The OIDC session is kept in localStorage so an installed app reopened in the field,
+ * without signal, is still signed in until the access token expires. Development
+ * tokens stay in sessionStorage. Any script on the page can read web storage, which
+ * is why the CSP in middleware.ts is strict. Signing out removes the session and the
+ * offline copy of API responses (see public/sw.js).
  */
 import { UserManager, WebStorageStateStore, type User } from "oidc-client-ts";
 
@@ -55,6 +58,7 @@ export const devSession: Session & { signIn(token: string): void } = {
     notify();
   },
   async signOut() {
+    await clearOfflineData();
     try {
       window.sessionStorage.removeItem(DEV_KEY);
     } catch {
@@ -64,6 +68,15 @@ export const devSession: Session & { signIn(token: string): void } = {
   },
   subscribe,
 };
+
+/** The service worker's offline copy of API responses belongs to whoever was signed in. */
+export async function clearOfflineData() {
+  try {
+    await window.caches?.delete("mf-api");
+  } catch {
+    /* no Cache Storage (old browser, private mode) */
+  }
+}
 
 // ── OIDC session ───────────────────────────────────────────────────────────
 
@@ -94,7 +107,7 @@ export function getUserManager(): UserManager {
       response_type: "code",
       scope: "openid profile email",
       extraQueryParams: AUDIENCE ? { audience: AUDIENCE } : undefined,
-      userStore: new WebStorageStateStore({ store: window.sessionStorage }),
+      userStore: new WebStorageStateStore({ store: window.localStorage }),
       stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
       automaticSilentRenew: false,
     });
@@ -116,6 +129,7 @@ export const oidcSession: Session = {
   subscribe,
   async signOut() {
     const m = getUserManager();
+    await clearOfflineData();
     await m.removeUser();
     setUser(null);
     try {

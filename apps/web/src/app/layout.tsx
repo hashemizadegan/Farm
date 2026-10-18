@@ -13,7 +13,12 @@ import { getLocale } from "@/i18n/server";
 
 export async function generateMetadata(): Promise<Metadata> {
   const m = (await getLocale()) === "fa" ? fa : en;
-  return { title: { default: m.meta.title, template: `%s · ${m.meta.title}` }, description: m.meta.description };
+  return {
+    title: { default: m.meta.title, template: `%s · ${m.meta.title}` },
+    description: m.meta.description,
+    appleWebApp: { capable: true, title: m.meta.title, statusBarStyle: "default" },
+    icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
+  };
 }
 
 // Self-hosted at build time by next/font, so no third-party font requests (CSP font-src 'self').
@@ -23,7 +28,7 @@ const display = Familjen_Grotesk({ subsets: ["latin", "latin-ext"], variable: "-
 // Persian: Vazirmatn, a widely used open-source Persian typeface with matching Latin. Used only when lang="fa" (see app.css).
 const persian = Vazirmatn({ subsets: ["arabic", "latin"], variable: "--font-fa", display: "swap", weight: ["400", "500", "700"], preload: false });
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#173323" };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // Reading the request (cookie and Accept-Language) makes every page dynamic, which is also required

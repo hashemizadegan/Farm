@@ -7,6 +7,8 @@ import { session } from "@/lib/auth";
 import { TenantProvider, useTenant } from "@/lib/tenant";
 import { useI18n } from "@/i18n/provider";
 import { LanguageSwitch } from "./LanguageSwitch";
+import { OfflineStatus } from "./OfflineStatus";
+import { ServiceWorker } from "./ServiceWorker";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 /** Routes that render without the app chrome (sign-in and the OIDC callback). */
@@ -20,6 +22,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <AnnouncerProvider>
       <TenantProvider>
         <SkipLink>{m.shell.skip}</SkipLink>
+        <ServiceWorker />
         {bare ? (
           <RouteFocus className="bare-main">{children}</RouteFocus>
         ) : (
@@ -146,7 +149,10 @@ function Frame({ children }: { children: ReactNode }) {
       </aside>
       {open && <div className="scrim" aria-hidden="true" onClick={() => setOpen(false)} />}
 
-      <div className="content">{children}</div>
+      <div className="content">
+        {signedIn && <OfflineStatus />}
+        {children}
+      </div>
     </div>
   );
 }

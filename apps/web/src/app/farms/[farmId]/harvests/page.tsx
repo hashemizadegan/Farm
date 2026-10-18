@@ -10,6 +10,8 @@ import { useI18n } from "@/i18n/provider";
 import { api, unwrap, useQuery, type Schemas } from "@/lib/api";
 import { useCan } from "@/lib/can";
 import { localToday } from "@/lib/dates";
+import { sendOrQueue } from "@/lib/outbox";
+import { useTenant } from "@/lib/tenant";
 
 type Harvest = Schemas["Harvest"];
 
@@ -180,7 +182,9 @@ function HarvestCard({ h, tenantId, farmName, onChanged }: { h: Harvest; tenantI
 }
 
 function HarvestForm({ tenantId, farmId, onRecorded }: { tenantId: string; farmId: string; onRecorded: () => void }) {
-  const t = useI18n().m.harvests.form;
+  const { m } = useI18n();
+  const t = m.harvests.form;
+  const { me } = useTenant();
   const announce = useAnnounce();
   const plan = useQuery(`plan:${farmId}:labels`, () =>
     unwrap(api.GET("/v1/tenants/{tenantId}/farms/{farmId}/plan", { params: { path: { tenantId, farmId } } })).catch(() => null),
@@ -221,21 +225,25 @@ function HarvestForm({ tenantId, farmId, onRecorded }: { tenantId: string; farmI
     }
     setBusy(true);
     try {
-      const h = await unwrap(
-        api.POST("/v1/tenants/{tenantId}/farms/{farmId}/harvests", {
-          params: { path: { tenantId, farmId } },
-          body: {
-            cropName: crop.trim(),
-            parcelLabel: parcel.trim() || null,
-            harvestedOn: date,
-            quantity: q,
-            unit: unit.trim(),
-            qualityGrade: grade.trim() || null,
-            notes: notes.trim() || null,
-          },
-        }),
-      );
-      announce(t.recorded(h.code));
+      const body: Schemas["HarvestInput"] = {
+        cropName: crop.trim(),
+        parcelLabel: parcel.trim() || null,
+        harvestedOn: date,
+        quantity: q,
+        unit: unit.trim(),
+        qualityGrade: grade.trim() || null,
+        notes: notes.trim() || null,
+      };
+      const r = await sendOrQueue<Harvest>({
+        userId: me!.userId,
+        tenantId,
+        kind: "harvest",
+        label: `${body.cropName} ${q} ${body.unit}`,
+        path: `/v1/tenants/${tenantId}/farms/${farmId}/harvests`,
+        body,
+      });
+      // Offline: the label code is issued when the record reaches the server.
+      announce(r.queued ? m.offline.savedHarvest : t.recorded(r.data.code));
       setQuantity("");
       setGrade("");
       setNotes("");

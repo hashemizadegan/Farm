@@ -42,6 +42,10 @@ export default tseslint.config(
     },
   },
   {
+    files: ["apps/web/public/sw.js"],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
+  {
     files: ["**/*.test.ts", "**/*.test.tsx", "tests/**", "contracts/nft/**", "**/scripts/**"],
     rules: { "no-console": "off" },
   },

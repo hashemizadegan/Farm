@@ -48,3 +48,18 @@ export function sendError(reply: FastifyReply, req: FastifyRequest, err: HttpErr
     ...(err.details ? { details: err.details } : {}),
   });
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The client's `Idempotency-Key` (a UUID), sent with writes an offline phone may resend.
+ * A resend of a write that already succeeded returns the original result instead of recording twice.
+ */
+export function idempotencyKey(req: FastifyRequest): string | undefined {
+  const v = req.headers["idempotency-key"];
+  if (v === undefined) return undefined;
+  if (typeof v !== "string" || !UUID.test(v)) throw new HttpError(400, "invalid_idempotency_key", "Idempotency-Key must be a UUID");
+  return v.toLowerCase();
+}
+
+export const keyReused = () => new HttpError(409, "idempotency_key_reused", "this Idempotency-Key was already used for a different request");
