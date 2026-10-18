@@ -5,7 +5,7 @@ import type { SystemTx, TenantTx } from "../tenant";
 
 export interface AuditInput {
   actorUserId?: string | null;
-  actorType: "user" | "system" | "webhook" | "job";
+  actorType: "user" | "system" | "webhook" | "job" | "device";
   action: string;
   targetType?: string;
   targetId?: string;

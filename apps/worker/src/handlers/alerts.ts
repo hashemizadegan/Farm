@@ -1,4 +1,4 @@
-import { farmsWithAlertRules, insertAlertOnce, listEnabledRules, listObservations, withSystem, withTenant, writeAudit, type Pool } from "@metafarm/db";
+import { farmsWithAlertRules, insertAlertOnce, listEnabledRules, listObservations, silentSensors, withSystem, withTenant, writeAudit, type Pool } from "@metafarm/db";
 import { QUEUES, evaluateAlertRule, type AlertEvaluationJob, type JobPayloads, type NormalisedObservation } from "@metafarm/domain";
 import type { Handler } from "../runner";
 
@@ -80,3 +80,31 @@ export function pendingBoundarySweepHandler(pool: Pool, enqueue: Enqueue): Handl
   };
 }
 
+
+/**
+ * Raises one warning per silence: a sensor that has reported before but not
+ * within its allowance. The key includes the last contact time, so a sensor
+ * that comes back and goes quiet again raises a new alert.
+ */
+export function sensorSilenceSweepHandler(pool: Pool): Handler<{ bucket: string }> {
+  return async (_job, { log }) => {
+    const rows = await withSystem(pool, (tx) => silentSensors(tx));
+    let created = 0;
+    for (const s of rows) {
+      const since = new Date(s.last_seen_at).toISOString();
+      const isNew = await withTenant(pool, s.tenant_id, (tx) =>
+        insertAlertOnce(tx, {
+          farmId: s.farm_id,
+          sensorId: s.id,
+          severity: "warning",
+          message: `Sensor "${s.name}" has sent no readings since ${since.replace("T", " ").slice(0, 16)} UTC.`,
+          dedupeKey: `sensor-silent:${s.id}:${since}`,
+          evidence: [],
+        }),
+      );
+      if (isNew) created++;
+    }
+    if (rows.length) log.info({ silent: rows.length, created }, "silent sensors checked");
+    return { silent: rows.length, created };
+  };
+}
