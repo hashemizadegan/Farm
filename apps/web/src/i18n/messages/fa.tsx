@@ -1105,6 +1105,22 @@ export const fa: Messages = {
     },
   },
 
+  notifications: {
+    title: "اعلان‌ها",
+    description: "کارهایی که به شما سپرده شده و چیزهایی که در این فضای کاری به توجه نیاز دارند.",
+    none: "مورد تازه‌ای نیست.",
+    loading: "در حال بارگذاری اعلان‌ها…",
+    unread: (n) => `${N(n)} خوانده‌نشده`,
+    bell: (n) => (n ? `اعلان‌ها، ${N(n)} خوانده‌نشده` : "اعلان‌ها"),
+    markAll: "علامت زدن همه به‌عنوان خوانده‌شده",
+    markedAll: "همه خوانده‌شده علامت خوردند.",
+    taskAssigned: (title, farm, due) => `کار تازه برای شما: ${title} در ${farm}، موعد ${due}.`,
+    alertRaised: (severity, farm, message) => `هشدار ${severity} در ${farm}: ${message}`,
+    lowStock: (item, onHand, unit) => `موجودی ${item} کم است: ${onHand} ${unit} مانده است.`,
+    maintenanceDue: (plan, machine) => `${plan} برای ${machine} عقب افتاده است.`,
+    open: "دیدن",
+  },
+
   farmSettings: {
     title: "تنظیمات مزرعه",
     cannot: "نقش شما اجازهٔ دیدن این مزرعه را می‌دهد، اما نه تغییر تنظیماتش را.",

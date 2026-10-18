@@ -1037,6 +1037,22 @@ export const en = {
     },
   },
 
+  notifications: {
+    title: "Notifications",
+    description: "Work given to you and things that need attention in this workspace.",
+    none: "Nothing new.",
+    loading: "Loading notifications…",
+    unread: (n: number) => `${n} unread`,
+    bell: (n: number) => (n ? `Notifications, ${n} unread` : "Notifications"),
+    markAll: "Mark all read",
+    markedAll: "All marked read.",
+    taskAssigned: (title: string, farm: string, due: string) => `New task for you: ${title} on ${farm}, due ${due}.`,
+    alertRaised: (severity: string, farm: string, message: string) => `${severity} alert on ${farm}: ${message}`,
+    lowStock: (item: string, onHand: string, unit: string) => `${item} is low: ${onHand} ${unit} left.`,
+    maintenanceDue: (plan: string, machine: string) => `${plan} is overdue on ${machine}.`,
+    open: "Open",
+  },
+
   farmSettings: {
     title: "Farm settings",
     cannot: "Your role can view this farm but not change its settings.",

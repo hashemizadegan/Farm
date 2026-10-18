@@ -9,6 +9,8 @@ import {
   latestApplicationsWithPhi,
   listInputItems,
   listMovements,
+  membersWithRoles,
+  notify,
   updateInputItem,
   type InputItemRow,
   type MovementRow,
@@ -19,6 +21,7 @@ import {
   createInputItemSchema,
   harvestAllowedFrom,
   movementSchema,
+  rolesWith,
   taskDateSchema,
   toMilli,
   updateInputItemSchema,
@@ -83,7 +86,25 @@ export async function recordUse(
   const item = await getInputItem(tx, u.itemId);
   if (!item) throw new HttpError(400, "invalid_item", "unknown input item");
   if (item.archived_at) throw new HttpError(409, "item_archived", `${item.name} is archived`);
-  return insertMovement(tx, { ...u, kind: "use", quantity: `-${u.quantity}` });
+  const id = await insertMovement(tx, { ...u, kind: "use", quantity: `-${u.quantity}` });
+  await notifyIfLow(tx, item, id);
+  return id;
+}
+
+/** Tells the people who order stock when this movement took an item to or below its reorder level. */
+async function notifyIfLow(tx: TenantTx, before: InputItemRow, movementId: string) {
+  if (before.reorder_level === null) return;
+  const after = (await getInputItem(tx, before.id))!;
+  const level = toMilli(before.reorder_level);
+  if (toMilli(before.on_hand) > level && toMilli(after.on_hand) <= level) {
+    await notify(
+      tx,
+      await membersWithRoles(tx, rolesWith("inventory:manage")),
+      "low_stock",
+      { itemId: after.id, itemName: after.name, onHand: trim(after.on_hand), unit: after.unit },
+      `low:${movementId}`,
+    );
+  }
 }
 
 export async function inventoryRoutes(app: FastifyInstance) {
@@ -161,6 +182,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
           throw new HttpError(400, "invalid_cost", "give both a cost and its currency, or neither");
         }
         id = await insertMovement(tx, { ...body, userId: req.user!.id });
+        await notifyIfLow(tx, item, id);
       }
       await app.audit(req, tx, { action: `stock.${body.kind}`, targetType: "stock_movement", targetId: id, metadata: { itemId: body.itemId } });
       return { movement: toMovement((await getMovement(tx, id))!), item: toInputItem((await getInputItem(tx, body.itemId))!) };

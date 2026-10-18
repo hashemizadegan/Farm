@@ -65,7 +65,7 @@ const NAV: { href: string; key: "overview" | "myTasks" | "schedule" | "farms" | 
 
 function Frame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { signedIn } = useTenant();
+  const { signedIn, unreadNotifications: unread } = useTenant();
   const { m } = useI18n();
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -94,6 +94,7 @@ function Frame({ children }: { children: ReactNode }) {
           <BrandMark />
           {m.meta.title}
         </Link>
+        {signedIn && <Bell unread={unread} className="topbar__bell" />}
         <button
           ref={toggleRef}
           type="button"
@@ -112,6 +113,7 @@ function Frame({ children }: { children: ReactNode }) {
           {m.meta.title}
         </Link>
         {signedIn && <WorkspaceSwitcher />}
+        {signedIn && <Bell unread={unread} className="sidebar__bell" withLabel current={pathname === "/notifications"} />}
         <nav aria-label={m.shell.mainNav}>
           <ul className="sidenav">
             {NAV.map((item) => (
@@ -146,6 +148,24 @@ function Frame({ children }: { children: ReactNode }) {
 
       <div className="content">{children}</div>
     </div>
+  );
+}
+
+/** Link to notifications with the unread count, written out for screen readers. */
+function Bell({ unread, className, withLabel, current }: { unread: number; className: string; withLabel?: boolean; current?: boolean }) {
+  const { m, fmt } = useI18n();
+  return (
+    <Link href="/notifications" className={className} aria-label={m.notifications.bell(unread)} aria-current={current ? "page" : undefined}>
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+        <path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      </svg>
+      {withLabel && <span aria-hidden="true">{m.notifications.title}</span>}
+      {unread > 0 && (
+        <span className="bell__count" aria-hidden="true">
+          {fmt.number(Math.min(unread, 99))}
+        </span>
+      )}
+    </Link>
   );
 }
 

@@ -13,3 +13,4 @@ export * from "./inventory";
 export * from "./seasons";
 export * from "./equipment";
 export * from "./sensors";
+export * from "./notifications";

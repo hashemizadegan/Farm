@@ -1337,3 +1337,58 @@ html[lang="fa"] body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8rem;
 }
+
+/* ---------- Notifications ---------- */
+.topbar__bell,
+.sidebar__bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  min-width: 44px;
+  justify-content: center;
+  color: inherit;
+  text-decoration: none;
+}
+.topbar__bell {
+  margin-inline-start: auto;
+  margin-inline-end: 0.5rem;
+}
+.sidebar__bell {
+  justify-content: flex-start;
+  padding: 0.4rem 0.75rem;
+  margin-bottom: 0.25rem;
+  border-radius: var(--mf-radius);
+  font-weight: 500;
+}
+.sidebar__bell[aria-current="page"] {
+  background: var(--mf-sidebar-active);
+}
+.bell__count {
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--mf-marker);
+  color: #1b1b1b;
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.topbar__bell .bell__count {
+  position: absolute;
+  top: 2px;
+  inset-inline-end: 0;
+}
+.notification[data-unread] {
+  border-inline-start-color: var(--mf-marker);
+}
+.notification[data-unread] .notification__text {
+  font-weight: 700;
+}
+.notification__text {
+  margin: 0;
+}

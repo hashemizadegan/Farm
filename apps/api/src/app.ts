@@ -18,6 +18,7 @@ import { inventoryRoutes } from "./routes/inventory";
 import { seasonRoutes } from "./routes/seasons";
 import { equipmentRoutes } from "./routes/equipment";
 import { sensorRoutes } from "./routes/sensors";
+import { notificationRoutes } from "./routes/notifications";
 
 export interface BuildOptions {
   deps: Deps;
@@ -76,6 +77,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(seasonRoutes);
   await app.register(equipmentRoutes);
   await app.register(sensorRoutes);
+  await app.register(notificationRoutes);
   await app.register(chainRoutes);
 
   return app;
