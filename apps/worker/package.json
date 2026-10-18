@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@metafarm/chain": "workspace:*",
     "@metafarm/config": "workspace:*",
     "@metafarm/db": "workspace:*",
     "@metafarm/domain": "workspace:*",

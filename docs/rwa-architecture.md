@@ -71,6 +71,24 @@ Financial tables block deleting their workspace: those records must be retained.
   (`exception`) on amount mismatches, duplicates, a second leg without the first, or orphan chain
   transactions, and completes an order whose legs are done with nothing wrong.
 
+## Share tokens and issuance
+
+- `POST …/rwa/assets` registers an asset (draft); `…/verify` must be done by someone else
+  (four eyes); parcels and trees need geometry, which must lie within the farm's current boundary.
+- `POST …/assets/{id}/representations` plans a Token-2022 share token for a verified asset;
+  `POST …/representations/{id}/mint` links an existing mint only after reading it from the chain:
+  an initialised Token-2022 mint whose mint authority is the platform issuer (`RWA_SOLANA_ISSUER`).
+- **Execution engine** (worker, every 10 s when `RWA_SOLANA_RPC_URL` and a signer are configured):
+  a subscription whose payment is verified gets one mint intent (`secondLegMayStart`); each live
+  intent gets one attempt; each attempt moves one step per tick: compliance re-checked at signing
+  time → signed and **stored before sending** → sent → observed → final → done. Pending
+  transactions are re-sent byte for byte; a new attempt is made only after the previous one
+  provably expired; a simulation failure is final. Signing and RPC calls happen outside database
+  transactions; each result is written under a row lock after checking the attempt has not moved.
+- **Signers**: devnet uses `RWA_SOLANA_SIGNER_SECRET` (a platform secret the operator sets),
+  refused whenever mainnets are enabled. Production needs a KMS/HSM signer behind the same
+  `Ed25519Signer` port.
+
 ## Operation lifecycle
 
 ```
@@ -129,8 +147,8 @@ requested → policy_approved → prepared → submitted → observed → confir
 ## Next
 
 1. Bubblegum minting and transfers (tree creation, `mintV1`).
-2. Executing the legs we sign (mint after a verified payment; burn and payout for redemptions;
-   distributions) through a KMS-backed signer, and a `CompliancePort` adapter for the chosen provider.
+2. Redemptions (burn, then payout) and distributions (payout) with a second person's approval,
+   TRON payouts through the engine, a KMS/HSM signer, and a `CompliancePort` adapter.
 3. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
 
 Keys for minting and settlement belong in a KMS/HSM set up by the operator; the app never stores them.

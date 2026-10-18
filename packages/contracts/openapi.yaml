@@ -1870,6 +1870,151 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/tenants/{tenantId}/rwa/assets:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [rwa]
+      summary: Real-world assets and their share tokens
+      operationId: listRwaAssets
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/RwaAsset" } }
+    post:
+      tags: [rwa]
+      summary: Register a real-world asset (draft until a second person verifies it)
+      operationId: createRwaAsset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [farmId, kind, name]
+              properties:
+                farmId: { type: string, format: uuid }
+                kind: { type: string, enum: [parcel, tree, livestock, equipment, harvest_lot, farm_share] }
+                name: { type: string, minLength: 1, maxLength: 200 }
+                externalRef: { type: string }
+                parcelLabel: { type: string }
+                geometry: { type: object, description: "GeoJSON Point or Polygon (WGS 84)" }
+                geomProvenance: { type: string, enum: [surveyed, gnss, user-entered] }
+      responses:
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaAsset" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/rwa/assets/{assetId}/verify:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: assetId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Verify an asset (someone other than who registered it)
+      description: Parcels and trees need geometry, and geometry must lie within the farm's current boundary.
+      operationId: verifyRwaAsset
+      responses:
+        "200":
+          description: Verified
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaAsset" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Not a draft, missing geometry, or outside the farm
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/tenants/{tenantId}/rwa/assets/{assetId}/representations:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: assetId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Plan a Token-2022 share token for a verified asset
+      operationId: createRwaRepresentation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [network, decimals]
+              properties:
+                network: { type: string, enum: [solana-devnet, solana-mainnet] }
+                decimals: { type: integer, minimum: 0, maximum: 9 }
+      responses:
+        "201":
+          description: Planned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaAsset" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Asset not verified, or already has a share token on that network
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/tenants/{tenantId}/rwa/representations/{representationId}/mint:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: representationId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Link an existing Token-2022 mint, checked on chain
+      description: The account must be an initialised Token-2022 mint whose mint authority is the platform's issuer (RWA_SOLANA_ISSUER).
+      operationId: linkRwaMint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mintAddress]
+              properties:
+                mintAddress: { type: string }
+      responses:
+        "200":
+          description: Linked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaAsset" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Already linked, wrong network, or mint used elsewhere
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Not a Token-2022 mint controlled by the platform's issuer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Issuance not configured
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /v1/tenants/{tenantId}/rwa/orders:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     get:
@@ -2311,6 +2456,35 @@ components:
       type: string
       enum: [owner, admin, manager, verifier, worker, viewer]
 
+    RwaAsset:
+      type: object
+      required: [id, farmId, farmName, kind, name, externalRef, parcelLabel, geometry, geomProvenance, status, verifiedAt, createdAt, representations]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: string, format: uuid }
+        farmName: { type: string }
+        kind: { type: string }
+        name: { type: string }
+        externalRef: { type: [string, "null"] }
+        parcelLabel: { type: [string, "null"] }
+        geometry: { type: [object, "null"] }
+        geomProvenance: { type: [string, "null"] }
+        status: { type: string, enum: [draft, verified, active, suspended, retired] }
+        verifiedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        representations:
+          type: array
+          items:
+            type: object
+            required: [id, rail, network, status, mintAddress, decimals, createdAt]
+            properties:
+              id: { type: string, format: uuid }
+              rail: { type: string }
+              network: { type: string }
+              status: { type: string }
+              mintAddress: { type: [string, "null"] }
+              decimals: { type: [integer, "null"] }
+              createdAt: { type: string, format: date-time }
     RwaParty:
       type: object
       required: [id, kind, displayName, jurisdiction, kyc, createdAt]

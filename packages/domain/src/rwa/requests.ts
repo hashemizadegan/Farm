@@ -62,3 +62,30 @@ export const createOrderSchema = z
   });
 
 export const paymentSchema = z.object({ txId: z.string().regex(/^[0-9a-fA-F]{64}$/, "a 64-character TRON transaction id") }).strict();
+
+const position = z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]);
+const ring = z.array(position).min(4);
+/** Surveyed geometry: a point (a tree, an animal's pen) or an area (a parcel). WGS 84 longitude, latitude. */
+export const assetGeometrySchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("Point"), coordinates: position }).strict(),
+  z.object({ type: z.literal("Polygon"), coordinates: z.array(ring).min(1).max(20) }).strict(),
+]);
+
+export const createAssetSchema = z
+  .object({
+    farmId: z.string().uuid(),
+    kind: z.enum(["parcel", "tree", "livestock", "equipment", "harvest_lot", "farm_share"]),
+    name: z.string().trim().min(1).max(200),
+    externalRef: z.string().trim().min(1).max(120).optional(),
+    parcelLabel: z.string().trim().min(1).max(80).optional(),
+    geometry: assetGeometrySchema.optional(),
+    geomProvenance: z.enum(["surveyed", "gnss", "user-entered"]).optional(),
+  })
+  .strict()
+  .refine((a) => !a.geometry === !a.geomProvenance, { message: "say how the geometry was measured", path: ["geomProvenance"] });
+
+export const createRepresentationSchema = z
+  .object({ network: z.enum(["solana-devnet", "solana-mainnet"]), decimals: z.number().int().min(0).max(9) })
+  .strict();
+
+export const linkMintSchema = z.object({ mintAddress: z.string().trim().min(32).max(44) }).strict();

@@ -1,8 +1,17 @@
 import type { FastifyInstance } from "fastify";
-import { isSolanaAddress, isTronAddress, verifyIncomingTrc20 } from "@metafarm/chain";
+import { TOKEN_2022_PROGRAM, isSolanaAddress, isTronAddress, parseMintAccount, verifyIncomingTrc20 } from "@metafarm/chain";
 import {
   addWallet,
   complianceView,
+  createBusinessAsset,
+  createRepresentation,
+  getBusinessAsset,
+  getRepresentation,
+  linkMint,
+  listBusinessAssets,
+  listRepresentations,
+  verifyBusinessAsset,
+  type AssetRow,
   createOrder,
   createParty,
   findInboundPayment,
@@ -26,7 +35,10 @@ import {
 } from "@metafarm/db";
 import {
   complianceDecision,
+  createAssetSchema,
   createOrderSchema,
+  createRepresentationSchema,
+  linkMintSchema,
   createPartySchema,
   kycSchema,
   networkAllowed,
@@ -45,6 +57,8 @@ const tenantParams = z.object({ tenantId: uuid });
 const partyParams = tenantParams.extend({ partyId: uuid });
 const orderParams = tenantParams.extend({ orderId: uuid });
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
+const assetParams = tenantParams.extend({ assetId: uuid });
+const representationParams = tenantParams.extend({ representationId: uuid });
 
 const toParty = (p: PartyRow) => ({
   id: p.id,
@@ -352,6 +366,140 @@ export async function rwaRoutes(app: FastifyInstance) {
       await setOrderStatus(tx, orderId, "issuing");
       await app.audit(req, tx, { action: "rwa.payment_recorded", targetType: "rwa_order", targetId: orderId, metadata: { txId: id, block: check.block.toString() } });
       return orderDetail(tx, orderId);
+    });
+  });
+
+  // ── Assets and share tokens ─────────────────────────────────────────
+
+  async function assetDetail(tx: TenantTx, a: AssetRow) {
+    return {
+      id: a.id,
+      farmId: a.farm_id,
+      farmName: a.farm_name,
+      kind: a.kind,
+      name: a.name,
+      externalRef: a.external_ref,
+      parcelLabel: a.parcel_label,
+      geometry: a.geometry,
+      geomProvenance: a.geom_provenance,
+      status: a.status,
+      verifiedAt: iso(a.verified_at),
+      createdAt: a.created_at.toISOString(),
+      representations: (await listRepresentations(tx, a.id)).map((r) => ({
+        id: r.id,
+        rail: r.rail,
+        network: r.network,
+        status: r.status,
+        mintAddress: r.mint_address,
+        decimals: r.decimals,
+        createdAt: r.created_at.toISOString(),
+      })),
+    };
+  }
+
+  app.get("/v1/tenants/:tenantId/rwa/assets", async (req) => {
+    parse(tenantParams, req.params);
+    return app.inTenant(req, "rwa:read", async (tx) => ({ items: await Promise.all((await listBusinessAssets(tx)).map((a) => assetDetail(tx, a))) }));
+  });
+
+  app.post("/v1/tenants/:tenantId/rwa/assets", async (req, reply) => {
+    parse(tenantParams, req.params);
+    const body = parse(createAssetSchema, req.body);
+    const out = await app.inTenant(req, "rwa:operate", async (tx) => {
+      const farm = await tx.query(`SELECT 1 FROM farms WHERE tenant_id = $1 AND id = $2 AND archived_at IS NULL`, [tx.tenantId, body.farmId]);
+      if (!farm.rowCount) throw notFound("farm");
+      let id: string;
+      try {
+        await tx.query("SAVEPOINT asset");
+        id = await createBusinessAsset(tx, { ...body, createdBy: req.user!.id });
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        if (code === "23505") throw new HttpError(409, "asset_ref_taken", "an asset of this kind already has this reference");
+        if (code === "23514" || code === "XX000") throw new HttpError(400, "invalid_geometry", "the geometry is not valid");
+        throw err;
+      }
+      await app.audit(req, tx, { action: "rwa.asset_created", targetType: "business_asset", targetId: id, metadata: { kind: body.kind } });
+      return assetDetail(tx, (await getBusinessAsset(tx, id))!);
+    });
+    return reply.status(201).send(out);
+  });
+
+  /** A second person confirms the asset exists as described (four eyes); spatial assets must lie on the farm. */
+  app.post("/v1/tenants/:tenantId/rwa/assets/:assetId/verify", async (req) => {
+    const { assetId } = parse(assetParams, req.params);
+    return app.inTenant(req, "compliance:review", async (tx) => {
+      const a = await getBusinessAsset(tx, assetId);
+      if (!a) throw notFound("asset");
+      if (a.status !== "draft") throw new HttpError(409, "asset_not_draft", `the asset is already ${a.status}`);
+      if (a.created_by === req.user!.id) throw new HttpError(403, "four_eyes", "someone other than the person who registered the asset must verify it");
+      if ((a.kind === "parcel" || a.kind === "tree") && !a.geometry) throw new HttpError(409, "geometry_required", "parcels and trees need surveyed geometry before verification");
+      if (a.geometry) {
+        const inside = await tx.query<{ ok: boolean | null }>(
+          `SELECT CASE WHEN b.geom IS NULL THEN NULL ELSE ST_CoveredBy(x.geom, b.geom) END AS ok
+             FROM business_assets x JOIN farms f ON f.tenant_id = x.tenant_id AND f.id = x.farm_id
+             LEFT JOIN boundary_versions b ON b.tenant_id = f.tenant_id AND b.id = f.current_boundary_version_id
+            WHERE x.tenant_id = $1 AND x.id = $2`,
+          [tx.tenantId, assetId],
+        );
+        if (inside.rows[0]?.ok === false) throw new HttpError(409, "outside_farm", "the asset lies outside the farm's current boundary");
+      }
+      await verifyBusinessAsset(tx, assetId, req.user!.id);
+      await app.audit(req, tx, { action: "rwa.asset_verified", targetType: "business_asset", targetId: assetId });
+      return assetDetail(tx, (await getBusinessAsset(tx, assetId))!);
+    });
+  });
+
+  app.post("/v1/tenants/:tenantId/rwa/assets/:assetId/representations", async (req, reply) => {
+    const { assetId } = parse(assetParams, req.params);
+    const body = parse(createRepresentationSchema, req.body);
+    checkNetwork(body.network);
+    const out = await app.inTenant(req, "rwa:operate", async (tx) => {
+      const a = await getBusinessAsset(tx, assetId);
+      if (!a) throw notFound("asset");
+      if (a.status !== "verified" && a.status !== "active") throw new HttpError(409, "asset_not_verified", "verify the asset before issuing shares in it");
+      try {
+        await tx.query("SAVEPOINT rep");
+        await createRepresentation(tx, assetId, body.network, body.decimals);
+      } catch (err) {
+        if ((err as { code?: string }).code === "23505") throw new HttpError(409, "representation_exists", "this asset already has a share token on that network");
+        throw err;
+      }
+      await app.audit(req, tx, { action: "rwa.representation_created", targetType: "business_asset", targetId: assetId, metadata: { network: body.network } });
+      return assetDetail(tx, a);
+    });
+    return reply.status(201).send(out);
+  });
+
+  /** Links an existing Token-2022 mint after reading it from the chain: our issuer must be its mint authority. */
+  app.post("/v1/tenants/:tenantId/rwa/representations/:representationId/mint", async (req) => {
+    const { representationId } = parse(representationParams, req.params);
+    const { mintAddress } = parse(linkMintSchema, req.body);
+    if (!isSolanaAddress(mintAddress)) throw new HttpError(400, "invalid_address", "not a Solana address");
+    const { solanaRpc } = app.deps;
+    if (!solanaRpc || !env.RWA_SOLANA_ISSUER) throw new HttpError(503, "issuance_not_configured", "Solana issuance is not configured on this platform");
+    const rep = await app.inTenant(req, "rwa:operate", async (tx) => {
+      const r = await getRepresentation(tx, representationId);
+      if (!r) throw notFound("share token");
+      if (r.mint_address) throw new HttpError(409, "mint_linked", "a mint is already linked");
+      if (r.network !== env.RWA_SOLANA_NETWORK) throw new HttpError(409, "wrong_network", `this platform issues on ${env.RWA_SOLANA_NETWORK}`);
+      return r;
+    });
+    const account = await solanaRpc.getAccountInfo(mintAddress);
+    if (!account || account.owner !== TOKEN_2022_PROGRAM) throw new HttpError(422, "not_a_mint", "no Token-2022 mint at that address");
+    const mint = parseMintAccount(account.data);
+    if (!mint.initialized) throw new HttpError(422, "not_a_mint", "the mint is not initialised");
+    if (mint.mintAuthority !== env.RWA_SOLANA_ISSUER) throw new HttpError(422, "not_our_mint", "the platform's issuer is not this mint's authority");
+    if (rep.decimals !== null && rep.decimals !== mint.decimals) throw new HttpError(422, "decimals_mismatch", `the mint has ${mint.decimals} decimals, the share token ${rep.decimals}`);
+    return app.inTenant(req, "rwa:operate", async (tx) => {
+      try {
+        await tx.query("SAVEPOINT link");
+        await linkMint(tx, representationId, mintAddress, mint.decimals);
+      } catch (err) {
+        if ((err as { code?: string }).code === "23505") throw new HttpError(409, "mint_taken", "that mint is linked to another share token");
+        throw err;
+      }
+      await app.audit(req, tx, { action: "rwa.mint_linked", targetType: "asset_representation", targetId: representationId, metadata: { mintAddress, supply: mint.supply.toString() } });
+      return assetDetail(tx, (await getBusinessAsset(tx, rep.asset_id))!);
     });
   });
 }
