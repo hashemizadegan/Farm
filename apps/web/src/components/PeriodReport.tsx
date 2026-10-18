@@ -214,7 +214,9 @@ function ReportBody({ r, showFarms }: { r: Report; showFarms: boolean }) {
 
 function Table({ caption, hideCaption, head, rows }: { caption: string; hideCaption?: boolean; head: string[]; rows: ReactNode[][] }) {
   return (
-    <div className="table-wrap">
+    // Narrow screens scroll wide tables sideways; the region takes focus so keyboard users can scroll it too.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+    <div className="table-wrap" role="region" aria-label={caption} tabIndex={0}>
       <table>
         <caption className={hideCaption ? "mf-visually-hidden" : undefined}>{caption}</caption>
         <thead>
