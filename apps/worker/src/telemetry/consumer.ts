@@ -23,8 +23,6 @@ type Tagged = TelemetryRow & { tenantId: string };
 
 export function startTelemetryConsumer(cfg: TelemetryConsumerConfig, pool: Pool, logger: Logger) {
   const lookup = cachedLookup((id) => withSystem(pool, (tx) => telemetrySensor(tx, id)));
-  let client: ReturnType<typeof connect>;
-
   const batcher = new TelemetryBatcher<Tagged>({
     maxRows: cfg.batchSize,
     maxWaitMs: cfg.flushMs,
@@ -75,7 +73,8 @@ export function startTelemetryConsumer(cfg: TelemetryConsumerConfig, pool: Pool,
     },
   };
 
-  client = connect(cfg.url, options);
+  // Referenced by the batcher's error handler, which only runs after messages have arrived.
+  const client = connect(cfg.url, options);
   client.on("connect", () => {
     client.subscribe(telemetryTopicFilter(cfg.prefix), { qos: 1 }, (err) => {
       if (err) logger.error({ err }, "telemetry subscribe failed");
