@@ -798,7 +798,7 @@ fieldset {
 }
 
 /* ---------- Persian / right-to-left ---------- */
-/* Vazirmatn covers Persian and Latin; letter-spacing would break joined Persian letterforms. */
+/* Vazirmatn (Arabic-script subset) for Persian; Latin falls back. Letter-spacing would break joined Persian letterforms. */
 html[lang="fa"] {
   --font-body: var(--font-fa);
   --font-display: var(--font-fa);
