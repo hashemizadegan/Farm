@@ -1,7 +1,7 @@
 # Real-world asset rails
 
-Status: schema, domain model and ports; Solana Token-2022 issuance and Solana observation adapters
-(`packages/chain`), tested against a simulated node. Not wired into the API or worker yet; nothing issued.
+Status: schema, domain model and ports; Solana Token-2022 issuance, TRON TRC-20 settlement and
+observation adapters for both rails (`packages/chain`), tested against simulated nodes. Not wired into the API or worker yet; nothing issued.
 
 ## Decisions (October 2026)
 
@@ -64,14 +64,25 @@ requested → policy_approved → prepared → submitted → observed → confir
   transaction) while pending; reads `getSignatureStatuses` with history; declares `expired` only when
   the finalized block height is past the last valid height and a second lookup still finds nothing.
   A failed simulation is a definitive failure; network errors are not.
+- **TRON (no TronWeb at runtime, same reason)**: the full node builds the unsigned TRC-20
+  transfer, so before signing the adapter decodes its protobuf and refuses it unless the sender,
+  token contract, recipient and amount (ABI call data), zero TRX/TRC-10 value, fee limit and a sane
+  expiration (under 24 h) are exactly as requested and the transaction id is the SHA-256 of its raw
+  data. Before that: the sender's token balance is checked, the transfer is simulated
+  (`triggerconstantcontract`) for success and energy, and the fee limit is energy × the chain's
+  current energy price × 1.2, refused above a cap. After signing, the signature is recovered and
+  must be the sender's. Bandwidth is estimated from the signed size.
+- **TRON finality**: final only when the solidity node returns the transaction (block confirmed by
+  19 of 27 super representatives); failed when its receipt is not `SUCCESS`; `expired` only once
+  the solidified head is past the expiration and a second lookup finds nothing. Duplicate
+  broadcasts are success; signature, validation, expiration and TaPoS refusals are definitive.
 - `stepsAfterObservation` (domain) turns what a chain reports into lifecycle steps.
 
 ## Next
 
-1. TRON TRC-20 settlement adapter (fee limit, energy and bandwidth, solidified finality).
-2. Bubblegum cNFTs: tree sizing and DAS reads with fresh proofs.
-3. Reconciliation and a `CompliancePort` implementation from a real KYC/sanctions provider.
-4. MQTT-over-TLS consumer in the worker writing to `iot_telemetry`.
-5. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
+1. Bubblegum cNFTs: tree sizing and DAS reads with fresh proofs.
+2. Reconciliation and a `CompliancePort` implementation from a real KYC/sanctions provider.
+3. MQTT-over-TLS consumer in the worker writing to `iot_telemetry`.
+4. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
 
 Keys for minting and settlement belong in a KMS/HSM set up by the operator; the app never stores them.
