@@ -14,6 +14,7 @@ const TABS = [
   ["/seasons", "seasons"],
   ["/harvests", "harvests"],
   ["/inputs", "inputs"],
+  ["/report", "report"],
   ["/boundary", "boundary"],
   ["/scenarios", "scenarios"],
   ["/observations", "observations"],
