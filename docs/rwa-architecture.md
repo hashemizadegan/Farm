@@ -113,7 +113,6 @@ requested → policy_approved → prepared → submitted → observed → confir
 1. Bubblegum minting and transfers (tree creation, `mintV1`).
 2. A `CompliancePort` adapter for the chosen KYC/sanctions provider, and the order workflow in the
    API and worker (gate → first leg → second leg → reconciliation sweep).
-3. MQTT-over-TLS consumer in the worker writing to `iot_telemetry`.
-4. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
+3. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
 
 Keys for minting and settlement belong in a KMS/HSM set up by the operator; the app never stores them.

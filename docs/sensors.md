@@ -39,3 +39,26 @@ Readings are labelled `sensor-reported` and appear on the farm's Sensors and Obs
 
 Gateways for LoRaWAN or other radio networks forward to the same endpoint; keep each physical sensor's
 token on the gateway, not in firmware shared across devices.
+
+## MQTT over TLS (high-volume devices)
+
+For gateways and fleets, the worker can also take readings from an MQTT broker (EMQX, Mosquitto,
+HiveMQ…). Set `MQTT_URL` (must be `mqtts://` or `wss://`), credentials (`MQTT_USERNAME`/`MQTT_PASSWORD`
+or a client certificate `MQTT_CLIENT_CERT_PEM`/`MQTT_CLIENT_KEY_PEM`) and the broker's CA
+(`MQTT_CA_PEM`) on the worker.
+
+- **Topic**: `metafarm/{workspaceId}/sensors/{sensorId}/telemetry` (prefix: `MQTT_TOPIC_PREFIX`), QoS 1.
+- **Payload**: the same JSON as `POST /v1/ingest/readings`, plus an optional `messageId`:
+  `{"messageId":"probe-7:1042","readings":[{"metric":"soil_moisture","value":0.21,"unit":"fraction_vwc","observedAt":"2026-10-18T06:00:00Z"}]}`
+- **Broker ACL**: each device must be able to publish only to its own topic. The worker additionally
+  refuses unknown or disabled sensors and sensors that belong to another workspace than the topic.
+- **Storage**: readings are normalised like every other observation (unknown units are refused,
+  never guessed) and written in batches (`MQTT_BATCH_SIZE`, `MQTT_FLUSH_MS`) to `iot_telemetry`
+  (a TimescaleDB hypertable where available), with the message id and a SHA-256 of the raw payload.
+  A reading already stored (same sensor, metric and time) is skipped, so redelivery is harmless.
+- **Delivery**: a message is acknowledged only after its readings are stored; if a write fails the
+  worker reconnects with its persistent session and the broker delivers the message again.
+  Messages that can never be stored (malformed, wrong topic, unknown sensor) are acknowledged and
+  logged, so they do not loop.
+
+The HTTPS endpoint stays the simplest option for single devices.

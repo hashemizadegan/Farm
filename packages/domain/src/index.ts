@@ -17,3 +17,4 @@ export * from "./notifications";
 export * from "./exports";
 export * from "./reports";
 export * from "./rwa";
+export * from "./telemetry";
