@@ -244,7 +244,8 @@ export async function equipmentRoutes(app: FastifyInstance) {
       }
       const today = await todayFor(tx, e, app.deps.now());
       const due = planWithDue(p, e, today).due;
-      const dueDate = due.dueOn && due.dueOn > today ? due.dueOn : today;
+      // Overdue (by hours or days) means now; otherwise the calendar due day, when there is one.
+      const dueDate = due.state !== "overdue" && due.dueOn && due.dueOn > today ? due.dueOn : today;
       const id = await insertTask(
         tx,
         e.farm_id,
