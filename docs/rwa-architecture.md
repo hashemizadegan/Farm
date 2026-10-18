@@ -85,6 +85,18 @@ Financial tables block deleting their workspace: those records must be retained.
   transactions are re-sent byte for byte; a new attempt is made only after the previous one
   provably expired; a simulation failure is final. Signing and RPC calls happen outside database
   transactions; each result is written under a row lock after checking the attempt has not moved.
+- **Redemptions and distributions** need a second person: `POST …/rwa/orders/{id}/approve`
+  (`rwa:operate`, never the order's creator; enforced again by the `rwa_orders_four_eyes` check)
+  re-runs the compliance gate and moves a redemption to `issuing`, a distribution to `settling`.
+  The engine then starts each leg in order (`firstLegMayStart`, `secondLegMayStart`): a
+  redemption burns the investor's shares first and, once the burn is final, pays out from the
+  treasury; a distribution only pays out. Payouts are outbound settlement intents from
+  `RWA_TRON_TREASURY` to the investor's screened TRON wallet, driven through the same operation
+  lifecycle (TRON finality = solidified block). A leg that failed or was refused moves the order
+  to `exception` for an operator; nothing is retried automatically after a definitive failure.
+- The TRON rail runs only when `RWA_TRON_API_URL`, `RWA_TRON_SIGNER_PRIVATE_KEY` and
+  `RWA_TRON_TREASURY` are all set and the key's address is the treasury; fees are capped by
+  `RWA_TRON_MAX_FEE_LIMIT_SUN`.
 - **Signers**: devnet uses `RWA_SOLANA_SIGNER_SECRET` (a platform secret the operator sets),
   refused whenever mainnets are enabled. Production needs a KMS/HSM signer behind the same
   `Ed25519Signer` port.
@@ -147,8 +159,8 @@ requested → policy_approved → prepared → submitted → observed → confir
 ## Next
 
 1. Bubblegum minting and transfers (tree creation, `mintV1`).
-2. Redemptions (burn, then payout) and distributions (payout) with a second person's approval,
-   TRON payouts through the engine, a KMS/HSM signer, and a `CompliancePort` adapter.
+2. A KMS/HSM signer (Ed25519 and secp256k1) and a `CompliancePort` adapter for a KYC/sanctions
+   provider; until then mainnets stay locked.
 3. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
 
 Keys for minting and settlement belong in a KMS/HSM set up by the operator; the app never stores them.

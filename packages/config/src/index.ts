@@ -97,6 +97,12 @@ const rwa = {
   RWA_SOLANA_NETWORK: z.enum(["solana-devnet", "solana-mainnet"]).default("solana-devnet"),
   /** The address that signs issuance (mint authority of linked share tokens). */
   RWA_SOLANA_ISSUER: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, "a Solana address").optional(),
+  /** TRON full-node HTTP API (e.g. https://nile.trongrid.io): verifies incoming payments, sends payouts. */
+  RWA_TRON_API_URL: z.string().url().optional(),
+  RWA_TRON_API_KEY: z.string().min(1).optional(),
+  RWA_TRON_NETWORK: z.enum(["tron-nile", "tron-shasta", "tron-mainnet"]).default("tron-nile"),
+  /** The operator's TRON treasury: receives subscriptions and pays redemptions and distributions. */
+  RWA_TRON_TREASURY: z.string().regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "a TRON address").optional(),
 };
 
 export const apiEnvSchema = z
@@ -123,11 +129,6 @@ export const apiEnvSchema = z
     WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(15_000),
     ...rwa,
-    /** TRON full-node HTTP API (e.g. https://nile.trongrid.io) for verifying incoming payments. */
-    RWA_TRON_API_URL: z.string().url().optional(),
-    RWA_TRON_API_KEY: z.string().min(1).optional(),
-    /** The workspace operator's TRON treasury address that receives subscriptions. */
-    RWA_TRON_TREASURY: z.string().regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "a TRON address").optional(),
   })
   .superRefine(productionGuards);
 
@@ -175,11 +176,18 @@ export const workerEnvSchema = z
     RWA_SOLANA_SIGNER_SECRET: z.string().min(32).optional(),
     /** Compute-unit price ceiling for issuance transactions (micro-lamports). */
     RWA_SOLANA_MAX_PRIORITY_FEE: z.coerce.bigint().min(0n).default(1_000_000n),
+    /** Testnets only: the treasury's TRON key (hex) as a platform secret. Refused when mainnets are enabled. */
+    RWA_TRON_SIGNER_PRIVATE_KEY: z.string().regex(/^(0x)?[0-9a-fA-F]{64}$/, "64 hex characters").optional(),
+    /** Most TRX (sun) one payout may burn for energy. */
+    RWA_TRON_MAX_FEE_LIMIT_SUN: z.coerce.bigint().min(1n).default(100_000_000n),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {
     if (env.RWA_MAINNET_ENABLED && env.RWA_SOLANA_SIGNER_SECRET) {
       ctx.addIssue({ code: "custom", path: ["RWA_SOLANA_SIGNER_SECRET"], message: "in-process signing keys are refused when mainnets are enabled" });
+    }
+    if (env.RWA_MAINNET_ENABLED && env.RWA_TRON_SIGNER_PRIVATE_KEY) {
+      ctx.addIssue({ code: "custom", path: ["RWA_TRON_SIGNER_PRIVATE_KEY"], message: "in-process signing keys are refused when mainnets are enabled" });
     }
     if (env.MQTT_URL) {
       const tls = /^(mqtts|wss):\/\//.test(env.MQTT_URL);

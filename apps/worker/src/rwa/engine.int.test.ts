@@ -17,7 +17,7 @@ import {
   withTenant,
   type Pool,
 } from "@metafarm/db";
-import type { AssetIssuancePort, ChainObservation, ChainObservationPort, IssuanceRequest, PreparedTransaction } from "@metafarm/domain";
+import type { AssetIssuancePort, ChainObservation, ChainObservationPort, IssuanceRequest, PreparedTransaction, SettlementPort, SettlementTransfer } from "@metafarm/domain";
 import { createLogger } from "@metafarm/observability";
 import { rwaReconciliationSweepHandler } from "../handlers/rwa";
 import { runTick, type EngineDeps } from "./engine";
@@ -59,13 +59,34 @@ function fakeSolana() {
   };
 }
 
+function fakeTron(treasury: string) {
+  const fate = new Map<string, ChainObservation["status"]>();
+  const transfers: SettlementTransfer[] = [];
+  const settlement: SettlementPort = {
+    prepareTransfer: async (t) => {
+      transfers.push(t);
+      const txRef = randomUUID().replace(/-/g, "").padEnd(64, "0");
+      return { network: t.network, txRef, wire: JSON.stringify({ txID: txRef }), validity: { expiresAt: new Date(Date.now() + 60_000) }, fees: { feeLimitSun: 3_000_000n, estimatedEnergy: 14_000n }, summary: { action: "trc20_transfer" } };
+    },
+  };
+  const observer: ChainObservationPort = {
+    submit: async (p: PreparedTransaction) => {
+      if (!fate.has(p.txRef)) fate.set(p.txRef, "pending");
+    },
+    observe: async (t) => ({ status: fate.get(t.txRef) ?? "not_found", slotOrBlock: 7n }),
+  };
+  return { rail: { network: "tron-nile" as const, settlement, observer, treasury }, fate, transfers };
+}
+
 d("RWA execution engine", () => {
   let pool: Pool;
   let tenant: string;
   let user: string;
   let representation: string;
+  let approver: string;
   const chain = fakeSolana();
-  const deps = (): EngineDeps => ({ pool, rails: chain.rails, policy: { screeningMaxAgeDays: 30, blockedJurisdictions: [] }, mainnetEnabled: false, now: () => new Date(), log });
+  const tron = fakeTron("TTreasury1111111111111111111111111");
+  const deps = (): EngineDeps => ({ pool, rails: { ...chain.rails, tron: tron.rail }, policy: { screeningMaxAgeDays: 30, blockedJurisdictions: [] }, mainnetEnabled: false, now: () => new Date(), log });
   const tick = (n = 1) => (async () => {
     for (let i = 0; i < n; i++) await runTick(deps());
   })();
@@ -119,6 +140,7 @@ d("RWA execution engine", () => {
     await migrateUp(pool);
     const sfx = Math.random().toString(36).slice(2, 8);
     user = (await upsertUserBySubject(pool, { issuer: "test", subject: `eng-${sfx}` })).id;
+    approver = (await upsertUserBySubject(pool, { issuer: "test", subject: `eng-a-${sfx}` })).id;
     tenant = await withSystem(pool, (tx) => createTenantWithOwner(tx, { slug: `eng-${sfx}`, name: "Engine", ownerUserId: user }));
     const farm = await withTenant(pool, tenant, (tx) => createFarm(tx, { name: "F", timezone: "UTC", createdBy: user }));
     representation = await withTenant(pool, tenant, async (tx) => {
@@ -201,5 +223,79 @@ d("RWA execution engine", () => {
     expect((await opsOf(r!.id))[0]).toMatchObject({ state: "failed", error: "Transaction simulation failed: custom program error: 0x5" });
     await tick();
     expect((await intentOf(refused.recon))[0]!.status).toBe("failed");
+  });
+
+  /** A screened investor with both wallets, and an approved redemption or distribution. */
+  async function approved(kind: "redemption" | "distribution") {
+    const holder = `Holder${randomUUID().replace(/-/g, "").slice(0, 32)}`;
+    const payee = `TPayee${randomUUID().replace(/-/g, "").slice(0, 28)}`;
+    return withTenant(pool, tenant, async (tx) => {
+      const party = await createParty(tx, { kind: "person", displayName: "Investor", jurisdiction: "AE", createdBy: user });
+      await setKyc(tx, party, { status: "verified", reference: "kyc-2", expiresAt: new Date(Date.now() + 86_400_000 * 365), verifiedBy: user });
+      await recordScreening(tx, { subject: "party", partyId: party }, { provider: "p", providerReference: "r", outcome: "clear", reasons: [], checkedAt: new Date(), recordedBy: user });
+      for (const [network, address] of [["solana-devnet", holder], ["tron-nile", payee]] as const) {
+        const w = await addWallet(tx, party, network, address);
+        await recordScreening(tx, { subject: "wallet", walletId: w }, { provider: "p", providerReference: `w-${address}`, outcome: "clear", reasons: [], checkedAt: new Date(), recordedBy: user });
+      }
+      const o = await createOrder(tx, {
+        kind,
+        partyId: party,
+        representationId: kind === "redemption" ? representation : null,
+        shareAmount: kind === "redemption" ? 1_000_000n : null,
+        settlementNetwork: "tron-nile",
+        tokenContract: "TToken",
+        settlementAmount: 40_000_000n,
+        investorTronAddress: payee,
+        investorSolanaAddress: kind === "redemption" ? holder : null,
+        createdBy: user,
+      });
+      await tx.query(`UPDATE rwa_orders SET approved_by = $2, approved_at = now(), status = $3 WHERE id = $1`, [o.id, approver, kind === "redemption" ? "issuing" : "settling"]);
+      return { ...o, holder, payee };
+    });
+  }
+
+  /** Lets every attempt in flight land: marks it final on its chain. */
+  async function landEverything() {
+    const refs = await q<{ tx_ref: string; network: string }>(`SELECT tx_ref, network FROM chain_operations WHERE state IN ('submitted', 'observed') AND tx_ref IS NOT NULL`, []);
+    for (const r of refs) (r.network.startsWith("tron") ? tron.fate : chain.fate).set(r.tx_ref, "final");
+  }
+
+  it("burns, then pays out a redemption from the treasury, then completes it", async () => {
+    const o = await approved("redemption");
+    for (let i = 0; i < 12; i++) {
+      await tick();
+      await landEverything();
+    }
+    const burns = await q<{ action: string; status: string }>(`SELECT action, status FROM issuance_intents WHERE reconciliation_id = $1`, [o.reconciliationId]);
+    expect(burns).toEqual([{ action: "burn", status: "completed" }]);
+    expect(chain.prepared.at(-1)).toMatchObject({ action: "burn", amount: 1_000_000n, holderAddress: o.holder });
+    const payouts = await q<{ purpose: string; status: string; payer_address: string; payee_address: string }>(
+      `SELECT purpose, status, payer_address, payee_address FROM settlement_intents WHERE reconciliation_id = $1`,
+      [o.reconciliationId],
+    );
+    expect(payouts).toEqual([{ purpose: "redemption", status: "completed", payer_address: "TTreasury1111111111111111111111111", payee_address: o.payee }]);
+    expect(tron.transfers.at(-1)).toMatchObject({ from: "TTreasury1111111111111111111111111", to: o.payee, amount: 40_000_000n, tokenContract: "TToken" });
+    await rwaReconciliationSweepHandler(pool, 30)({ bucket: "r" }, { log, attempt: 1, jobId: "t" });
+    expect((await q<{ status: string }>(`SELECT status FROM rwa_orders WHERE id = $1`, [o.id]))[0]!.status).toBe("completed");
+  });
+
+  it("pays out a distribution once", async () => {
+    const o = await approved("distribution");
+    for (let i = 0; i < 8; i++) {
+      await tick();
+      await landEverything();
+    }
+    const payouts = await q<{ status: string }>(`SELECT status FROM settlement_intents WHERE reconciliation_id = $1`, [o.reconciliationId]);
+    expect(payouts).toEqual([{ status: "completed" }]);
+  });
+
+  it("stops an order whose leg failed instead of trying it again", async () => {
+    const o = await paidSubscription();
+    chain.refuseWith("Transaction simulation failed: custom program error: 0x1");
+    await tick(5);
+    chain.refuseWith(undefined);
+    await tick(2);
+    expect((await q<{ status: string }>(`SELECT status FROM rwa_orders WHERE id = $1`, [o.orderId]))[0]!.status).toBe("exception");
+    expect(await intentOf(o.recon)).toHaveLength(1);
   });
 });

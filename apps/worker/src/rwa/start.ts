@@ -1,26 +1,53 @@
-/** Runs the RWA execution engine every few seconds when issuance is configured. */
-import { SolanaObservationAdapter, SolanaToken2022Adapter, httpSolanaRpc, localEd25519Signer } from "@metafarm/chain";
+/** Runs the RWA execution engine every few seconds when at least one rail is configured. */
+import {
+  SolanaObservationAdapter,
+  SolanaToken2022Adapter,
+  TronObservationAdapter,
+  TronSettlementAdapter,
+  httpSolanaRpc,
+  httpTron,
+  localEd25519Signer,
+  localTronSigner,
+} from "@metafarm/chain";
 import type { WorkerEnv } from "@metafarm/config";
 import type { Pool } from "@metafarm/db";
 import type { Logger } from "@metafarm/observability";
 import { runTick, type Rails } from "./engine";
 
-export function startRwaEngine(env: WorkerEnv, pool: Pool, logger: Logger, intervalMs = 10_000) {
-  if (!env.RWA_SOLANA_RPC_URL || !env.RWA_SOLANA_SIGNER_SECRET) {
-    logger.info("RWA execution is off (no Solana RPC or signer configured)");
-    return undefined;
-  }
-  const network = env.RWA_SOLANA_NETWORK;
-  const signer = localEd25519Signer(env.RWA_SOLANA_SIGNER_SECRET, network);
-  if (env.RWA_SOLANA_ISSUER && env.RWA_SOLANA_ISSUER !== signer.address) throw new Error("RWA_SOLANA_ISSUER does not match the signing key");
-  const rpc = httpSolanaRpc(env.RWA_SOLANA_RPC_URL);
-  const rails: Rails = {
-    solana: {
+export function buildRails(env: WorkerEnv): Rails {
+  const rails: Rails = {};
+  if (env.RWA_SOLANA_RPC_URL && env.RWA_SOLANA_SIGNER_SECRET) {
+    const network = env.RWA_SOLANA_NETWORK;
+    const signer = localEd25519Signer(env.RWA_SOLANA_SIGNER_SECRET, network);
+    if (env.RWA_SOLANA_ISSUER && env.RWA_SOLANA_ISSUER !== signer.address) throw new Error("RWA_SOLANA_ISSUER does not match the signing key");
+    const rpc = httpSolanaRpc(env.RWA_SOLANA_RPC_URL);
+    rails.solana = {
       network,
       issuance: new SolanaToken2022Adapter({ network, rpc, signer, mainnetEnabled: env.RWA_MAINNET_ENABLED, maxPriorityFeeMicroLamports: env.RWA_SOLANA_MAX_PRIORITY_FEE }),
       observer: new SolanaObservationAdapter({ network, rpc }),
-    },
-  };
+    };
+  }
+  if (env.RWA_TRON_API_URL && env.RWA_TRON_SIGNER_PRIVATE_KEY && env.RWA_TRON_TREASURY) {
+    const network = env.RWA_TRON_NETWORK;
+    const signer = localTronSigner(env.RWA_TRON_SIGNER_PRIVATE_KEY, network);
+    if (signer.address !== env.RWA_TRON_TREASURY) throw new Error("RWA_TRON_TREASURY does not match the signing key");
+    const http = httpTron(env.RWA_TRON_API_URL, { apiKey: env.RWA_TRON_API_KEY });
+    rails.tron = {
+      network,
+      treasury: signer.address,
+      settlement: new TronSettlementAdapter({ network, http, signer, mainnetEnabled: env.RWA_MAINNET_ENABLED, maxFeeLimitSun: env.RWA_TRON_MAX_FEE_LIMIT_SUN }),
+      observer: new TronObservationAdapter({ network, http }),
+    };
+  }
+  return rails;
+}
+
+export function startRwaEngine(env: WorkerEnv, pool: Pool, logger: Logger, intervalMs = 10_000) {
+  const rails = buildRails(env);
+  if (!rails.solana && !rails.tron) {
+    logger.info("RWA execution is off (no Solana or TRON signer configured)");
+    return undefined;
+  }
   const deps = {
     pool,
     rails,
@@ -39,7 +66,7 @@ export function startRwaEngine(env: WorkerEnv, pool: Pool, logger: Logger, inter
       .catch((err: unknown) => logger.error({ err }, "RWA execution tick failed"))
       .finally(() => (running = undefined));
   }, intervalMs);
-  logger.info({ network, issuer: signer.address }, "RWA execution started");
+  logger.info({ solana: rails.solana?.network ?? null, tron: rails.tron?.network ?? null, treasury: rails.tron?.treasury ?? null }, "RWA execution started");
   return {
     async close() {
       clearInterval(timer);

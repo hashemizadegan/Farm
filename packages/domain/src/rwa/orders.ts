@@ -107,3 +107,19 @@ export function reconcileOrder(order: OrderView, intents: IntentView[], now: Dat
   if (intents.every((i) => !done(i)) && late(order.createdAt)) out.push({ kind: "stale", expected: { withinMinutes: slaMinutes }, observed: { completed: 0 } });
   return out;
 }
+
+/** Whether the first leg may start: nothing for it exists yet (a failed first leg needs a person, not a retry). */
+export function firstLegMayStart(order: OrderView, intents: IntentView[]): boolean {
+  return !intents.some((i) => matches(i, ORDER_LEGS[order.kind].first));
+}
+
+/**
+ * A leg that ended without completing (refused by compliance, or failed on chain) stops the order:
+ * starting it again automatically could pay or issue twice if the failure was misread.
+ */
+export function legNeedsAttention(order: OrderView, intents: IntentView[]): boolean {
+  const legs = ORDER_LEGS[order.kind];
+  return [legs.first, legs.second]
+    .filter((l): l is Leg => l !== null)
+    .some((leg) => intents.some((i) => matches(i, leg) && (i.status === "failed" || i.status === "policy_rejected")) && !intents.some((i) => matches(i, leg) && done(i)));
+}
