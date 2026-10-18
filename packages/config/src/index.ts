@@ -88,6 +88,15 @@ const chain = {
 /** Real-world asset rails: mainnets stay closed until legal and compliance sign-off. */
 const rwa = {
   RWA_MAINNET_ENABLED: bool.default("false"),
+  /** Sanctions screenings older than this no longer count. */
+  RWA_SCREENING_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  /** ISO 3166-1 alpha-2 codes excluded by the operator's counsel; empty by default. */
+  RWA_BLOCKED_JURISDICTIONS: csv.default(""),
+  /** Solana JSON-RPC endpoint and network for share tokens. */
+  RWA_SOLANA_RPC_URL: z.string().url().optional(),
+  RWA_SOLANA_NETWORK: z.enum(["solana-devnet", "solana-mainnet"]).default("solana-devnet"),
+  /** The address that signs issuance (mint authority of linked share tokens). */
+  RWA_SOLANA_ISSUER: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, "a Solana address").optional(),
 };
 
 export const apiEnvSchema = z
@@ -119,10 +128,6 @@ export const apiEnvSchema = z
     RWA_TRON_API_KEY: z.string().min(1).optional(),
     /** The workspace operator's TRON treasury address that receives subscriptions. */
     RWA_TRON_TREASURY: z.string().regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "a TRON address").optional(),
-    /** Sanctions screenings older than this no longer count. */
-    RWA_SCREENING_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(365).default(30),
-    /** ISO 3166-1 alpha-2 codes excluded by the operator's counsel; empty by default. */
-    RWA_BLOCKED_JURISDICTIONS: csv.default(""),
   })
   .superRefine(productionGuards);
 
@@ -163,16 +168,27 @@ export const workerEnvSchema = z
     ...rwa,
     /** How long the second leg of an order may lag the first before reconciliation reports it. */
     RWA_RECONCILIATION_SLA_MINUTES: z.coerce.number().int().min(5).max(10_080).default(60),
+    /**
+     * Devnet only: the issuer's key (base58, Solana CLI format) as a platform secret. Refused when
+     * mainnets are enabled; production issuance signs through a KMS/HSM adapter.
+     */
+    RWA_SOLANA_SIGNER_SECRET: z.string().min(32).optional(),
+    /** Compute-unit price ceiling for issuance transactions (micro-lamports). */
+    RWA_SOLANA_MAX_PRIORITY_FEE: z.coerce.bigint().min(0n).default(1_000_000n),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {
-    if (!env.MQTT_URL) return;
-    const tls = /^(mqtts|wss):\/\//.test(env.MQTT_URL);
-    if (!tls && (!env.MQTT_ALLOW_INSECURE || env.APP_ENV === "production" || env.APP_ENV === "staging")) {
-      ctx.addIssue({ code: "custom", path: ["MQTT_URL"], message: "MQTT must use TLS (mqtts:// or wss://)" });
+    if (env.RWA_MAINNET_ENABLED && env.RWA_SOLANA_SIGNER_SECRET) {
+      ctx.addIssue({ code: "custom", path: ["RWA_SOLANA_SIGNER_SECRET"], message: "in-process signing keys are refused when mainnets are enabled" });
     }
-    if (Boolean(env.MQTT_CLIENT_CERT_PEM) !== Boolean(env.MQTT_CLIENT_KEY_PEM)) {
-      ctx.addIssue({ code: "custom", path: ["MQTT_CLIENT_KEY_PEM"], message: "set both the client certificate and key, or neither" });
+    if (env.MQTT_URL) {
+      const tls = /^(mqtts|wss):\/\//.test(env.MQTT_URL);
+      if (!tls && (!env.MQTT_ALLOW_INSECURE || env.APP_ENV === "production" || env.APP_ENV === "staging")) {
+        ctx.addIssue({ code: "custom", path: ["MQTT_URL"], message: "MQTT must use TLS (mqtts:// or wss://)" });
+      }
+      if (Boolean(env.MQTT_CLIENT_CERT_PEM) !== Boolean(env.MQTT_CLIENT_KEY_PEM)) {
+        ctx.addIssue({ code: "custom", path: ["MQTT_CLIENT_KEY_PEM"], message: "set both the client certificate and key, or neither" });
+      }
     }
   });
 

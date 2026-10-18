@@ -15,6 +15,7 @@ import { observationNormalizationHandler } from "./handlers/observations";
 import { rwaReconciliationSweepHandler } from "./handlers/rwa";
 import { wrapHandler, type DeadLetterSink, type JobRunStore } from "./runner";
 import { startTelemetryConsumer } from "./telemetry/consumer";
+import { startRwaEngine } from "./rwa/start";
 
 // On Railway the platform assigns PORT; the health server uses it unless HEALTH_PORT is set.
 const env = loadEnv(workerEnvSchema, { ...process.env, HEALTH_PORT: process.env.HEALTH_PORT ?? process.env.PORT });
@@ -163,6 +164,8 @@ const telemetry = env.MQTT_URL
     )
   : undefined;
 
+const rwaEngine = startRwaEngine(env, pool, logger);
+
 shutdown.register({ name: "postgres", close: () => pool.end() });
 shutdown.register({ name: "redis", close: async () => void (await connection.quit()) });
 shutdown.register({ name: "producers", close: async () => void (await Promise.all([...producers.values(), deadLetterQueue].map((q) => q.close()))) });
@@ -171,5 +174,7 @@ shutdown.register({ name: "workers", close: async () => void (await Promise.all(
 shutdown.register({ name: "health", close: () => new Promise<void>((r) => health.close(() => r())) });
 // Telemetry flushes what it holds before the database closes.
 if (telemetry) shutdown.register({ name: "telemetry", close: () => telemetry.close() });
+// The engine finishes its current step before the database closes.
+if (rwaEngine) shutdown.register({ name: "rwa-engine", close: () => rwaEngine.close() });
 
 logger.info({ queues: Object.keys(processors), concurrency: env.WORKER_CONCURRENCY }, "worker started");

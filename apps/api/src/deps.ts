@@ -1,4 +1,4 @@
-import type { TronHttp } from "@metafarm/chain";
+import type { SolanaRpc, TronHttp } from "@metafarm/chain";
 import type { ApiEnv } from "@metafarm/config";
 import type { Pool } from "@metafarm/db";
 import type { JobPayloads } from "@metafarm/domain";
@@ -31,4 +31,6 @@ export interface Deps {
   harvestChain?: HarvestChainReader;
   /** TRON node for verifying incoming payments; present when RWA_TRON_API_URL is configured. */
   tron?: TronHttp;
+  /** Solana node for checking share-token mints; present when RWA_SOLANA_RPC_URL is configured. */
+  solanaRpc?: SolanaRpc;
 }
