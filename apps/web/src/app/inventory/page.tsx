@@ -3,6 +3,7 @@ import { Fragment, useState, type FormEvent } from "react";
 import { INPUT_CATEGORIES, type InputCategory } from "@metafarm/domain";
 import { Button, EmptyState, ErrorSummary, Notice, PageHeader, SelectField, StatusPill, TextField, useAnnounce } from "@metafarm/ui";
 import { RequireTenant } from "@/components/RequireTenant";
+import { ExportPanel } from "@/components/ExportPanel";
 import { useI18n } from "@/i18n/provider";
 import { api, unwrap, useQuery, type Schemas } from "@/lib/api";
 import { useCan } from "@/lib/can";
@@ -36,6 +37,7 @@ function Inventory({ tenantId }: { tenantId: string }) {
 
   return (
     <>
+      <ExportPanel tenantId={tenantId} datasets={["stock", "input-log"]} />
       {items.loading && !items.data && <p role="status">{t.loading}</p>}
       {items.error && (
         <Notice tone="error" title={t.couldNotLoad}>

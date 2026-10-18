@@ -1053,6 +1053,23 @@ export const en = {
     open: "Open",
   },
 
+  exports: {
+    summary: "Download as spreadsheet",
+    hint: "CSV files open in Excel, Google Sheets or LibreOffice. Dates and numbers are kept in a form spreadsheets can sort and add up.",
+    from: "From (optional)",
+    to: "To (optional)",
+    badRange: "The end date is before the start date.",
+    download: {
+      "input-log": "Input and spray log",
+      harvests: "Harvests",
+      tasks: "Tasks",
+      stock: "Current stock",
+    },
+    done: (file: string) => `Downloaded ${file}.`,
+    failed: "The download failed. Try again.",
+    tooLarge: "That is too many rows for one file. Choose a shorter date range.",
+  },
+
   farmSettings: {
     title: "Farm settings",
     cannot: "Your role can view this farm but not change its settings.",

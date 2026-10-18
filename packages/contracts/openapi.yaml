@@ -40,6 +40,7 @@ tags:
   - name: equipment
   - name: sensors
   - name: notifications
+  - name: exports
   - name: media
   - name: team
   - name: audit
@@ -1646,6 +1647,38 @@ paths:
                 required: [marked]
                 properties:
                   marked: { type: integer }
+
+  /v1/tenants/{tenantId}/exports/{dataset}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: dataset, in: path, required: true, schema: { type: string, enum: [input-log, harvests, tasks, stock] } }
+    get:
+      tags: [exports]
+      summary: Download records as a spreadsheet (CSV)
+      description: |
+        input-log is every recorded use of an input (the spray and fertiliser log); harvests
+        include their fingerprints and registry status; stock is a snapshot and takes no farm
+        or dates. Values are machine-readable (ISO dates, Latin digits); `lang` sets only the
+        column headings. UTF-8 with a byte-order mark.
+      operationId: downloadExport
+      parameters:
+        - { name: farmId, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: lang, in: query, schema: { type: string, enum: [en, fa], default: en } }
+      responses:
+        "200":
+          description: The file
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413":
+          description: Too many rows; choose a shorter range
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /v1/tenants/{tenantId}/uploads:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
