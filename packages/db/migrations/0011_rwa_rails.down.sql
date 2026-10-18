@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS iot_telemetry;
+DROP TABLE IF EXISTS reconciliation_cases;
+DROP TRIGGER IF EXISTS chain_operations_guard ON chain_operations;
+DROP TABLE IF EXISTS chain_operation_transitions;
+DROP TABLE IF EXISTS chain_operations;
+DROP FUNCTION IF EXISTS append_only();
+DROP FUNCTION IF EXISTS chain_operations_guard();
+DROP FUNCTION IF EXISTS chain_operation_transition_allowed(text, text);
+DROP TABLE IF EXISTS settlement_intents;
+DROP TABLE IF EXISTS issuance_intents;
+DROP TABLE IF EXISTS asset_representations;
+DROP TABLE IF EXISTS business_assets;
