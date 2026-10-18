@@ -59,3 +59,9 @@ export async function markNotificationsRead(tx: TenantTx, userId: string, ids: s
 export async function pruneNotifications(tx: TenantTx) {
   await tx.query(`DELETE FROM notifications WHERE tenant_id = $1 AND read_at < now() - interval '90 days'`, [tx.tenantId]);
 }
+
+/** Whether anyone in the workspace already received the notification with this dedupe key. */
+export async function notificationSent(tx: TenantTx, dedupeKey: string): Promise<boolean> {
+  const r = await tx.query(`SELECT 1 FROM notifications WHERE tenant_id = $1 AND dedupe_key = $2 LIMIT 1`, [tx.tenantId, dedupeKey]);
+  return (r.rowCount ?? 0) > 0;
+}

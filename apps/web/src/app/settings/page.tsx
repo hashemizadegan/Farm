@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, ErrorSummary, Notice, PageHeader, TextField, useAnnounce } from "@metafarm/ui";
 import { RequireTenant } from "@/components/RequireTenant";
+import { WeeklyReportSettings } from "@/components/WeeklyReportSettings";
 import { api, unwrap } from "@/lib/api";
 import { useCan } from "@/lib/can";
 import { useTenant } from "@/lib/tenant";
@@ -88,6 +89,7 @@ function Settings({ tenantId }: { tenantId: string }) {
           <p>{t.readonly(() => <strong>{ws.name}</strong>)}</p>
         )}
       </section>
+      <WeeklyReportSettings tenantId={tenantId} />
       <Notice title={t.peopleTitle}>
         {t.people(
           (x) => <Link href="/team">{x}</Link>,

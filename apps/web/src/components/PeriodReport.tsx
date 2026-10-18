@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button, Notice, SelectField, TextField } from "@metafarm/ui";
 import { useI18n } from "@/i18n/provider";
 import { api, unwrap, useQuery, type Schemas } from "@/lib/api";
@@ -21,6 +21,16 @@ export function PeriodReport({ tenantId, farmId: fixedFarm }: { tenantId: string
   const [period, setPeriod] = useState<Period | "custom">("lastWeek");
   const [custom, setCustom] = useState(() => periodRange("lastWeek", today, { weekStartsOn: fmt.weekStartsOn, calendar }));
   const [farm, setFarm] = useState(fixedFarm ?? "");
+  // A link may name the period (?from=…&to=…), e.g. from the weekly summary notification.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const from = q.get("from");
+    const to = q.get("to");
+    if (from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      setPeriod("custom");
+      setCustom({ from, to });
+    }
+  }, []);
   const range = period === "custom" ? custom : periodRange(period, today, { weekStartsOn: fmt.weekStartsOn, calendar });
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(range.from) && /^\d{4}-\d{2}-\d{2}$/.test(range.to) && range.from <= range.to;
 

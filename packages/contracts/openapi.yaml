@@ -347,9 +347,19 @@ paths:
 
   /v1/tenants/{tenantId}/settings:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [team]
+      summary: Workspace settings (any member)
+      operationId: getWorkspaceSettings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceSettings" }
     patch:
       tags: [team]
-      summary: Rename the workspace (admin/owner)
+      summary: Rename the workspace or change its weekly summary (admin/owner)
       operationId: updateWorkspace
       requestBody:
         required: true
@@ -357,22 +367,18 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name]
+              minProperties: 1
               additionalProperties: false
               properties:
                 name: { type: string, minLength: 1, maxLength: 200 }
+                weeklyReport: { $ref: "#/components/schemas/WeeklyReportSettings" }
       responses:
         "200":
           description: OK
           content:
             application/json:
-              schema:
-                type: object
-                required: [tenantId, slug, name]
-                properties:
-                  tenantId: { type: string, format: uuid }
-                  slug: { type: string }
-                  name: { type: string }
+              schema: { $ref: "#/components/schemas/WorkspaceSettings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
   /v1/tenants/{tenantId}/members:
@@ -2015,6 +2021,21 @@ components:
       type: string
       enum: [owner, admin, manager, verifier, worker, viewer]
 
+    WeeklyReportSettings:
+      type: object
+      required: [enabled, weekStartsOn]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean, description: Send owners, admins and managers a summary of last week }
+        weekStartsOn: { type: integer, minimum: 0, maximum: 6, description: "0 = Sunday ... 6 = Saturday" }
+    WorkspaceSettings:
+      type: object
+      required: [tenantId, slug, name, weeklyReport]
+      properties:
+        tenantId: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        weeklyReport: { $ref: "#/components/schemas/WeeklyReportSettings" }
     Money:
       type: object
       required: [currency, amount, entries]
@@ -3143,7 +3164,7 @@ components:
       required: [id, kind, data, read, createdAt]
       properties:
         id: { type: string, format: uuid }
-        kind: { type: string, enum: [task_assigned, alert_raised, low_stock, maintenance_due] }
+        kind: { type: string, enum: [task_assigned, alert_raised, low_stock, maintenance_due, weekly_report] }
         data: { type: object, additionalProperties: true, description: "Facts for the reader's app to render in its language" }
         read: { type: boolean }
         createdAt: { type: string, format: date-time }

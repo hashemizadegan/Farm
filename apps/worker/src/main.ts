@@ -6,6 +6,7 @@ import { QUEUES, idempotencyKey, jobIdFromKey, timeBucket, type JobPayloads } fr
 import { createLogger, installGracefulShutdown, startHealthServer } from "@metafarm/observability";
 import { createViemChainReader } from "./chain-reader";
 import { alertEvaluationHandler, alertSweepHandler, maintenanceDueSweepHandler, pendingBoundarySweepHandler, sensorSilenceSweepHandler } from "./handlers/alerts";
+import { weeklyReportSweepHandler } from "./handlers/reports";
 import { chainIndexHandler } from "./handlers/chain";
 import { gisValidationHandler } from "./handlers/gis";
 import { dbAnchorStore, harvestAnchorHandler } from "./handlers/harvest";
@@ -89,6 +90,7 @@ const processors: Record<string, Processor> = {
       await wrapHandler("alerts-sweep", alertSweepHandler(pool, enqueue), deps)(view(`alerts-sweep:${bucket}`));
       await wrapHandler("sensor-silence", sensorSilenceSweepHandler(pool), deps)(view(`sensor-silence:${bucket}`));
       await wrapHandler("maintenance-due", maintenanceDueSweepHandler(pool), deps)(view(`maintenance-due:${bucket}`));
+      await wrapHandler("weekly-report", weeklyReportSweepHandler(pool), deps)(view(`weekly-report:${bucket}`));
       return wrapHandler("boundary-sweep", pendingBoundarySweepHandler(pool, enqueue), deps)(view(`boundary-sweep:${bucket}`));
     }
     return wrapHandler(QUEUES.alerts, alertEvaluationHandler(pool), deps)(job);

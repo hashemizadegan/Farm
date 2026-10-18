@@ -98,4 +98,16 @@ d("period reports", () => {
     expect((await report("owner", "from=2024-01-01&to=2025-06-01")).statusCode).toBe(400);
     expect((await report("outsider", `from=${day(-1)}&to=${day(0)}`)).statusCode).toBe(404);
   });
+
+  it("keeps the weekly summary setting, changed only by owners and admins", async () => {
+    const get = async (who: keyof typeof subjects) => app.inject({ method: "GET", url: `/v1/tenants/${tenantId}/settings`, headers: await auth(who) });
+    expect((await get("worker")).json()).toMatchObject({ name: "Rep", weeklyReport: { enabled: true, weekStartsOn: 1 } });
+    const patch = async (who: keyof typeof subjects, payload: object) =>
+      app.inject({ method: "PATCH", url: `/v1/tenants/${tenantId}/settings`, headers: await auth(who), payload });
+    expect((await patch("worker", { weeklyReport: { enabled: false, weekStartsOn: 6 } })).statusCode).toBe(403);
+    expect((await patch("owner", {})).statusCode).toBe(400);
+    const r = await patch("owner", { weeklyReport: { enabled: false, weekStartsOn: 6 } });
+    expect(r.json()).toMatchObject({ name: "Rep", weeklyReport: { enabled: false, weekStartsOn: 6 } });
+    expect((await get("worker")).json().weeklyReport).toEqual({ enabled: false, weekStartsOn: 6 });
+  });
 });

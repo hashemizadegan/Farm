@@ -1052,6 +1052,8 @@ export const en = {
     alertRaised: (severity: string, farm: string, message: string) => `${severity} alert on ${farm}: ${message}`,
     lowStock: (item: string, onHand: string, unit: string) => `${item} is low: ${onHand} ${unit} left.`,
     maintenanceDue: (plan: string, machine: string) => `${plan} is overdue on ${machine}.`,
+    weeklyReport: (from: string, to: string, done: number, open: number, batches: number, alerts: number) =>
+      `Last week (${from} to ${to}): ${done} ${done === 1 ? "task" : "tasks"} done, ${open} due and still open, ${batches} harvest ${batches === 1 ? "batch" : "batches"}, ${alerts} ${alerts === 1 ? "alert" : "alerts"}.`,
     open: "Open",
   },
 
@@ -1234,6 +1236,17 @@ export const en = {
         Invite people, change roles or leave this workspace on the {team("Team")} page. Your own name and email are on {account("your account")}.
       </>
     ),
+    weekly: {
+      heading: "Weekly summary",
+      intro: "On the first morning of each week, owners, admins and managers get a notification with last week's totals and a link to the full report. Nothing is sent for a week with nothing recorded.",
+      enabled: "Send the weekly summary",
+      weekStartsOn: "Weeks start on",
+      weekStartsOnHint: "Also the day the summary is sent, from 07:00 in the farms' time zone.",
+      days: { 6: "Saturday", 0: "Sunday", 1: "Monday" },
+      saved: "Weekly summary settings saved.",
+      onReadonly: (day: string) => `On: sent every ${day} morning. Only owners and admins can change this.`,
+      offReadonly: "Off. Only owners and admins can change this.",
+    },
   },
 
   account: {

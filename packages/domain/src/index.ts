@@ -16,3 +16,4 @@ export * from "./sensors";
 export * from "./notifications";
 export * from "./exports";
 export * from "./reports";
+export * from "./workspace";
