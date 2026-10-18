@@ -40,6 +40,12 @@ export const PERMISSIONS = [
   "equipment:manage",
   /** Record hour-meter readings and services done. */
   "equipment:use",
+  /** See investors, orders and reconciliation (real-world asset rails). */
+  "rwa:read",
+  /** Register investors and wallets, place orders, record incoming payments. */
+  "rwa:operate",
+  /** Record KYC outcomes and sanctions screenings. */
+  "compliance:review",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -70,6 +76,7 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "inventory:use",
     "equipment:manage",
     "equipment:use",
+    "rwa:read",
   ]),
   admin: new Set([
     ...READ,
@@ -93,6 +100,9 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "inventory:use",
     "equipment:manage",
     "equipment:use",
+    "rwa:read",
+    "rwa:operate",
+    "compliance:review",
   ]),
   owner: new Set(PERMISSIONS),
 };

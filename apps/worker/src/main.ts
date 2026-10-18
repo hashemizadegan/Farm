@@ -12,6 +12,7 @@ import { dbAnchorStore, harvestAnchorHandler } from "./handlers/harvest";
 import { createHarvestRegistryClient } from "./harvest-registry";
 import { imageryIngestionHandler, noImageryProvider } from "./handlers/imagery";
 import { observationNormalizationHandler } from "./handlers/observations";
+import { rwaReconciliationSweepHandler } from "./handlers/rwa";
 import { wrapHandler, type DeadLetterSink, type JobRunStore } from "./runner";
 import { startTelemetryConsumer } from "./telemetry/consumer";
 
@@ -90,6 +91,7 @@ const processors: Record<string, Processor> = {
       await wrapHandler("alerts-sweep", alertSweepHandler(pool, enqueue), deps)(view(`alerts-sweep:${bucket}`));
       await wrapHandler("sensor-silence", sensorSilenceSweepHandler(pool), deps)(view(`sensor-silence:${bucket}`));
       await wrapHandler("maintenance-due", maintenanceDueSweepHandler(pool), deps)(view(`maintenance-due:${bucket}`));
+      await wrapHandler("rwa-reconciliation", rwaReconciliationSweepHandler(pool, env.RWA_RECONCILIATION_SLA_MINUTES), deps)(view(`rwa-reconciliation:${bucket}`));
       return wrapHandler("boundary-sweep", pendingBoundarySweepHandler(pool, enqueue), deps)(view(`boundary-sweep:${bucket}`));
     }
     return wrapHandler(QUEUES.alerts, alertEvaluationHandler(pool), deps)(job);

@@ -2,6 +2,7 @@ import { apiEnvSchema, loadEnv } from "@metafarm/config";
 import { createPool } from "@metafarm/db";
 import { createLogger, installGracefulShutdown } from "@metafarm/observability";
 import { recoverMessageAddress } from "viem";
+import { httpTron } from "@metafarm/chain";
 import { buildApp } from "./app";
 import { createDevProvider } from "./auth/dev";
 import { createOidcProvider } from "./auth/oidc";
@@ -60,6 +61,7 @@ const app = await buildApp({
     now: () => new Date(),
     harvestChain:
       env.CHAIN_RPC_URL && env.HARVEST_REGISTRY_ADDRESS ? createHarvestChainReader(env.CHAIN_RPC_URL, env.HARVEST_REGISTRY_ADDRESS) : undefined,
+    tron: env.RWA_TRON_API_URL ? httpTron(env.RWA_TRON_API_URL, { apiKey: env.RWA_TRON_API_KEY }) : undefined,
   },
   isDraining: () => shutdown.isShuttingDown,
 });

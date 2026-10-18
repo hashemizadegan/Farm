@@ -42,6 +42,7 @@ tags:
   - name: notifications
   - name: exports
   - name: reports
+  - name: rwa
   - name: media
   - name: team
   - name: audit
@@ -1715,6 +1716,301 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/tenants/{tenantId}/rwa/parties:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [rwa]
+      summary: Investors (parties)
+      operationId: listRwaParties
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/RwaParty" } }
+    post:
+      tags: [rwa]
+      summary: Register an investor
+      operationId: createRwaParty
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, displayName]
+              properties:
+                kind: { type: string, enum: [person, organisation] }
+                displayName: { type: string, minLength: 1, maxLength: 200 }
+                jurisdiction: { type: [string, "null"], pattern: "^[A-Za-z]{2}$" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaPartyDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/rwa/parties/{partyId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [rwa]
+      summary: An investor with wallets, screenings and the current compliance decision
+      operationId: getRwaParty
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaPartyDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/rwa/parties/{partyId}/kyc:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Record the KYC outcome from the provider's case
+      operationId: recordRwaKyc
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status: { type: string, enum: [unverified, pending, verified, rejected] }
+                reference: { type: [string, "null"], description: "Provider case reference; required for verified" }
+                expiresAt: { type: [string, "null"], format: date-time }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaPartyDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/rwa/parties/{partyId}/wallets:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Register a wallet of the investor
+      operationId: addRwaWallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [network, address]
+              properties:
+                network: { type: string, enum: [solana-devnet, solana-mainnet, tron-nile, tron-shasta, tron-mainnet] }
+                address: { type: string }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaPartyDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The address is already registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/tenants/{tenantId}/rwa/parties/{partyId}/screenings:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Record a sanctions screening of the investor or one of their wallets
+      description: Screenings come from a real provider (named, with its reference). The log is append-only.
+      operationId: recordRwaScreening
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [provider, providerReference, outcome, checkedAt]
+              properties:
+                walletId: { type: string, format: uuid }
+                provider: { type: string }
+                providerReference: { type: string }
+                outcome: { type: string, enum: [clear, review, blocked] }
+                reasons: { type: array, items: { type: string } }
+                checkedAt: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaPartyDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/rwa/orders:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [rwa]
+      summary: Orders
+      operationId: listRwaOrders
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/RwaOrder" } }
+    post:
+      tags: [rwa]
+      summary: Place an order (passes the compliance gate)
+      description: |
+        Refused with 422 compliance_blocked (reasons in details) unless the investor's KYC is
+        verified and current, the jurisdiction is known and permitted, and the investor and both
+        wallets have clear, recent screenings. Mainnets are refused unless enabled.
+      operationId: createRwaOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, partyId, settlementNetwork, tokenContract, settlementAmount, tronWallet]
+              properties:
+                kind: { type: string, enum: [subscription, redemption, distribution] }
+                partyId: { type: string, format: uuid }
+                representationId: { type: string, format: uuid }
+                shareAmount: { type: string, description: Base units }
+                settlementNetwork: { type: string, enum: [tron-nile, tron-shasta, tron-mainnet] }
+                tokenContract: { type: string }
+                settlementAmount: { type: string, description: Base units }
+                tronWallet: { type: string }
+                solanaWallet: { type: string }
+      responses:
+        "201":
+          description: Placed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaOrderDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: Compliance checks failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/tenants/{tenantId}/rwa/orders/{orderId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [rwa]
+      summary: An order with its intents on both rails and its reconciliation cases
+      operationId: getRwaOrder
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaOrderDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/rwa/orders/{orderId}/cancel:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Cancel an order with nothing done yet
+      operationId: cancelRwaOrder
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaOrderDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The order is already under way
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/tenants/{tenantId}/rwa/orders/{orderId}/payments:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Record the investor's subscription payment, verified on chain
+      description: |
+        The TRON transaction must be solidified and be exactly the expected TRC-20 transfer
+        (token, investor wallet, treasury, amount) with a successful receipt and the token's
+        Transfer event. A payment can count for one order only. Repeating the call with the same
+        transaction returns the order.
+      operationId: recordRwaPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [txId]
+              properties:
+                txId: { type: string, pattern: "^[0-9a-fA-F]{64}$" }
+      responses:
+        "200":
+          description: Recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaOrderDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Order not open, not a subscription, or payment already used
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Payment not verified, or compliance checks failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: TRON payment checks are not configured
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /v1/tenants/{tenantId}/uploads:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     post:
@@ -2015,6 +2311,136 @@ components:
       type: string
       enum: [owner, admin, manager, verifier, worker, viewer]
 
+    RwaParty:
+      type: object
+      required: [id, kind, displayName, jurisdiction, kyc, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [person, organisation] }
+        displayName: { type: string }
+        jurisdiction: { type: [string, "null"] }
+        kyc:
+          type: object
+          required: [status, reference, verifiedAt, expiresAt]
+          properties:
+            status: { type: string, enum: [unverified, pending, verified, rejected] }
+            reference: { type: [string, "null"] }
+            verifiedAt: { type: [string, "null"], format: date-time }
+            expiresAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+    RwaPartyDetail:
+      allOf:
+        - { $ref: "#/components/schemas/RwaParty" }
+        - type: object
+          required: [wallets, screenings, compliance]
+          properties:
+            wallets:
+              type: array
+              items:
+                type: object
+                required: [id, network, address, screening]
+                properties:
+                  id: { type: string, format: uuid }
+                  network: { type: string }
+                  address: { type: string }
+                  screening:
+                    oneOf:
+                      - type: "null"
+                      - type: object
+                        required: [outcome, checkedAt]
+                        properties:
+                          outcome: { type: string, enum: [clear, review, blocked] }
+                          checkedAt: { type: [string, "null"], format: date-time }
+            screenings:
+              type: array
+              items:
+                type: object
+                required: [id, subject, walletId, provider, providerReference, outcome, reasons, checkedAt]
+                properties:
+                  id: { type: string, format: uuid }
+                  subject: { type: string, enum: [party, wallet] }
+                  walletId: { type: [string, "null"], format: uuid }
+                  provider: { type: string }
+                  providerReference: { type: string }
+                  outcome: { type: string, enum: [clear, review, blocked] }
+                  reasons: { type: array, items: { type: string } }
+                  checkedAt: { type: string, format: date-time }
+            compliance:
+              type: object
+              required: [allowed, reasons]
+              properties:
+                allowed: { type: boolean }
+                reasons: { type: array, items: { type: string } }
+    RwaOrder:
+      type: object
+      required: [id, reconciliationId, kind, partyId, partyName, representationId, shareAmount, settlementNetwork, tokenContract, settlementAmount, tronWallet, solanaWallet, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        reconciliationId: { type: string, format: uuid }
+        kind: { type: string, enum: [subscription, redemption, distribution] }
+        partyId: { type: string, format: uuid }
+        partyName: { type: string }
+        representationId: { type: [string, "null"], format: uuid }
+        shareAmount: { type: [string, "null"] }
+        settlementNetwork: { type: string }
+        tokenContract: { type: string }
+        settlementAmount: { type: string }
+        tronWallet: { type: [string, "null"] }
+        solanaWallet: { type: [string, "null"] }
+        status: { type: string, enum: [open, settling, issuing, completed, cancelled, exception] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    RwaOrderDetail:
+      allOf:
+        - { $ref: "#/components/schemas/RwaOrder" }
+        - type: object
+          required: [issuance, settlement, cases, discrepancies]
+          properties:
+            issuance:
+              type: array
+              items:
+                type: object
+                required: [id, action, amount, holder, status, createdAt]
+                properties:
+                  id: { type: string, format: uuid }
+                  action: { type: string }
+                  amount: { type: [string, "null"] }
+                  holder: { type: string }
+                  status: { type: string }
+                  createdAt: { type: string, format: date-time }
+            settlement:
+              type: array
+              items:
+                type: object
+                required: [id, purpose, direction, amount, payer, payee, status, txId, observedAmount, observedBlock, observedAt, createdAt]
+                properties:
+                  id: { type: string, format: uuid }
+                  purpose: { type: string }
+                  direction: { type: string, enum: [outbound, inbound] }
+                  amount: { type: string }
+                  payer: { type: string }
+                  payee: { type: string }
+                  status: { type: string }
+                  txId: { type: [string, "null"] }
+                  observedAmount: { type: [string, "null"] }
+                  observedBlock: { type: [string, "null"] }
+                  observedAt: { type: [string, "null"], format: date-time }
+                  createdAt: { type: string, format: date-time }
+            cases:
+              type: array
+              items:
+                type: object
+                required: [id, kind, status, expected, observed, openedAt, resolvedAt, resolutionNote]
+                properties:
+                  id: { type: string, format: uuid }
+                  kind: { type: string }
+                  status: { type: string }
+                  expected: { type: object }
+                  observed: { type: object }
+                  openedAt: { type: string, format: date-time }
+                  resolvedAt: { type: [string, "null"], format: date-time }
+                  resolutionNote: { type: [string, "null"] }
+            discrepancies: { type: array, items: { type: string } }
     Money:
       type: object
       required: [currency, amount, entries]

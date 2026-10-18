@@ -19,6 +19,7 @@
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/swagger": "^9.5.1",
     "@fastify/swagger-ui": "^6.1.2",
+    "@metafarm/chain": "workspace:*",
     "@metafarm/config": "workspace:*",
     "@metafarm/contracts": "workspace:*",
     "@metafarm/db": "workspace:*",

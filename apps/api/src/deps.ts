@@ -1,3 +1,4 @@
+import type { TronHttp } from "@metafarm/chain";
 import type { ApiEnv } from "@metafarm/config";
 import type { Pool } from "@metafarm/db";
 import type { JobPayloads } from "@metafarm/domain";
@@ -28,4 +29,6 @@ export interface Deps {
   now: () => Date;
   /** Present when CHAIN_RPC_URL and HARVEST_REGISTRY_ADDRESS are configured. */
   harvestChain?: HarvestChainReader;
+  /** TRON node for verifying incoming payments; present when RWA_TRON_API_URL is configured. */
+  tron?: TronHttp;
 }
