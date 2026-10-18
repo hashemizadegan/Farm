@@ -28,6 +28,7 @@ function fakeRpc(over: Partial<SolanaRpc> = {}): SolanaRpc & { sent: string[] } 
       return "sig";
     },
     getSignatureStatus: async () => null,
+    getAccountInfo: async () => null,
     ...over,
   };
 }

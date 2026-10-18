@@ -17,6 +17,8 @@ export interface SolanaRpc {
   /** Sends base64 wire bytes; returns the signature. Retries are ours, not the node's. */
   sendTransaction(wireBase64: string): Promise<string>;
   getSignatureStatus(signature: string): Promise<SignatureStatus | null>;
+  /** Account data (finalized), or null when the account does not exist. */
+  getAccountInfo(address: string): Promise<{ owner: string; data: Uint8Array } | null>;
 }
 
 export class SolanaRpcError extends Error {
@@ -80,6 +82,10 @@ export function httpSolanaRpc(url: string, fetchImpl: Fetch = fetch as unknown a
       );
       const s = r.value[0];
       return s ? { slot: BigInt(s.slot), confirmations: s.confirmations, err: s.err, confirmationStatus: s.confirmationStatus } : null;
+    },
+    async getAccountInfo(address) {
+      const r = await call<{ value: { owner: string; data: [string, string] } | null }>("getAccountInfo", [address, { encoding: "base64", commitment: "finalized" }]);
+      return r.value ? { owner: r.value.owner, data: new Uint8Array(Buffer.from(r.value.data[0], "base64")) } : null;
     },
   };
 }

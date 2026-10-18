@@ -1,7 +1,8 @@
 # Real-world asset rails
 
 Status: schema, domain model and ports; Solana Token-2022 issuance, TRON TRC-20 settlement and
-observation adapters for both rails (`packages/chain`), tested against simulated nodes. Not wired into the API or worker yet; nothing issued.
+observation adapters for both rails, and compressed-NFT tree planning and DAS reads (`packages/chain`),
+tested against simulated nodes. Not wired into the API or worker yet; nothing issued.
 
 ## Decisions (October 2026)
 
@@ -76,11 +77,19 @@ requested → policy_approved → prepared → submitted → observed → confir
   19 of 27 super representatives); failed when its receipt is not `SUCCESS`; `expired` only once
   the solidified head is past the expiration and a second lookup finds nothing. Duplicate
   broadcasts are success; signature, validation, expiration and TaPoS refusals are definitive.
+- **Compressed NFTs (Bubblegum)**: `planTree` picks the smallest valid depth/buffer shape for the
+  number of assets and concurrency, with a canopy that keeps each transfer at no more than 8 proof
+  accounts, and sizes the account (checked against `@solana/spl-account-compression`). The DAS
+  adapter hands out a proof only after it hashes (keccak256) to the reported root **and** that root
+  is still in the on-chain tree's change-log buffer; otherwise it asks again, then fails with
+  `StaleProofError`. Proofs are never cached across writes; `isStaleProofError` recognises a
+  transaction that ran with an out-of-date proof so a new attempt fetches a fresh one.
+  Minting instructions (Bubblegum `mintV1`) come next, once the Metaplex packages pass the audit.
 - `stepsAfterObservation` (domain) turns what a chain reports into lifecycle steps.
 
 ## Next
 
-1. Bubblegum cNFTs: tree sizing and DAS reads with fresh proofs.
+1. Bubblegum minting and transfers (tree creation, `mintV1`).
 2. Reconciliation and a `CompliancePort` implementation from a real KYC/sanctions provider.
 3. MQTT-over-TLS consumer in the worker writing to `iot_telemetry`.
 4. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
