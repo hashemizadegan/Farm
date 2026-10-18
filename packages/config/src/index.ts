@@ -86,6 +86,10 @@ const chain = {
 };
 
 /** Real-world asset rails: mainnets stay closed until legal and compliance sign-off. */
+const kmsKeyVersion = z
+  .string()
+  .regex(/^projects\/[a-z0-9-]+\/locations\/[a-z0-9-]+\/keyRings\/[A-Za-z0-9_-]+\/cryptoKeys\/[A-Za-z0-9_-]+\/cryptoKeyVersions\/[0-9]+$/, "a full Cloud KMS key version name");
+
 const rwa = {
   RWA_MAINNET_ENABLED: bool.default("false"),
   /** Sanctions screenings older than this no longer count. */
@@ -180,6 +184,13 @@ export const workerEnvSchema = z
     RWA_TRON_SIGNER_PRIVATE_KEY: z.string().regex(/^(0x)?[0-9a-fA-F]{64}$/, "64 hex characters").optional(),
     /** Most TRX (sun) one payout may burn for energy. */
     RWA_TRON_MAX_FEE_LIMIT_SUN: z.coerce.bigint().min(1n).default(100_000_000n),
+    /**
+     * Google Cloud KMS signing (required for mainnets): full key version names, and a service
+     * account key (JSON) allowed only `cloudkms.cryptoKeyVersions.useToSign` and `viewPublicKey`.
+     */
+    RWA_SOLANA_KMS_KEY: kmsKeyVersion.optional(),
+    RWA_TRON_KMS_KEY: kmsKeyVersion.optional(),
+    GCP_KMS_CREDENTIALS_JSON: z.string().min(1).optional(),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {
@@ -188,6 +199,10 @@ export const workerEnvSchema = z
     }
     if (env.RWA_MAINNET_ENABLED && env.RWA_TRON_SIGNER_PRIVATE_KEY) {
       ctx.addIssue({ code: "custom", path: ["RWA_TRON_SIGNER_PRIVATE_KEY"], message: "in-process signing keys are refused when mainnets are enabled" });
+    }
+    for (const [kms, local] of [["RWA_SOLANA_KMS_KEY", "RWA_SOLANA_SIGNER_SECRET"], ["RWA_TRON_KMS_KEY", "RWA_TRON_SIGNER_PRIVATE_KEY"]] as const) {
+      if (env[kms] && env[local]) ctx.addIssue({ code: "custom", path: [local], message: `set ${kms} or ${local}, not both` });
+      if (env[kms] && !env.GCP_KMS_CREDENTIALS_JSON) ctx.addIssue({ code: "custom", path: ["GCP_KMS_CREDENTIALS_JSON"], message: `${kms} needs GCP_KMS_CREDENTIALS_JSON` });
     }
     if (env.MQTT_URL) {
       const tls = /^(mqtts|wss):\/\//.test(env.MQTT_URL);
