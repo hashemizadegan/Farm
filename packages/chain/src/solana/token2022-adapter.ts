@@ -9,8 +9,8 @@ import {
   type Network,
   type PreparedTransaction,
 } from "@metafarm/domain";
-import { U64_MAX, toBase64 } from "../bytes";
-import { compileMessage, signAndSerialize, type Instruction, type SignFn } from "./codec";
+import { U64_MAX } from "../bytes";
+import type { Instruction, SignFn } from "./codec";
 import {
   burnChecked,
   createAccount,
@@ -22,13 +22,14 @@ import {
   initializeTransferHook,
   mintLength,
   mintToChecked,
-  setComputeUnitLimit,
-  setComputeUnitPrice,
   thawAccount,
   type MintExtension,
 } from "./instructions";
 import { TOKEN_2022_PROGRAM, associatedTokenAddress, ephemeralKeypair, isSolanaAddress } from "./keys";
+import { prepareSolanaTransaction } from "./prepare";
 import type { SolanaRpc } from "./rpc";
+
+export { choosePriorityFee } from "./prepare";
 
 export interface SolanaAdapterConfig {
   network: Network;
@@ -41,14 +42,6 @@ export interface SolanaAdapterConfig {
   maxPriorityFeeMicroLamports?: bigint;
   /** For tests: deterministic mint keys. */
   random?: (n: number) => Uint8Array;
-}
-
-/** The 75th percentile of recent non-zero fees, capped. Zero when the network is quiet. */
-export function choosePriorityFee(recent: bigint[], cap: bigint): bigint {
-  const paid = recent.filter((f) => f > 0n).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  if (paid.length === 0) return 0n;
-  const p75 = paid[Math.min(paid.length - 1, Math.floor(paid.length * 0.75))]!;
-  return p75 > cap ? cap : p75;
 }
 
 export class SolanaToken2022Adapter implements AssetIssuancePort {
@@ -149,20 +142,8 @@ export class SolanaToken2022Adapter implements AssetIssuancePort {
     if (network !== this.cfg.network) throw new Error(`this adapter serves ${this.cfg.network}, not ${network}`);
   }
 
-  private async finish(body: Instruction[], writable: string[], extraSigners: Map<string, SignFn>, summary: Record<string, unknown>): Promise<PreparedTransaction> {
-    const fee = choosePriorityFee(await this.cfg.rpc.getRecentPrioritizationFees(writable), this.feeCap);
-    const instructions = [setComputeUnitLimit(this.cuLimit), ...(fee > 0n ? [setComputeUnitPrice(fee)] : []), ...body];
-    const { blockhash, lastValidBlockHeight } = await this.cfg.rpc.getLatestBlockhash();
-    const compiled = compileMessage(this.cfg.signer.address, blockhash, instructions);
-    const signers = new Map<string, SignFn>([[this.cfg.signer.address, (m) => this.cfg.signer.signMessage(m)], ...extraSigners]);
-    const { wire, signature } = await signAndSerialize(compiled, signers);
-    return {
-      network: this.cfg.network,
-      txRef: signature,
-      wire: toBase64(wire),
-      validity: { lastValidBlockHeight },
-      fees: { priorityFeeMicroLamports: fee, computeUnitLimit: this.cuLimit },
-      summary: { ...summary, feePayer: this.cfg.signer.address, recentBlockhash: blockhash },
-    };
+  private finish(body: Instruction[], writable: string[], extraSigners: Map<string, SignFn>, summary: Record<string, unknown>): Promise<PreparedTransaction> {
+    const { network, rpc, signer } = this.cfg;
+    return prepareSolanaTransaction({ network, rpc, signer, computeUnitLimit: this.cuLimit, feeCap: this.feeCap, body, writable, extraSigners, summary });
   }
 }

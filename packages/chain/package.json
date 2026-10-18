@@ -17,6 +17,8 @@
     "@noble/hashes": "^1.8.0"
   },
   "devDependencies": {
+    "@metaplex-foundation/mpl-bubblegum": "6.0.0",
+    "@metaplex-foundation/umi": "1.6.0",
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.98.0"
   }

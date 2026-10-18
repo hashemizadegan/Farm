@@ -116,6 +116,31 @@ export interface CompressedAssetProof {
   tree: string;
 }
 
+export interface CreateTreeRequest {
+  network: Network;
+  maxDepth: number;
+  maxBufferSize: number;
+  canopyDepth: number;
+}
+
+export interface CompressedMintRequest {
+  network: Network;
+  merkleTree: string;
+  owner: string;
+  /** What the leaf commits to; the platform signer is the sole (verified) creator, no royalties. */
+  metadata: { name: string; symbol: string; uri: string };
+}
+
+/** Writes Bubblegum compressed NFTs: allocates trees and appends leaves. */
+export interface CompressedIssuancePort {
+  prepareCreateTree(request: CreateTreeRequest): Promise<PreparedTransaction & { treeAddress: string; capacity: bigint }>;
+  /**
+   * The leaf index (and so the asset id) is read from the tree as it is now, so the caller must have
+   * no other mint into the same tree in flight.
+   */
+  prepareMint(request: CompressedMintRequest): Promise<PreparedTransaction & { assetId: string; leafIndex: bigint; leafHash: string }>;
+}
+
 /** One-of-a-kind micro-assets (trees, parcels, animals) as Bubblegum compressed NFTs, read through DAS. */
 export interface CompressedAssetPort {
   getAsset(network: Network, assetId: string): Promise<CompressedAssetRecord | null>;

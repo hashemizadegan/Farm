@@ -153,12 +153,23 @@ requested → policy_approved → prepared → submitted → observed → confir
   is still in the on-chain tree's change-log buffer; otherwise it asks again, then fails with
   `StaleProofError`. Proofs are never cached across writes; `isStaleProofError` recognises a
   transaction that ran with an out-of-date proof so a new attempt fetches a fresh one.
-  Minting instructions (Bubblegum `mintV1`) come next, once the Metaplex packages pass the audit.
+- **Bubblegum writes** (`CompressedIssuancePort`, V1 on SPL Account Compression), built with our own
+  codec; `@metaplex-foundation/mpl-bubblegum` is dev-only and the tests check program-derived
+  addresses, `create_tree_config` and `mint_v1` bytes, MetadataArgs, data and creator hashes, the
+  tree config account and the leaf event against it. A tree is allocated (zeroed account owned by
+  the compression program, its key generated in memory and discarded) and initialised in one
+  transaction as a **private** tree whose creator is the platform signer, so nobody else can mint
+  into it. A mint reads the tree config first: the leaf index is `num_minted`, so the asset id
+  (`["asset", tree, index]`) and the leaf hash are known before sending; the caller keeps one mint
+  per tree in flight so that index cannot move. Leaves carry no royalties, the platform as sole
+  verified creator, and the program's limits (name 32, symbol 10, URI 200 bytes, 5 creators).
+  `parseLeafEvent` reads the leaf back from the mint's noop event.
 - `stepsAfterObservation` (domain) turns what a chain reports into lifecycle steps.
 
 ## Next
 
-1. Bubblegum minting and transfers (tree creation, `mintV1`).
+1. Trees and compressed NFTs in the database, engine and API: plan and create a tree per tenant,
+   mint one leaf per verified tree, parcel or animal, and confirm it through DAS.
 2. A KMS/HSM signer (Ed25519 and secp256k1) and a `CompliancePort` adapter for a KYC/sanctions
    provider; until then mainnets stay locked.
 3. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
