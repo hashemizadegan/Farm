@@ -19,6 +19,13 @@ export function useNotificationText() {
         return { text: t.lowStock(d.itemName ?? "", fmt.number(Number(d.onHand), { maximumFractionDigits: 3 }), d.unit ?? ""), href: "/inventory" };
       case "maintenance_due":
         return { text: t.maintenanceDue(d.planTitle ?? "", d.equipmentName ?? ""), href: `/equipment/${d.equipmentId}` };
+      case "weekly_report": {
+        const w = n.data as { from: string; to: string; tasksDone: number; dueStillOpen: number; harvestBatches: number; alerts: number };
+        return {
+          text: t.weeklyReport(fmt.day(w.from), fmt.day(w.to), w.tasksDone, w.dueStillOpen, w.harvestBatches, w.alerts),
+          href: `/reports?from=${w.from}&to=${w.to}`,
+        };
+      }
     }
   };
 }

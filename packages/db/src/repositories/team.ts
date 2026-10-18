@@ -149,3 +149,38 @@ export async function updateProfile(pool: Pool, userId: string, input: { display
   );
   return r.rows[0];
 }
+
+// ── Workspace settings ────────────────────────────────────────────────────
+
+export interface TenantSettingsRow {
+  id: string;
+  slug: string;
+  name: string;
+  settings: Record<string, unknown>;
+  /** The oldest active farm's time zone: the workspace's clock for weekly summaries. */
+  timezone: string | null;
+}
+
+const SETTINGS_SELECT = `
+  SELECT t.id, t.slug, t.name, t.settings,
+         (SELECT f.timezone FROM farms f WHERE f.tenant_id = t.id AND f.archived_at IS NULL ORDER BY f.created_at LIMIT 1) AS timezone
+    FROM tenants t`;
+
+export async function getTenantSettings(tx: SystemTx, tenantId: string): Promise<TenantSettingsRow | undefined> {
+  const r = await tx.query<TenantSettingsRow>(`${SETTINGS_SELECT} WHERE t.id = $1`, [tenantId]);
+  return r.rows[0];
+}
+
+/** Workspaces with at least one active farm, for the weekly summary sweep. */
+export async function listTenantsWithFarms(tx: SystemTx, limit = 5000): Promise<TenantSettingsRow[]> {
+  const r = await tx.query<TenantSettingsRow>(
+    `${SETTINGS_SELECT} WHERE EXISTS (SELECT 1 FROM farms f WHERE f.tenant_id = t.id AND f.archived_at IS NULL) ORDER BY t.id LIMIT $1`,
+    [limit],
+  );
+  return r.rows;
+}
+
+/** Merges keys into tenants.settings. */
+export async function mergeTenantSettings(tx: SystemTx, tenantId: string, patch: Record<string, unknown>): Promise<void> {
+  await tx.query(`UPDATE tenants SET settings = settings || $2::jsonb, updated_at = now() WHERE id = $1`, [tenantId, JSON.stringify(patch)]);
+}

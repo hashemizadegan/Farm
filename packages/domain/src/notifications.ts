@@ -4,7 +4,7 @@
  */
 import { ROLE_PERMISSIONS, ROLES, type Permission, type Role } from "./roles";
 
-export const NOTIFICATION_KINDS = ["task_assigned", "alert_raised", "low_stock", "maintenance_due"] as const;
+export const NOTIFICATION_KINDS = ["task_assigned", "alert_raised", "low_stock", "maintenance_due", "weekly_report"] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 export interface NotificationData {
@@ -12,6 +12,7 @@ export interface NotificationData {
   alert_raised: { alertId?: string; farmId: string; farmName: string; severity: string; message: string };
   low_stock: { itemId: string; itemName: string; onHand: string; unit: string };
   maintenance_due: { equipmentId: string; equipmentName: string; planTitle: string };
+  weekly_report: { from: string; to: string; tasksDone: number; dueStillOpen: number; applications: number; harvestBatches: number; alerts: number };
 }
 
 /** Roles whose members should hear about events that need this permission to act on. */

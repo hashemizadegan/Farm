@@ -5,8 +5,10 @@ import {
   countOwnersForUpdate,
   createInvitation,
   getMemberRole,
+  getTenantSettings,
   listMembers,
   listPendingInvitations,
+  mergeTenantSettings,
   removeMember,
   renameTenant,
   revokeInvitation,
@@ -18,14 +20,16 @@ import {
   writeSystemAudit,
   type InvitationRow,
   type MemberRow,
+  type TenantSettingsRow,
 } from "@metafarm/db";
 import {
   acceptInvitationSchema,
   createInvitationSchema,
-  renameWorkspaceSchema,
   updateMemberSchema,
+  readWorkspaceSettings,
   updateProfileSchema,
   uuid,
+  workspaceSettingsSchema,
   type Role,
 } from "@metafarm/domain";
 import { z } from "zod";
@@ -172,14 +176,26 @@ export async function teamRoutes(app: FastifyInstance) {
     return { tenantId: outcome.tenantId, name: outcome.tenantName, role: outcome.role, alreadyMember: outcome.alreadyMember };
   });
 
+  const settingsView = (t: TenantSettingsRow) => ({ tenantId: t.id, slug: t.slug, name: t.name, ...readWorkspaceSettings(t.settings, t.timezone) });
+
+  app.get("/v1/tenants/:tenantId/settings", async (req) => {
+    const { tenantId } = parse(z.object({ tenantId: uuid }), req.params);
+    return app.inTenant(req, "farm:read", async () => settingsView((await withSystem(app.deps.pool, (sys) => getTenantSettings(sys, tenantId)))!));
+  });
+
   app.patch("/v1/tenants/:tenantId/settings", async (req) => {
     const { tenantId } = parse(z.object({ tenantId: uuid }), req.params);
-    const { name } = parse(renameWorkspaceSchema, req.body);
-    // inTenant checks membership and permission; the rename itself needs system access (tenants is read-only to the app role).
+    const body = parse(workspaceSettingsSchema, req.body);
+    // inTenant checks membership and permission; the change itself needs system access (tenants is read-only to the app role).
     return app.inTenant(req, "member:manage", async (tx) => {
-      const t = await withSystem(app.deps.pool, (sys) => renameTenant(sys, tenantId, name));
-      await app.audit(req, tx, { action: "tenant.renamed", targetType: "tenant", targetId: tenantId, metadata: { name } });
-      return { tenantId: t.id, slug: t.slug, name: t.name };
+      const t = await withSystem(app.deps.pool, async (sys) => {
+        if (body.name !== undefined) await renameTenant(sys, tenantId, body.name);
+        if (body.weeklyReport) await mergeTenantSettings(sys, tenantId, { weeklyReport: body.weeklyReport });
+        return (await getTenantSettings(sys, tenantId))!;
+      });
+      if (body.name !== undefined) await app.audit(req, tx, { action: "tenant.renamed", targetType: "tenant", targetId: tenantId, metadata: { name: body.name } });
+      if (body.weeklyReport) await app.audit(req, tx, { action: "tenant.settings_changed", targetType: "tenant", targetId: tenantId, metadata: { weeklyReport: body.weeklyReport } });
+      return settingsView(t);
     });
   });
 
