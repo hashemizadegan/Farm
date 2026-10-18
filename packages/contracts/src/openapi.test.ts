@@ -17,6 +17,7 @@ import {
   TASK_KINDS,
   INPUT_CATEGORIES,
   SEASON_STAGES,
+  EQUIPMENT_KINDS,
 } from "@metafarm/domain";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,6 +48,10 @@ describe("openapi.yaml", () => {
   it("matches domain provenance labels and roles", () => {
     expect(schemas.ProvenanceLabel.enum).toEqual([...PROVENANCE_LABELS]);
     expect(schemas.Role.enum).toEqual([...ROLES]);
+  });
+
+  it("matches equipment kinds", () => {
+    expect(schemas.EquipmentKind.enum).toEqual([...EQUIPMENT_KINDS]);
   });
 
   it("matches season stages", () => {

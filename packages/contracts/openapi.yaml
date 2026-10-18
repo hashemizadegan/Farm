@@ -37,6 +37,7 @@ tags:
   - name: harvests
   - name: inventory
   - name: seasons
+  - name: equipment
   - name: media
   - name: team
   - name: audit
@@ -1238,6 +1239,190 @@ paths:
               schema: { $ref: "#/components/schemas/Season" }
         "409": { description: The season is closed }
 
+  /v1/tenants/{tenantId}/equipment:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+    get:
+      tags: [equipment]
+      summary: Machines with their maintenance state
+      operationId: listEquipment
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/EquipmentSummary" } }
+    post:
+      tags: [equipment]
+      summary: Add a machine (equipment:manage)
+      operationId: createEquipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EquipmentInput" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Equipment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: A machine with this name exists }
+
+  /v1/tenants/{tenantId}/equipment/{equipmentId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: equipmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [equipment]
+      summary: A machine with maintenance plans, readings and service log
+      operationId: getEquipment
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EquipmentDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [equipment]
+      summary: Change a machine, its status or farm (equipment:manage)
+      operationId: updateEquipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EquipmentUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Equipment" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/equipment/{equipmentId}/readings:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: equipmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [equipment]
+      summary: Record an hour-meter reading (equipment:use)
+      operationId: addMeterReading
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MeterReadingInput" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Equipment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "No hour meter, or the reading is lower than the last one" }
+
+  /v1/tenants/{tenantId}/equipment/{equipmentId}/plans:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: equipmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [equipment]
+      summary: Add a maintenance plan (equipment:manage)
+      operationId: createMaintenancePlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MaintenancePlanInput" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MaintenancePlan" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/equipment/{equipmentId}/plans/{planId}/archive:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: equipmentId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: planId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [equipment]
+      summary: Stop a maintenance plan (equipment:manage)
+      operationId: archiveMaintenancePlan
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { archived: { type: boolean } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/equipment/{equipmentId}/plans/{planId}/task:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: equipmentId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: planId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [equipment]
+      summary: Create a maintenance task on the machine's farm (task:manage)
+      operationId: createMaintenanceTask
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                assigneeUserId: { type: [string, "null"], format: uuid }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: The machine has no farm }
+
+  /v1/tenants/{tenantId}/equipment/{equipmentId}/services:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: equipmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [equipment]
+      summary: Record a service or repair (equipment:use)
+      operationId: recordService
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ServiceRecordInput" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Equipment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/tenants/{tenantId}/uploads:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     post:
@@ -2287,6 +2472,161 @@ components:
           properties:
             done: { type: integer }
             open: { type: integer }
+
+    EquipmentKind:
+      type: string
+      enum: [tractor, sprayer, harvester, pump, irrigation, vehicle, implement, tool, other]
+
+    EquipmentInput:
+      type: object
+      additionalProperties: false
+      required: [name, kind]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        kind: { $ref: "#/components/schemas/EquipmentKind" }
+        makeModel: { type: [string, "null"], maxLength: 120 }
+        serial: { type: [string, "null"], maxLength: 80 }
+        farmId: { type: [string, "null"], format: uuid }
+        tracksHours: { type: boolean, default: false }
+        currentHours: { type: [string, "null"], pattern: "^\\d{1,7}(\\.\\d)?$" }
+        notes: { type: [string, "null"], maxLength: 2000 }
+
+    EquipmentUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        kind: { $ref: "#/components/schemas/EquipmentKind" }
+        makeModel: { type: [string, "null"], maxLength: 120 }
+        serial: { type: [string, "null"], maxLength: 80 }
+        farmId: { type: [string, "null"], format: uuid }
+        tracksHours: { type: boolean }
+        status: { type: string, enum: [active, out_of_service, retired] }
+        statusNote: { type: [string, "null"], maxLength: 500 }
+        notes: { type: [string, "null"], maxLength: 2000 }
+
+    Equipment:
+      type: object
+      required: [id, name, kind, tracksHours, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { $ref: "#/components/schemas/EquipmentKind" }
+        makeModel: { type: [string, "null"] }
+        serial: { type: [string, "null"] }
+        farmId: { type: [string, "null"], format: uuid }
+        farmName: { type: [string, "null"] }
+        tracksHours: { type: boolean }
+        status: { type: string, enum: [active, out_of_service, retired] }
+        statusNote: { type: [string, "null"] }
+        notes: { type: [string, "null"] }
+        currentHours: { type: [string, "null"] }
+        currentHoursOn: { type: [string, "null"], format: date }
+        createdAt: { type: string, format: date-time }
+
+    EquipmentSummary:
+      allOf:
+        - { $ref: "#/components/schemas/Equipment" }
+        - type: object
+          required: [maintenance]
+          properties:
+            maintenance:
+              type: object
+              required: [overdue, soon, state]
+              properties:
+                overdue: { type: integer }
+                soon: { type: integer }
+                state: { $ref: "#/components/schemas/DueState" }
+
+    DueState:
+      type: string
+      enum: [overdue, soon, ok]
+
+    MeterReadingInput:
+      type: object
+      additionalProperties: false
+      required: [hours, readOn]
+      properties:
+        hours: { type: string, pattern: "^\\d{1,7}(\\.\\d)?$" }
+        readOn: { type: string, format: date }
+        note: { type: [string, "null"], maxLength: 500 }
+
+    MaintenancePlanInput:
+      type: object
+      additionalProperties: false
+      required: [title, lastDoneOn]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        everyHours: { type: [integer, "null"], minimum: 1, maximum: 100000 }
+        everyDays: { type: [integer, "null"], minimum: 1, maximum: 3650 }
+        lastDoneOn: { type: string, format: date }
+        lastDoneHours: { type: [string, "null"] }
+        notes: { type: [string, "null"], maxLength: 1000 }
+
+    MaintenancePlan:
+      type: object
+      required: [id, title, lastDoneOn, due]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        everyHours: { type: [integer, "null"] }
+        everyDays: { type: [integer, "null"] }
+        lastDoneOn: { type: string, format: date }
+        lastDoneHours: { type: [string, "null"] }
+        notes: { type: [string, "null"] }
+        due:
+          type: object
+          required: [state, dueOn, dueHours]
+          properties:
+            state: { $ref: "#/components/schemas/DueState" }
+            dueOn: { type: [string, "null"], format: date }
+            dueHours: { type: [number, "null"] }
+
+    ServiceRecordInput:
+      type: object
+      additionalProperties: false
+      required: [doneOn, description]
+      properties:
+        planId: { type: [string, "null"], format: uuid }
+        doneOn: { type: string, format: date }
+        hours: { type: [string, "null"] }
+        description: { type: string, minLength: 1, maxLength: 1000 }
+        cost: { type: [string, "null"] }
+        currency: { type: [string, "null"], pattern: "^[A-Z]{3}$" }
+
+    EquipmentDetail:
+      type: object
+      required: [equipment, today, plans, readings, services]
+      properties:
+        equipment: { $ref: "#/components/schemas/Equipment" }
+        today: { type: string, format: date }
+        plans: { type: array, items: { $ref: "#/components/schemas/MaintenancePlan" } }
+        readings:
+          type: array
+          items:
+            type: object
+            required: [id, hours, readOn]
+            properties:
+              id: { type: string, format: uuid }
+              hours: { type: string }
+              readOn: { type: string, format: date }
+              note: { type: [string, "null"] }
+              recordedByName: { type: [string, "null"] }
+        services:
+          type: array
+          items:
+            type: object
+            required: [id, doneOn, description]
+            properties:
+              id: { type: string, format: uuid }
+              planTitle: { type: [string, "null"] }
+              doneOn: { type: string, format: date }
+              hours: { type: [string, "null"] }
+              description: { type: string }
+              cost: { type: [string, "null"] }
+              currency: { type: [string, "null"] }
+              recordedByName: { type: [string, "null"] }
 
     UploadRequest:
       type: object
