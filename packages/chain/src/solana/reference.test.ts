@@ -63,6 +63,10 @@ describe("Solana encoding matches the reference SDKs", () => {
       ix.initializeTransferFeeConfig({ mint: s(mint), configAuthority: s(a), withdrawAuthority: s(b), basisPoints: 50, maximumFee: 5_000_000n }),
       createInitializeTransferFeeConfigInstruction(mint, a, b, 50, 5_000_000n, TOKEN_2022_PROGRAM_ID),
     );
+    // An absent authority is one zero byte, so the next option is read from the right place.
+    const noConfig = ix.initializeTransferFeeConfig({ mint: s(mint), configAuthority: null, withdrawAuthority: s(b), basisPoints: 1, maximumFee: 1n });
+    expect(Buffer.from(noConfig.data.subarray(0, 4)).toString("hex")).toBe("1a000001");
+    expect(noConfig.data).toHaveLength(2 + 1 + 33 + 2 + 8);
     same(ix.initializePermanentDelegate({ mint: s(mint), delegate: s(c) }), createInitializePermanentDelegateInstruction(mint, c, TOKEN_2022_PROGRAM_ID));
     same(ix.initializeTransferHook({ mint: s(mint), authority: s(a), programId: s(hook) }), createInitializeTransferHookInstruction(mint, a, hook, TOKEN_2022_PROGRAM_ID));
     same(ix.mintToChecked({ mint: s(mint), destination: s(b), authority: s(a), amount: 1_000_000n, decimals: 6 }), createMintToCheckedInstruction(mint, b, a, 1_000_000n, 6, [], TOKEN_2022_PROGRAM_ID));

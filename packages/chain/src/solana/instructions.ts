@@ -8,7 +8,9 @@ import type { Instruction } from "./codec";
 import { ASSOCIATED_TOKEN_PROGRAM, COMPUTE_BUDGET_PROGRAM, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, addressBytes } from "./keys";
 
 const ZERO_KEY = new Uint8Array(32);
-const optionKey = (k: string | null | undefined) => (k ? concatBytes(Uint8Array.of(1), addressBytes(k)) : concatBytes(Uint8Array.of(0), ZERO_KEY));
+// Optional keys as the programs parse them: tag 1 + key, or the tag 0 alone. (Padding an absent key
+// would shift the next field: in InitializeTransferFeeConfig two options follow each other.)
+const optionKey = (k: string | null | undefined) => (k ? concatBytes(Uint8Array.of(1), addressBytes(k)) : Uint8Array.of(0));
 
 // ── System and compute budget ──────────────────────────────────────────
 
