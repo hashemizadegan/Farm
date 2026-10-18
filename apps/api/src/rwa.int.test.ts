@@ -53,7 +53,7 @@ d("RWA API", () => {
   let pool: Pool;
   let app: FastifyInstance;
   const sfx = Math.random().toString(36).slice(2, 8);
-  const subjects = { owner: `rw-owner-${sfx}`, manager: `rw-mgr-${sfx}`, worker: `rw-wrk-${sfx}` };
+  const subjects = { owner: `rw-owner-${sfx}`, manager: `rw-mgr-${sfx}`, worker: `rw-wrk-${sfx}`, admin: `rw-adm-${sfx}` };
   const ids: Record<string, string> = {};
   let tenantId: string;
   let representationId: string;
@@ -74,7 +74,7 @@ d("RWA API", () => {
     await migrateUp(pool);
     for (const [k, s] of Object.entries(subjects)) ids[k] = (await upsertUserBySubject(pool, { issuer: "dev", subject: s })).id;
     tenantId = await withSystem(pool, (tx) => createTenantWithOwner(tx, { slug: `rwa-api-${sfx}`, name: "RWA", ownerUserId: ids.owner! }));
-    await pool.query(`INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'manager'), ($1, $3, 'worker')`, [tenantId, ids.manager, ids.worker]);
+    await pool.query(`INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'manager'), ($1, $3, 'worker'), ($1, $4, 'admin')`, [tenantId, ids.manager, ids.worker, ids.admin]);
     ({ app } = await buildTestApp({ pool, env: { RWA_TRON_TREASURY: TREASURY }, deps: { tron } }));
     const farmId = (
       await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/farms`, headers: { authorization: `Bearer ${await tokenFor(subjects.owner)}` }, payload: { name: "Grove" } })
@@ -164,5 +164,20 @@ d("RWA API", () => {
     expect((await call("owner", "POST", `/orders/${id}/cancel`)).statusCode).toBe(409);
     expect((await call("owner", "POST", `/orders/${other}/cancel`)).json().status).toBe("cancelled");
     expect((await call("manager", "GET", "/orders")).json().items.length).toBe(2);
+  });
+
+  it("pays out only after a second person approves", async () => {
+    const red = (await call("owner", "POST", "/orders", order({ kind: "redemption" }))).json();
+    expect(red.status).toBe("open");
+    expect((await call("owner", "POST", `/orders/${red.id}/approve`)).json()).toMatchObject({ error: "four_eyes" });
+    expect((await call("manager", "POST", `/orders/${red.id}/approve`)).statusCode).toBe(403);
+    const approved = await call("admin", "POST", `/orders/${red.id}/approve`);
+    expect(approved.json()).toMatchObject({ status: "issuing" });
+    expect(approved.json().approvedAt).not.toBeNull();
+    expect((await call("admin", "POST", `/orders/${red.id}/approve`)).json()).toMatchObject({ error: "order_not_open" });
+    const dist = (await call("owner", "POST", "/orders", order({ kind: "distribution", representationId: undefined, shareAmount: undefined, solanaWallet: undefined }))).json();
+    expect((await call("admin", "POST", `/orders/${dist.id}/approve`)).json()).toMatchObject({ status: "settling" });
+    const sub = (await call("owner", "POST", "/orders", order())).json();
+    expect((await call("admin", "POST", `/orders/${sub.id}/approve`)).json()).toMatchObject({ error: "not_approvable" });
   });
 });

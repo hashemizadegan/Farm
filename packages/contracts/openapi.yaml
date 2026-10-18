@@ -2109,6 +2109,34 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /v1/tenants/{tenantId}/rwa/orders/{orderId}/approve:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Approve a redemption or distribution (someone other than who placed it)
+      description: Only approved orders burn shares or pay out of the treasury. Compliance is checked again now and again at signing.
+      operationId: approveRwaOrder
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaOrderDetail" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Not open, or a subscription
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Compliance checks failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /v1/tenants/{tenantId}/rwa/orders/{orderId}/payments:
     parameters:
       - { $ref: "#/components/parameters/TenantId" }
@@ -2547,7 +2575,7 @@ components:
                 reasons: { type: array, items: { type: string } }
     RwaOrder:
       type: object
-      required: [id, reconciliationId, kind, partyId, partyName, representationId, shareAmount, settlementNetwork, tokenContract, settlementAmount, tronWallet, solanaWallet, status, createdAt, updatedAt]
+      required: [id, reconciliationId, kind, partyId, partyName, representationId, shareAmount, settlementNetwork, tokenContract, settlementAmount, tronWallet, solanaWallet, status, approvedAt, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         reconciliationId: { type: string, format: uuid }
@@ -2562,6 +2590,7 @@ components:
         tronWallet: { type: [string, "null"] }
         solanaWallet: { type: [string, "null"] }
         status: { type: string, enum: [open, settling, issuing, completed, cancelled, exception] }
+        approvedAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     RwaOrderDetail:

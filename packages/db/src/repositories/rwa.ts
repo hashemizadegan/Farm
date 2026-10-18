@@ -241,6 +241,9 @@ export interface OrderRow {
   investor_tron_address: string | null;
   investor_solana_address: string | null;
   status: OrderStatus;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -248,7 +251,7 @@ export interface OrderRow {
 const ORDER_SELECT = `
   SELECT o.id, o.reconciliation_id, o.kind, o.party_id, p.display_name AS party_name, o.representation_id, o.share_amount::text,
          o.settlement_network, o.token_contract, o.settlement_amount::text, o.investor_tron_address, o.investor_solana_address,
-         o.status, o.created_at, o.updated_at
+         o.status, o.created_by, o.approved_by, o.approved_at, o.created_at, o.updated_at
     FROM rwa_orders o JOIN parties p ON p.tenant_id = o.tenant_id AND p.id = o.party_id`;
 
 export async function listOrders(tx: TenantTx, limit = 200): Promise<OrderRow[]> {

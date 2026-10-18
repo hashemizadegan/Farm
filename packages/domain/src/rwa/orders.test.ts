@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reconcileOrder, secondLegMayStart, type IntentView, type OrderView } from "./orders";
+import { firstLegMayStart, legNeedsAttention, reconcileOrder, secondLegMayStart, type IntentView, type OrderView } from "./orders";
 
 const now = new Date("2026-10-18T09:00:00Z");
 const minutesAgo = (n: number) => new Date(now.getTime() - n * 60_000);
@@ -59,5 +59,21 @@ describe("reconciliation", () => {
     expect(kinds(red, [mint({ action: "burn" })])).toEqual(["missing_settlement"]);
     expect(kinds(red, [pay({ purpose: "redemption" })])).toEqual(["missing_issuance"]);
     expect(kinds(red, [mint({ action: "burn" }), pay({ purpose: "redemption" })])).toEqual([]);
+  });
+});
+
+describe("starting and stopping legs", () => {
+  const red: OrderView = { ...sub, kind: "redemption" };
+  it("starts a first leg once", () => {
+    expect(firstLegMayStart(red, [])).toBe(true);
+    expect(firstLegMayStart(red, [mint({ action: "burn", status: "in_progress" })])).toBe(false);
+    expect(firstLegMayStart(red, [mint({ action: "burn", status: "failed" })])).toBe(false);
+    expect(firstLegMayStart({ ...sub, kind: "distribution", shareAmount: null }, [])).toBe(true);
+  });
+  it("stops an order whose leg ended without completing", () => {
+    expect(legNeedsAttention(sub, [pay(), mint({ status: "failed" })])).toBe(true);
+    expect(legNeedsAttention(sub, [pay(), mint({ status: "policy_rejected" })])).toBe(true);
+    expect(legNeedsAttention(sub, [pay(), mint({ status: "failed" }), mint()])).toBe(false);
+    expect(legNeedsAttention(sub, [pay(), mint({ status: "in_progress" })])).toBe(false);
   });
 });

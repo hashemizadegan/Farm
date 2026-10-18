@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { TOKEN_2022_PROGRAM, isSolanaAddress, isTronAddress, parseMintAccount, verifyIncomingTrc20 } from "@metafarm/chain";
 import {
   addWallet,
+  approveOrder,
   complianceView,
   createBusinessAsset,
   createRepresentation,
@@ -83,6 +84,7 @@ const toOrder = (o: OrderRow) => ({
   tronWallet: o.investor_tron_address,
   solanaWallet: o.investor_solana_address,
   status: o.status,
+  approvedAt: iso(o.approved_at),
   createdAt: o.created_at.toISOString(),
   updatedAt: o.updated_at.toISOString(),
 });
@@ -306,6 +308,28 @@ export async function rwaRoutes(app: FastifyInstance) {
       if (o.status !== "open") throw new HttpError(409, "order_in_progress", "only an order with nothing done yet can be cancelled");
       await setOrderStatus(tx, orderId, "cancelled");
       await app.audit(req, tx, { action: "rwa.order_cancelled", targetType: "rwa_order", targetId: orderId });
+      return orderDetail(tx, orderId);
+    });
+  });
+
+  /**
+   * A second person approves a redemption or distribution: only then may the platform burn shares
+   * or pay out of the treasury. Compliance is checked again at approval and again at signing.
+   */
+  app.post("/v1/tenants/:tenantId/rwa/orders/:orderId/approve", async (req) => {
+    const { orderId } = parse(orderParams, req.params);
+    return app.inTenant(req, "rwa:operate", async (tx) => {
+      const o = await getOrder(tx, orderId, true);
+      if (!o) throw notFound("order");
+      if (o.kind === "subscription") throw new HttpError(409, "not_approvable", "subscriptions start when the investor's payment is verified");
+      if (o.status !== "open") throw new HttpError(409, "order_not_open", `the order is ${o.status}`);
+      if (o.created_by === req.user!.id) throw new HttpError(403, "four_eyes", "someone other than the person who placed the order must approve it");
+      checkNetwork(o.settlement_network);
+      const repNetwork = await representationNetwork(tx, o.representation_id);
+      if (repNetwork) checkNetwork(repNetwork);
+      await gate(tx, o.party_id, orderWallets({ kind: o.kind, settlementNetwork: o.settlement_network, tronWallet: o.investor_tron_address, solanaWallet: o.investor_solana_address, representationNetwork: repNetwork }));
+      await approveOrder(tx, orderId, req.user!.id, o.kind === "redemption" ? "issuing" : "settling");
+      await app.audit(req, tx, { action: "rwa.order_approved", targetType: "rwa_order", targetId: orderId, metadata: { kind: o.kind } });
       return orderDetail(tx, orderId);
     });
   });

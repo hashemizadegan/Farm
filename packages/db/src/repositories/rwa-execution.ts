@@ -252,3 +252,60 @@ export async function linkMint(tx: TenantTx, id: string, mintAddress: string, de
     decimals,
   ]);
 }
+
+// ── Payouts and approvals ──────────────────────────────────────────────
+
+/** Orders whose next leg the engine may start (approved redemptions and distributions, paid subscriptions). */
+export async function ordersToAdvance(tx: SystemTx, limit = 500): Promise<{ tenant_id: string; id: string }[]> {
+  return (
+    await tx.query<{ tenant_id: string; id: string }>(`SELECT tenant_id, id FROM rwa_orders WHERE status IN ('issuing', 'settling') ORDER BY updated_at LIMIT $1`, [limit])
+  ).rows;
+}
+
+export async function createSettlementIntent(
+  tx: TenantTx,
+  i: {
+    network: Network;
+    tokenContract: string;
+    purpose: "redemption" | "distribution" | "refund";
+    payer: string;
+    payee: string;
+    amount: bigint;
+    reconciliationId: string;
+    partyId: string;
+    decision: object;
+  },
+): Promise<string> {
+  return (
+    await tx.query<{ id: string }>(
+      `INSERT INTO settlement_intents (tenant_id, network, token_contract, purpose, payer_address, payee_address, amount, reconciliation_id, idempotency_key,
+                                       status, policy_decision, party_id, direction)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8, gen_random_uuid(), 'approved', $9::jsonb, $10, 'outbound') RETURNING id`,
+      [tx.tenantId, i.network, i.tokenContract, i.purpose, i.payer, i.payee, i.amount.toString(), i.reconciliationId, JSON.stringify(i.decision), i.partyId],
+    )
+  ).rows[0]!.id;
+}
+
+/** Everything needed to carry out an outbound settlement intent. */
+export async function settlementContext(tx: TenantTx, intentId: string) {
+  return (
+    await tx.query<{ id: string; network: Network; token_contract: string; purpose: string; payer_address: string; payee_address: string; amount: string; party_id: string | null }>(
+      `SELECT id, network, token_contract, purpose, payer_address, payee_address, amount::text, party_id FROM settlement_intents
+        WHERE tenant_id = $1 AND id = $2 AND direction = 'outbound'`,
+      [tx.tenantId, intentId],
+    )
+  ).rows[0];
+}
+
+export async function approveOrder(tx: TenantTx, orderId: string, userId: string, nextStatus: "issuing" | "settling"): Promise<void> {
+  await tx.query(`UPDATE rwa_orders SET approved_by = $3, approved_at = now(), status = $4, updated_at = now() WHERE tenant_id = $1 AND id = $2`, [
+    tx.tenantId,
+    orderId,
+    userId,
+    nextStatus,
+  ]);
+}
+
+export async function orderCreator(tx: TenantTx, orderId: string): Promise<{ created_by: string | null; approved_by: string | null } | undefined> {
+  return (await tx.query<{ created_by: string | null; approved_by: string | null }>(`SELECT created_by, approved_by FROM rwa_orders WHERE tenant_id = $1 AND id = $2`, [tx.tenantId, orderId])).rows[0];
+}
