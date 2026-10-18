@@ -53,6 +53,24 @@ Financial tables block deleting their workspace: those records must be retained.
   chain transactions confirmed for abandoned intents, and orders that sat idle. Each becomes at most
   one open `reconciliation_cases` row per kind.
 
+## API and worker
+
+- **Permissions**: `rwa:read` (owners, admins, managers), `rwa:operate` (register investors and
+  wallets, place orders, record payments; owners and admins), `compliance:review` (record KYC and
+  screenings; owners and admins).
+- `POST /v1/tenants/{id}/rwa/parties`, `…/{partyId}/kyc`, `…/wallets` (address checked for its
+  rail), `…/screenings`; `GET` returns wallets, the screening log and the current compliance decision.
+- `POST /v1/tenants/{id}/rwa/orders` runs the gate on the investor and both wallets (422
+  `compliance_blocked` with reasons) and refuses mainnets unless `RWA_MAINNET_ENABLED`.
+- `POST …/orders/{orderId}/payments {txId}`: the investor's subscription payment is accepted only
+  if the solidified TRON chain shows exactly that TRC-20 transfer (token, investor wallet, treasury
+  `RWA_TRON_TREASURY`, amount) with a successful receipt and the token's Transfer event. It is
+  verified outside the database transaction, then recorded under a lock after re-running the gate.
+  A payment counts for one order only (unique per network).
+- The worker's reconciliation sweep (with the scheduled sweeps) opens cases, stops an order
+  (`exception`) on amount mismatches, duplicates, a second leg without the first, or orphan chain
+  transactions, and completes an order whose legs are done with nothing wrong.
+
 ## Operation lifecycle
 
 ```
@@ -111,8 +129,8 @@ requested → policy_approved → prepared → submitted → observed → confir
 ## Next
 
 1. Bubblegum minting and transfers (tree creation, `mintV1`).
-2. A `CompliancePort` adapter for the chosen KYC/sanctions provider, and the order workflow in the
-   API and worker (gate → first leg → second leg → reconciliation sweep).
+2. Executing the legs we sign (mint after a verified payment; burn and payout for redemptions;
+   distributions) through a KMS-backed signer, and a `CompliancePort` adapter for the chosen provider.
 3. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
 
 Keys for minting and settlement belong in a KMS/HSM set up by the operator; the app never stores them.

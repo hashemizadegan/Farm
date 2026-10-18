@@ -85,6 +85,11 @@ const chain = {
   CHAIN_EXPLORER_TX_URL: z.string().url().optional(),
 };
 
+/** Real-world asset rails: mainnets stay closed until legal and compliance sign-off. */
+const rwa = {
+  RWA_MAINNET_ENABLED: bool.default("false"),
+};
+
 export const apiEnvSchema = z
   .object({
     ...base,
@@ -108,6 +113,16 @@ export const apiEnvSchema = z
     MAX_OWNED_WORKSPACES: z.coerce.number().int().min(1).max(100).default(3),
     WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(15_000),
+    ...rwa,
+    /** TRON full-node HTTP API (e.g. https://nile.trongrid.io) for verifying incoming payments. */
+    RWA_TRON_API_URL: z.string().url().optional(),
+    RWA_TRON_API_KEY: z.string().min(1).optional(),
+    /** The workspace operator's TRON treasury address that receives subscriptions. */
+    RWA_TRON_TREASURY: z.string().regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "a TRON address").optional(),
+    /** Sanctions screenings older than this no longer count. */
+    RWA_SCREENING_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+    /** ISO 3166-1 alpha-2 codes excluded by the operator's counsel; empty by default. */
+    RWA_BLOCKED_JURISDICTIONS: csv.default(""),
   })
   .superRefine(productionGuards);
 
@@ -145,6 +160,9 @@ export const workerEnvSchema = z
     MQTT_FLUSH_MS: z.coerce.number().int().min(50).max(60_000).default(1_000),
     /** Local development only: allow mqtt:// and ws:// without TLS. */
     MQTT_ALLOW_INSECURE: bool.default("false"),
+    ...rwa,
+    /** How long the second leg of an order may lag the first before reconciliation reports it. */
+    RWA_RECONCILIATION_SLA_MINUTES: z.coerce.number().int().min(5).max(10_080).default(60),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {
