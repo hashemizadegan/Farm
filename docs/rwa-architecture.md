@@ -1,7 +1,7 @@
 # Real-world asset rails
 
-Status: schema and domain model only (migration `0011_rwa_rails`). No chain adapters, no live network
-calls, nothing issued.
+Status: schema, domain model and ports; Solana Token-2022 issuance and Solana observation adapters
+(`packages/chain`), tested against a simulated node. Not wired into the API or worker yet; nothing issued.
 
 ## Decisions (October 2026)
 
@@ -46,14 +46,32 @@ requested → policy_approved → prepared → submitted → observed → confir
   `chain_operation_transitions`, never deletes operations, fixes their identity and transaction
   reference, and allows one live attempt per intent.
 
+## Adapters (`packages/chain`)
+
+- **No Solana SDK at runtime.** `@solana/web3.js` 1.x and `@solana/spl-token` pull in `bigint-buffer`,
+  which has an unpatched high-severity advisory (GHSA-3gc7-fjrx-p6mg), so production code builds and
+  signs transactions with a small codec on the audited `@noble/curves` and `@noble/hashes`. The SDKs
+  are dev-only dependencies: tests check our addresses, program-derived addresses, instruction bytes,
+  mint sizes and whole signed transactions against them.
+- **Signing** goes through the `Ed25519Signer` port (a KMS/HSM in production). A new mint's own key
+  is generated in memory, signs the creation once and is discarded.
+- **Token-2022**: mints with optional transfer fee, permanent delegate (redemption, court-ordered
+  recovery) and transfer hook (e.g. an allow-list program); mint (creating the holder's associated
+  token account idempotently), burn, freeze, thaw. Amounts are checked against u64.
+- **Fees and validity**: compute-unit limit, priority fee at the 75th percentile of recent non-zero
+  fees on the touched accounts (capped), recent blockhash with its last valid block height.
+- **Observation**: sends with `maxRetries: 0` and re-sends the same signed bytes (never a new
+  transaction) while pending; reads `getSignatureStatuses` with history; declares `expired` only when
+  the finalized block height is past the last valid height and a second lookup still finds nothing.
+  A failed simulation is a definitive failure; network errors are not.
+- `stepsAfterObservation` (domain) turns what a chain reports into lifecycle steps.
+
 ## Next
 
-1. Ports in the domain: `AssetIssuancePort`, `CompressedAssetPort`, `SettlementPort`,
-   `ChainObservationPort`, `ReconciliationPort`, plus a `CompliancePort` (KYC/sanctions screening
-   from a real provider; no hand-made lists).
-2. Adapters (devnet/testnet): Solana Token-2022 and Bubblegum + DAS, TRON TRC-20, with contract
-   tests against mocked RPCs.
-3. MQTT-over-TLS consumer in the worker writing to `iot_telemetry`.
-4. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
+1. TRON TRC-20 settlement adapter (fee limit, energy and bandwidth, solidified finality).
+2. Bubblegum cNFTs: tree sizing and DAS reads with fresh proofs.
+3. Reconciliation and a `CompliancePort` implementation from a real KYC/sanctions provider.
+4. MQTT-over-TLS consumer in the worker writing to `iot_telemetry`.
+5. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
 
 Keys for minting and settlement belong in a KMS/HSM set up by the operator; the app never stores them.
