@@ -12,6 +12,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@fontsource/atkinson-hyperlegible": "^5.1.0",
+    "@fontsource/familjen-grotesk": "^5.1.0",
+    "@fontsource/vazirmatn": "^5.1.0",
     "@metafarm/contracts": "workspace:*",
     "@metafarm/domain": "workspace:*",
     "@metafarm/map-scene": "workspace:*",

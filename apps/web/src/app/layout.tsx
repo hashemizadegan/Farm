@@ -2,7 +2,7 @@ import "@metafarm/ui/styles.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./app.css";
 import type { Metadata, Viewport } from "next";
-import { Atkinson_Hyperlegible, Familjen_Grotesk, Vazirmatn } from "next/font/google";
+import localFont from "next/font/local";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
 import { dirOf } from "@/i18n/config";
@@ -21,12 +21,38 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-// Self-hosted at build time by next/font, so no third-party font requests (CSP font-src 'self').
+// Bundled from the Fontsource packages (open-licensed copies of the Google Fonts releases) and served
+// by next/font from our own origin: no third-party requests at runtime (CSP font-src 'self') and none
+// at build time, where fetching from Google failed intermittently. (Paths must be literals.)
 // Atkinson Hyperlegible: designed for legibility (distinct letterforms), which suits reading in the field.
-const body = Atkinson_Hyperlegible({ subsets: ["latin", "latin-ext"], variable: "--font-body", display: "swap", weight: ["400", "700"] });
-const display = Familjen_Grotesk({ subsets: ["latin", "latin-ext"], variable: "--font-display", display: "swap", weight: ["600", "700"] });
-// Persian: Vazirmatn, a widely used open-source Persian typeface with matching Latin. Used only when lang="fa" (see app.css).
-const persian = Vazirmatn({ subsets: ["arabic", "latin"], variable: "--font-fa", display: "swap", weight: ["400", "500", "700"], preload: false });
+const body = localFont({
+  src: [
+    { path: "../../node_modules/@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "../../node_modules/@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-body",
+  display: "swap",
+});
+const display = localFont({
+  src: [
+    { path: "../../node_modules/@fontsource/familjen-grotesk/files/familjen-grotesk-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "../../node_modules/@fontsource/familjen-grotesk/files/familjen-grotesk-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-display",
+  display: "swap",
+});
+// Persian: Vazirmatn, a widely used open-source Persian typeface. Used only when lang="fa" (see app.css);
+// Latin text inside Persian pages falls back to the body font.
+const persian = localFont({
+  src: [
+    { path: "../../node_modules/@fontsource/vazirmatn/files/vazirmatn-arabic-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "../../node_modules/@fontsource/vazirmatn/files/vazirmatn-arabic-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "../../node_modules/@fontsource/vazirmatn/files/vazirmatn-arabic-700-normal.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-fa",
+  display: "swap",
+  preload: false,
+});
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#173323" };
 
