@@ -7,6 +7,8 @@ import { FileUploader } from "@/components/FileUploader";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
 import { useCan } from "@/lib/can";
+import { sendOrQueue } from "@/lib/outbox";
+import { useTenant } from "@/lib/tenant";
 import { useI18n } from "@/i18n/provider";
 
 const METRICS = [
@@ -41,6 +43,7 @@ export default function ObservationsPage() {
 
 function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   const announce = useAnnounce();
+  const { me } = useTenant();
   const { m, fmt } = useI18n();
   const t = m.observations;
   const [metric, setMetric] = useState<Metric>("soil_moisture");
@@ -66,16 +69,18 @@ function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }
     }
     setBusy(true);
     try {
-      await unwrap(
-        api.POST("/v1/tenants/{tenantId}/farms/{farmId}/observations", {
-          params: { path: { tenantId, farmId } },
-          body: { metric, value: v, unit, observedAt: new Date(observedAt).toISOString() },
-        }),
-      );
+      const r = await sendOrQueue({
+        userId: me!.userId,
+        tenantId,
+        kind: "observation",
+        label: isNote ? String(v).slice(0, 60) : `${t.metrics[metric]} ${value} ${t.units[unit] ?? unit}`,
+        path: `/v1/tenants/${tenantId}/farms/${farmId}/observations`,
+        body: { metric, value: v, unit, observedAt: new Date(observedAt).toISOString() },
+      });
       setValue("");
       setErrors([]);
-      announce(t.recorded);
-      setTimeout(list.reload, 1_500);
+      announce(r.queued ? m.offline.savedObservation : t.recorded);
+      if (!r.queued) setTimeout(list.reload, 1_500);
     } catch (err) {
       setErrors([{ message: (err as Error).message }]);
     } finally {

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { getFarm, getMedia, getMemberRole, getTask, insertTask, listTasks, markTaskDone, notify, updateTask, type TaskRow, type TenantTx } from "@metafarm/db";
+import { findNextOccurrence, getFarm, getMedia, getMemberRole, getTask, insertTask, listTasks, markTaskDone, notify, updateTask, type TaskRow, type TenantTx } from "@metafarm/db";
 import {
   can,
   completeTaskSchema,
@@ -13,7 +13,7 @@ import {
   type Role,
 } from "@metafarm/domain";
 import { z } from "zod";
-import { HttpError, forbidden, notFound, parse } from "../lib/http";
+import { HttpError, forbidden, idempotencyKey, notFound, parse } from "../lib/http";
 import { recordUse } from "./inventory";
 
 const farmParams = z.object({ tenantId: uuid, farmId: uuid });
@@ -154,10 +154,16 @@ export async function taskRoutes(app: FastifyInstance) {
   app.post("/v1/tenants/:tenantId/farms/:farmId/tasks/:taskId/complete", async (req) => {
     const { farmId, taskId } = parse(taskParams, req.params);
     const body = parse(completeTaskSchema, req.body ?? {});
+    const key = idempotencyKey(req);
     return app.inTenant(req, "task:work", async (tx, ctx) => {
       const task = await getTask(tx, farmId, taskId, true);
       if (!task) throw notFound("task");
       if (!mayWork(ctx.role, req.user!.id, task)) throw forbidden();
+      // A resend of this same completion (offline queue): answer as the first time did.
+      if (task.status === "done" && key && task.completion_request_id === key) {
+        const next = await findNextOccurrence(tx, farmId, taskId);
+        return { task: toTask(task), next: next ? toTask(next) : null };
+      }
       if (task.status === "done") throw new HttpError(409, "task_done", "this task is already completed");
       if (task.status === "cancelled") throw new HttpError(409, "task_cancelled", "reopen the task before completing it");
       for (const id of new Set(body.mediaIds)) {
@@ -166,7 +172,7 @@ export async function taskRoutes(app: FastifyInstance) {
           throw new HttpError(400, "invalid_media", "photos must be uploaded files of this farm");
         }
       }
-      await markTaskDone(tx, farmId, taskId, { note: body.note, mediaIds: [...new Set(body.mediaIds)], userId: req.user!.id });
+      await markTaskDone(tx, farmId, taskId, { note: body.note, mediaIds: [...new Set(body.mediaIds)], userId: req.user!.id, requestId: key });
       if (body.inputs.length && !can(ctx.role, "inventory:use")) throw forbidden();
       const today = dayInZone(app.deps.now(), task.farm_timezone);
       for (const input of body.inputs) {

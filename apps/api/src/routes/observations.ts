@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import { acknowledgeAlert, getFarm, insertRawObservation, listAlerts, listObservations } from "@metafarm/db";
+import { acknowledgeAlert, findObservationByRequest, getFarm, insertRawObservation, listAlerts, listObservations } from "@metafarm/db";
 import { QUEUES, ackAlertSchema, createObservationSchema, uuid } from "@metafarm/domain";
 import { z } from "zod";
-import { notFound, parse } from "../lib/http";
+import { idempotencyKey, keyReused, notFound, parse } from "../lib/http";
 import { toAlert, toObservation } from "../lib/mappers";
 
 const farmParams = z.object({ tenantId: uuid, farmId: uuid });
@@ -30,19 +30,26 @@ export async function observationRoutes(app: FastifyInstance) {
   app.post("/v1/tenants/:tenantId/farms/:farmId/observations", async (req, reply) => {
     const { tenantId, farmId } = parse(farmParams, req.params);
     const body = parse(createObservationSchema, req.body);
+    const key = idempotencyKey(req);
     const raw = await app.inTenant(req, "observation:write", async (tx) => {
       if (!(await getFarm(tx, farmId))) throw notFound("farm");
+      if (key) {
+        const seen = await findObservationByRequest(tx, key);
+        if (seen && (seen.farm_id !== farmId || seen.received_by !== req.user!.id)) throw keyReused();
+        if (seen) return { id: seen.id, replay: true };
+      }
       const r = await insertRawObservation(tx, {
         farmId,
         sensorId: body.sensorId,
         payload: body,
         provenance: "user-entered",
         userId: req.user!.id,
+        clientRequestId: key,
       });
       await app.audit(req, tx, { action: "observation.submitted", targetType: "raw_observation", targetId: r.id, metadata: { farmId, metric: body.metric } });
-      return r;
+      return { id: r.id, replay: false };
     });
-    await app.deps.jobs.enqueue(QUEUES.observations, { tenantId, farmId, rawObservationId: raw.id });
+    if (!raw.replay) await app.deps.jobs.enqueue(QUEUES.observations, { tenantId, farmId, rawObservationId: raw.id });
     return reply.status(202).send({ rawObservationId: raw.id, provenance: "user-entered" });
   });
 

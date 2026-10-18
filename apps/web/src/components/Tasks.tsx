@@ -7,6 +7,7 @@ import { useI18n } from "@/i18n/provider";
 import { api, unwrap, useQuery, type Schemas } from "@/lib/api";
 import { useCan } from "@/lib/can";
 import { localToday } from "@/lib/dates";
+import { sendOrQueue, useOutbox } from "@/lib/outbox";
 import { useTenant } from "@/lib/tenant";
 import { FileUploader } from "./FileUploader";
 
@@ -99,7 +100,9 @@ export function TaskCard({
   const manage = can("task:manage");
   const mine = !task.assigneeUserId || task.assigneeUserId === me?.userId;
   const mayWork = manage || (can("task:work") && mine);
-  const open = task.status === "todo" || task.status === "in_progress";
+  // Completed on this phone without signal and not sent yet: treat as done here.
+  const queued = useOutbox(me?.userId).find((e) => e.kind === "task" && e.path.endsWith(`/tasks/${task.id}/complete`));
+  const open = (task.status === "todo" || task.status === "in_progress") && !queued;
   const path = { tenantId, farmId: task.farmId, taskId: task.id };
 
   async function patch(body: Schemas["TaskUpdate"], message: string) {
@@ -146,6 +149,7 @@ export function TaskCard({
         {task.status === "in_progress" && <StatusPill tone="pending">{t.statuses.in_progress}</StatusPill>}
         {task.status === "done" && <StatusPill tone="ok">{t.statuses.done}</StatusPill>}
         {task.status === "cancelled" && <StatusPill tone="neutral">{t.statuses.cancelled}</StatusPill>}
+        {queued && <StatusPill tone={queued.status === "failed" ? "problem" : "pending"}>{queued.status === "failed" ? m.offline.notSent : m.offline.waiting}</StatusPill>}
         {open && task.priority === "high" && <StatusPill tone="problem">{t.priorities.high}</StatusPill>}
       </div>
       {task.notes && <p className="task__notes">{task.notes}</p>}
@@ -211,6 +215,7 @@ function CompletePanel({ task, tenantId, onDone, onBack }: { task: Task; tenantI
   const t = m.tasks.card;
   const announce = useAnnounce();
   const can = useCan();
+  const { me } = useTenant();
   const noteId = useId();
   const [note, setNote] = useState("");
   const [mediaIds, setMediaIds] = useState<string[]>([]);
@@ -232,13 +237,17 @@ function CompletePanel({ task, tenantId, onDone, onBack }: { task: Task; tenantI
     setBusy(true);
     setError(undefined);
     try {
-      const r = await unwrap(
-        api.POST("/v1/tenants/{tenantId}/farms/{farmId}/tasks/{taskId}/complete", {
-          params: { path: { tenantId, farmId: task.farmId, taskId: task.id } },
-          body: { ...(note.trim() ? { note: note.trim() } : {}), mediaIds, inputs: used },
-        }),
-      );
-      announce(r.next ? t.doneNext(fmt.day(r.next.dueDate)) : t.done);
+      const body: Schemas["TaskCompletion"] = { ...(note.trim() ? { note: note.trim() } : {}), mediaIds, inputs: used };
+      const r = await sendOrQueue<{ task: Task; next: Task | null }>({
+        userId: me!.userId,
+        tenantId,
+        kind: "task",
+        label: task.title,
+        path: `/v1/tenants/${tenantId}/farms/${task.farmId}/tasks/${task.id}/complete`,
+        body,
+      });
+      if (r.queued) announce(m.offline.savedTask(task.title));
+      else announce(r.data.next ? t.doneNext(fmt.day(r.data.next.dueDate)) : t.done);
       onDone();
     } catch (err) {
       setError((err as Error).message);

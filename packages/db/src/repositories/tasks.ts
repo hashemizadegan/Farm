@@ -22,6 +22,7 @@ export interface TaskRow {
   completed_at: string | null;
   completed_by: string | null;
   completed_by_name: string | null;
+  completion_request_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -33,7 +34,7 @@ const SELECT = `
          t.assignee_user_id, coalesce(a.display_name, a.email::text) AS assignee_name,
          to_char(t.due_date, 'YYYY-MM-DD') AS due_date, t.priority, t.status, t.notes, t.repeat_every_days,
          t.previous_task_id, t.completion_note, t.completion_media_ids, t.completed_at, t.completed_by,
-         coalesce(c.display_name, c.email::text) AS completed_by_name, t.created_by, t.created_at, t.updated_at
+         coalesce(c.display_name, c.email::text) AS completed_by_name, t.completion_request_id, t.created_by, t.created_at, t.updated_at
     FROM farm_tasks t
     JOIN farms f ON f.tenant_id = t.tenant_id AND f.id = t.farm_id
     LEFT JOIN users a ON a.id = t.assignee_user_id
@@ -135,11 +136,27 @@ export async function updateTask(tx: TenantTx, farmId: string, taskId: string, i
   await tx.query(`UPDATE farm_tasks SET ${sets.join(", ")}, updated_at = now() WHERE tenant_id = $1 AND farm_id = $2 AND id = $3`, params);
 }
 
-export async function markTaskDone(tx: TenantTx, farmId: string, taskId: string, input: { note?: string; mediaIds: string[]; userId: string }) {
+export async function markTaskDone(
+  tx: TenantTx,
+  farmId: string,
+  taskId: string,
+  input: { note?: string; mediaIds: string[]; userId: string; requestId?: string },
+) {
   await tx.query(
     `UPDATE farm_tasks
-        SET status = 'done', completed_at = now(), completed_by = $4, completion_note = $5, completion_media_ids = $6::uuid[], updated_at = now()
+        SET status = 'done', completed_at = now(), completed_by = $4, completion_note = $5, completion_media_ids = $6::uuid[],
+            completion_request_id = $7, updated_at = now()
       WHERE tenant_id = $1 AND farm_id = $2 AND id = $3`,
-    [tx.tenantId, farmId, taskId, input.userId, input.note || null, input.mediaIds],
+    [tx.tenantId, farmId, taskId, input.userId, input.note || null, input.mediaIds, input.requestId ?? null],
   );
+}
+
+/** The occurrence created when a repeating task was completed. */
+export async function findNextOccurrence(tx: TenantTx, farmId: string, taskId: string): Promise<TaskRow | undefined> {
+  const r = await tx.query<TaskRow>(`${SELECT} WHERE t.tenant_id = $1 AND t.farm_id = $2 AND t.previous_task_id = $3 ORDER BY t.created_at LIMIT 1`, [
+    tx.tenantId,
+    farmId,
+    taskId,
+  ]);
+  return r.rows[0];
 }

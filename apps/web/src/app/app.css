@@ -1420,3 +1420,28 @@ html[lang="fa"] body {
   gap: 0.5rem;
   margin-block: 0.5rem;
 }
+
+/* Offline: connection state and records waiting on this phone */
+.offline-status {
+  margin-block-end: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--mf-border);
+  border-inline-start: 6px solid var(--mf-survey);
+  border-radius: 8px;
+  background-color: var(--mf-info-bg);
+  color: var(--mf-text);
+}
+.offline-status[data-offline] {
+  border-inline-start-color: var(--mf-warning);
+  background-color: var(--mf-warning-bg);
+}
+.offline-status__line {
+  margin: 0.25rem 0;
+}
+.offline-status__failed ul {
+  margin: 0.5rem 0 0;
+  padding-inline-start: 1.25rem;
+}
+.offline-status__failed li {
+  margin-block: 0.5rem;
+}

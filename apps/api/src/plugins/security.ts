@@ -31,7 +31,7 @@ export const securityPlugin = fp(async (app: FastifyInstance, opts: { env: ApiEn
       cb(null, opts.env.CORS_ORIGINS.includes(origin));
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: ["authorization", "content-type", "x-request-id"],
+    allowedHeaders: ["authorization", "content-type", "x-request-id", "idempotency-key"],
     exposedHeaders: ["x-request-id", "retry-after", "content-disposition", "x-row-count"],
     credentials: false,
     maxAge: 600,
