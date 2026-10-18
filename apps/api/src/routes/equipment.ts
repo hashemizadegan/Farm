@@ -33,7 +33,7 @@ import {
 } from "@metafarm/domain";
 import { z } from "zod";
 import { HttpError, notFound, parse } from "../lib/http";
-import { toTask } from "./tasks";
+import { notifyAssignee, toTask } from "./tasks";
 
 const tenantParams = z.object({ tenantId: uuid });
 const eqParams = tenantParams.extend({ equipmentId: uuid });
@@ -260,7 +260,9 @@ export async function equipmentRoutes(app: FastifyInstance) {
         req.user!.id,
       );
       await app.audit(req, tx, { action: "task.created", targetType: "farm_task", targetId: id, metadata: { farmId: e.farm_id, equipmentId, planId } });
-      return (await getTask(tx, e.farm_id, id))!;
+      const created = (await getTask(tx, e.farm_id, id))!;
+      await notifyAssignee(tx, created, req.user!.id);
+      return created;
     });
     return reply.status(201).send(toTask(task));
   });

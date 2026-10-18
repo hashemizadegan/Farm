@@ -14,3 +14,4 @@ export * from "./repositories/inventory";
 export * from "./repositories/seasons";
 export * from "./repositories/equipment";
 export * from "./repositories/sensors";
+export * from "./repositories/notifications";

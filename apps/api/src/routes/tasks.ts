@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { getFarm, getMedia, getMemberRole, getTask, insertTask, listTasks, markTaskDone, updateTask, type TaskRow, type TenantTx } from "@metafarm/db";
+import { getFarm, getMedia, getMemberRole, getTask, insertTask, listTasks, markTaskDone, notify, updateTask, type TaskRow, type TenantTx } from "@metafarm/db";
 import {
   can,
   completeTaskSchema,
@@ -57,6 +57,18 @@ async function assertAssignable(tx: TenantTx, userId: string | null | undefined)
   }
 }
 
+/** Tells a person a task was given to them (not when they gave it to themselves). */
+export async function notifyAssignee(tx: TenantTx, t: TaskRow, byUserId: string) {
+  if (!t.assignee_user_id || t.assignee_user_id === byUserId) return;
+  await notify(
+    tx,
+    [t.assignee_user_id],
+    "task_assigned",
+    { taskId: t.id, farmId: t.farm_id, farmName: t.farm_name, title: t.title, dueDate: t.due_date },
+    `task:${t.id}:${t.assignee_user_id}`,
+  );
+}
+
 /** Workers may act on tasks assigned to them, or on unassigned tasks (which they then take). */
 function mayWork(role: Role, userId: string, task: TaskRow) {
   if (can(role, "task:manage")) return true;
@@ -112,7 +124,9 @@ export async function taskRoutes(app: FastifyInstance) {
       await assertAssignable(tx, body.assigneeUserId);
       const id = await insertTask(tx, farmId, body, req.user!.id);
       await app.audit(req, tx, { action: "task.created", targetType: "farm_task", targetId: id, metadata: { farmId, kind: body.kind } });
-      return (await getTask(tx, farmId, id))!;
+      const created = (await getTask(tx, farmId, id))!;
+      await notifyAssignee(tx, created, req.user!.id);
+      return created;
     });
     return reply.status(201).send(toTask(task));
   });
@@ -131,7 +145,9 @@ export async function taskRoutes(app: FastifyInstance) {
       const change = !manager && task.assignee_user_id === null ? { ...body, assigneeUserId: req.user!.id } : body;
       await updateTask(tx, farmId, taskId, change);
       await app.audit(req, tx, { action: "task.updated", targetType: "farm_task", targetId: taskId, metadata: { farmId, fields: Object.keys(change) } });
-      return toTask((await getTask(tx, farmId, taskId))!);
+      const updated = (await getTask(tx, farmId, taskId))!;
+      if (updated.assignee_user_id !== task.assignee_user_id) await notifyAssignee(tx, updated, req.user!.id);
+      return toTask(updated);
     });
   });
 
