@@ -153,8 +153,8 @@ d("RWA execution engine", () => {
     await tick(); // intent completed
     expect((await opsOf(intent!.id))[0]!.state).toBe("business_completed");
     expect((await intentOf(o.recon))[0]!.status).toBe("completed");
-    const log = await q<{ to_state: string }>(`SELECT t.to_state FROM chain_operation_transitions t JOIN chain_operations c ON c.id = t.operation_id WHERE c.intent_id = $1 ORDER BY t.id`, [intent!.id]);
-    expect(log.map((r) => r.to_state)).toEqual(["policy_approved", "prepared", "submitted", "observed", "confirmed", "business_completed"]);
+    const history = await q<{ to_state: string }>(`SELECT t.to_state FROM chain_operation_transitions t JOIN chain_operations c ON c.id = t.operation_id WHERE c.intent_id = $1 ORDER BY t.id`, [intent!.id]);
+    expect(history.map((r) => r.to_state)).toEqual(["policy_approved", "prepared", "submitted", "observed", "confirmed", "business_completed"]);
     // No second mint, ever.
     await tick(3);
     expect(await intentOf(o.recon)).toHaveLength(1);
