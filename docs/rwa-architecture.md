@@ -79,7 +79,7 @@ requested → policy_approved → prepared → submitted → observed → confir
   broadcasts are success; signature, validation, expiration and TaPoS refusals are definitive.
 - **Compressed NFTs (Bubblegum)**: `planTree` picks the smallest valid depth/buffer shape for the
   number of assets and concurrency, with a canopy that keeps each transfer at no more than 8 proof
-  accounts, and sizes the account (checked against `@solana/spl-account-compression`). The DAS
+  accounts, and sizes the account (checked against published reference sizes). The DAS
   adapter hands out a proof only after it hashes (keccak256) to the reported root **and** that root
   is still in the on-chain tree's change-log buffer; otherwise it asks again, then fails with
   `StaleProofError`. Proofs are never cached across writes; `isStaleProofError` recognises a

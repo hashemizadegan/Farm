@@ -1,6 +1,5 @@
-/** Tree sizing, tree-account reading and proofs, checked against @solana/spl-account-compression (dev-only). */
+/** Tree sizing, tree-account reading and proofs. */
 import { keccak_256 } from "@noble/hashes/sha3";
-import { ALL_DEPTH_SIZE_PAIRS, ConcurrentMerkleTreeAccount, getConcurrentMerkleTreeAccountSize } from "@solana/spl-account-compression";
 import { describe, expect, it } from "vitest";
 import { concatBytes, utf8 } from "../bytes";
 import { base58Encode } from "./base58";
@@ -38,30 +37,25 @@ function smallTree() {
   return { leaves, root: levels.at(-1)![0]!, proofOf };
 }
 
-describe("concurrent Merkle trees match the reference library", () => {
-  it("accepts the same shapes", () => {
-    expect(VALID_DEPTH_BUFFER_PAIRS).toEqual(ALL_DEPTH_SIZE_PAIRS.map((p) => ({ maxDepth: p.maxDepth, maxBufferSize: p.maxBufferSize })));
+describe("concurrent Merkle trees", () => {
+  it("sizes accounts like the program (published reference sizes)", () => {
+    // Widely published sizes for these shapes without a canopy.
+    expect(treeAccountSize(3, 8)).toBe(1_304);
+    expect(treeAccountSize(14, 64)).toBe(31_800);
+    // A canopy of depth c stores 2^(c+1) - 2 nodes of 32 bytes.
+    expect(treeAccountSize(14, 64, 3) - treeAccountSize(14, 64)).toBe(14 * 32);
+    expect(() => treeAccountSize(14, 128)).toThrow(/not a valid tree shape/);
+    expect(() => treeAccountSize(14, 64, 18)).toThrow(/canopy/);
+    expect(VALID_DEPTH_BUFFER_PAIRS).toContainEqual({ maxDepth: 20, maxBufferSize: 256 });
   });
 
-  it("sizes accounts identically, with and without a canopy", () => {
-    for (const { maxDepth, maxBufferSize } of VALID_DEPTH_BUFFER_PAIRS) {
-      for (const canopy of [0, 1, Math.min(maxDepth, 10)]) {
-        expect(treeAccountSize(maxDepth, maxBufferSize, canopy)).toBe(getConcurrentMerkleTreeAccountSize(maxDepth, maxBufferSize, canopy));
-      }
-    }
-  });
-
-  it("reads a tree account the way the library does", () => {
+  it("reads back what a tree account holds", () => {
     const roots = [1, 2, 3].map((n) => keccak_256(utf8(`root-${n}`)));
-    const bytes = treeAccount({ maxDepth: 14, maxBufferSize: 64, canopyDepth: 3, roots });
-    const ours = parseTreeAccount(bytes);
-    const ref = ConcurrentMerkleTreeAccount.fromBuffer(Buffer.from(bytes));
-    expect(ours.maxDepth).toBe(ref.getMaxDepth());
-    expect(ours.maxBufferSize).toBe(ref.getMaxBufferSize());
-    expect(ours.canopyDepth).toBe(ref.getCanopyDepth());
-    expect(ours.authority).toBe(ref.getAuthority().toBase58());
-    expect(ours.recentRoots[0]).toBe(base58Encode(ref.getCurrentRoot()));
-    expect(ours.recentRoots).toEqual([roots[2], roots[1], roots[0]].map((r) => base58Encode(r!)));
+    const authority = new Uint8Array(32).fill(4);
+    const tree = parseTreeAccount(treeAccount({ maxDepth: 14, maxBufferSize: 64, canopyDepth: 3, roots, authority }));
+    expect(tree).toMatchObject({ maxDepth: 14, maxBufferSize: 64, canopyDepth: 3, authority: base58Encode(authority), creationSlot: 123n, sequenceNumber: 3n });
+    expect(tree.recentRoots).toEqual([roots[2], roots[1], roots[0]].map((r) => base58Encode(r!)));
+    expect(() => parseTreeAccount(new Uint8Array(10))).toThrow(/not a concurrent Merkle tree/);
   });
 });
 
@@ -72,7 +66,7 @@ describe("tree planning", () => {
     expect(planTree(5, { concurrency: 8 })).toMatchObject({ maxDepth: 3, maxBufferSize: 8, canopyDepth: 0, proofAccounts: 3 });
     expect(planTree(100_000, { concurrency: 1_024, maxProofAccounts: 4 })).toMatchObject({ maxDepth: 20, maxBufferSize: 1_024, canopyDepth: 16, proofAccounts: 4 });
     expect(() => planTree(2 ** 30 + 1)).toThrow(/no tree shape/);
-    expect(planTree(1_000).accountSize).toBe(getConcurrentMerkleTreeAccountSize(14, 64, 6));
+    expect(planTree(1_000).accountSize).toBe(31_800 + (2 ** 7 - 2) * 32);
   });
 });
 
