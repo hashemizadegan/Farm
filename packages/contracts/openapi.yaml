@@ -2026,7 +2026,7 @@ components:
       required: [enabled, weekStartsOn]
       additionalProperties: false
       properties:
-        enabled: { type: boolean, description: Send owners, admins and managers a summary of last week }
+        enabled: { type: boolean, description: "Send owners, admins and managers a summary of last week" }
         weekStartsOn: { type: integer, minimum: 0, maximum: 6, description: "0 = Sunday ... 6 = Saturday" }
     WorkspaceSettings:
       type: object
