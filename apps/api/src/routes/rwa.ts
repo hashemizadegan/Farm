@@ -11,7 +11,7 @@ import {
   listBusinessAssets,
   listRepresentations,
   verifyBusinessAsset,
-  type AssetRow,
+  type BusinessAssetRow,
   createOrder,
   createParty,
   findInboundPayment,
@@ -371,7 +371,7 @@ export async function rwaRoutes(app: FastifyInstance) {
 
   // ── Assets and share tokens ─────────────────────────────────────────
 
-  async function assetDetail(tx: TenantTx, a: AssetRow) {
+  async function assetDetail(tx: TenantTx, a: BusinessAssetRow) {
     return {
       id: a.id,
       farmId: a.farm_id,

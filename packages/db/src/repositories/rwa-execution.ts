@@ -184,7 +184,7 @@ export async function verifyBusinessAsset(tx: TenantTx, id: string, userId: stri
   ]);
 }
 
-export interface AssetRow {
+export interface BusinessAssetRow {
   id: string;
   farm_id: string;
   farm_name: string;
@@ -206,12 +206,12 @@ const ASSET_SELECT = `
          a.status, a.verified_at, a.created_by, a.created_at
     FROM business_assets a JOIN farms f ON f.tenant_id = a.tenant_id AND f.id = a.farm_id`;
 
-export async function listBusinessAssets(tx: TenantTx): Promise<AssetRow[]> {
-  return (await tx.query<AssetRow>(`${ASSET_SELECT} WHERE a.tenant_id = $1 ORDER BY a.created_at DESC`, [tx.tenantId])).rows;
+export async function listBusinessAssets(tx: TenantTx): Promise<BusinessAssetRow[]> {
+  return (await tx.query<BusinessAssetRow>(`${ASSET_SELECT} WHERE a.tenant_id = $1 ORDER BY a.created_at DESC`, [tx.tenantId])).rows;
 }
 
-export async function getBusinessAsset(tx: TenantTx, id: string): Promise<AssetRow | undefined> {
-  return (await tx.query<AssetRow>(`${ASSET_SELECT} WHERE a.tenant_id = $1 AND a.id = $2`, [tx.tenantId, id])).rows[0];
+export async function getBusinessAsset(tx: TenantTx, id: string): Promise<BusinessAssetRow | undefined> {
+  return (await tx.query<BusinessAssetRow>(`${ASSET_SELECT} WHERE a.tenant_id = $1 AND a.id = $2`, [tx.tenantId, id])).rows[0];
 }
 
 export interface RepresentationRow {
