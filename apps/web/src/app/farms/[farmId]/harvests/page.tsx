@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { Button, EmptyState, ErrorSummary, Notice, StatusPill, TextField, useAnnounce } from "@metafarm/ui";
 import { HarvestLabel } from "@/components/HarvestLabel";
 import { RequireTenant } from "@/components/RequireTenant";
+import { ExportPanel } from "@/components/ExportPanel";
 import { useI18n } from "@/i18n/provider";
 import { api, unwrap, useQuery, type Schemas } from "@/lib/api";
 import { useCan } from "@/lib/can";
@@ -47,6 +48,7 @@ function Harvests({ tenantId, farmId }: { tenantId: string; farmId: string }) {
         </Notice>
       )}
       {list.data && items.length === 0 && <EmptyState title={t.none} />}
+      {items.length > 0 && <ExportPanel tenantId={tenantId} farmId={farmId} datasets={["harvests"]} />}
       {items.length > 0 && (
         <ul className="tasks" style={{ marginTop: "1.5rem" }}>
           {items.map((h) => (

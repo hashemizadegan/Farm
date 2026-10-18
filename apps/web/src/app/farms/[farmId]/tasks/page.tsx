@@ -3,6 +3,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { EmptyState, Notice } from "@metafarm/ui";
 import { RequireTenant } from "@/components/RequireTenant";
+import { ExportPanel } from "@/components/ExportPanel";
 import { NewTaskForm, TaskGroupsView } from "@/components/Tasks";
 import { useI18n } from "@/i18n/provider";
 import { api, unwrap, useQuery } from "@/lib/api";
@@ -44,6 +45,7 @@ function FarmTasks({ tenantId, farmId }: { tenantId: string; farmId: string }) {
         <EmptyState title={t.noTasksFarm}>{can("task:manage") ? t.noTasksFarmManager : undefined}</EmptyState>
       )}
       <TaskGroupsView items={items} tenantId={tenantId} onChanged={reload} />
+      <ExportPanel tenantId={tenantId} farmId={farmId} datasets={["tasks"]} />
       <p>
         <button type="button" className="mf-button mf-button--small" aria-pressed={showDone} onClick={() => setShowDone((s) => !s)}>
           {showDone ? t.hideDone : t.showDone}

@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button, EmptyState, ErrorSummary, Notice, SelectField, TextField, useAnnounce } from "@metafarm/ui";
 import { RequireTenant } from "@/components/RequireTenant";
+import { ExportPanel } from "@/components/ExportPanel";
 import { useI18n } from "@/i18n/provider";
 import { api, unwrap, useQuery, type Schemas } from "@/lib/api";
 import { useCan } from "@/lib/can";
@@ -37,6 +38,7 @@ function FarmInputs({ tenantId, farmId }: { tenantId: string; farmId: string }) 
 
   return (
     <>
+      {rows.length > 0 && <ExportPanel tenantId={tenantId} farmId={farmId} datasets={["input-log"]} />}
       {can("inventory:use") &&
         (items.data && items.data.items.length === 0 ? (
           <Notice>

@@ -159,3 +159,19 @@ export async function setAnchorState(tx: TenantTx, id: string, action: "record" 
     );
   }
 }
+
+/** Harvests across the workspace (or one farm) in a date range, oldest first, with the farm name — for exports. */
+export async function listHarvestsForExport(
+  tx: TenantTx,
+  f: { farmId?: string; from?: string; to?: string; limit: number },
+): Promise<(HarvestRow & { farm_name: string })[]> {
+  const r = await tx.query<HarvestRow & { farm_name: string }>(
+    `SELECT x.*, f.name AS farm_name FROM (${SELECT}
+       WHERE h.tenant_id = $1 AND ($2::uuid IS NULL OR h.farm_id = $2) AND ($3::date IS NULL OR h.harvested_on >= $3::date)
+         AND ($4::date IS NULL OR h.harvested_on <= $4::date)) x
+       JOIN farms f ON f.tenant_id = x.tenant_id AND f.id = x.farm_id
+      ORDER BY x.harvested_on, x.created_at LIMIT $5`,
+    [tx.tenantId, f.farmId ?? null, f.from ?? null, f.to ?? null, f.limit],
+  );
+  return r.rows;
+}
