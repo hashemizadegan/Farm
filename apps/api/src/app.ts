@@ -20,6 +20,7 @@ import { equipmentRoutes } from "./routes/equipment";
 import { sensorRoutes } from "./routes/sensors";
 import { notificationRoutes } from "./routes/notifications";
 import { exportRoutes } from "./routes/exports";
+import { reportRoutes } from "./routes/reports";
 
 export interface BuildOptions {
   deps: Deps;
@@ -80,6 +81,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(sensorRoutes);
   await app.register(notificationRoutes);
   await app.register(exportRoutes);
+  await app.register(reportRoutes);
   await app.register(chainRoutes);
 
   return app;

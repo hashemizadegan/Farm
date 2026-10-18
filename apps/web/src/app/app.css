@@ -1445,3 +1445,51 @@ html[lang="fa"] body {
 .offline-status__failed li {
   margin-block: 0.5rem;
 }
+
+/* Period reports */
+.report-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0 1rem;
+  margin-block-end: 1.5rem;
+}
+.report-controls > .mf-field {
+  flex: 1 1 11rem;
+  max-width: 16rem;
+}
+.report-controls__print {
+  margin-inline-start: auto;
+  padding-block-end: 1rem;
+}
+.report__section {
+  margin-block: 2rem;
+}
+.report__pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+.report td {
+  font-variant-numeric: tabular-nums;
+}
+@media print {
+  body:not([data-print]) .sidebar,
+  body:not([data-print]) .topbar,
+  body:not([data-print]) .farm-tabs,
+  body:not([data-print]) .offline-status,
+  body:not([data-print]) .mf-skip-link,
+  body:not([data-print]) .report-controls__print {
+    display: none !important;
+  }
+  body:not([data-print]) .report-controls {
+    border: 0;
+    padding: 0;
+  }
+  body:not([data-print]) .shell {
+    display: block;
+  }
+  .report__section {
+    break-inside: avoid;
+  }
+}

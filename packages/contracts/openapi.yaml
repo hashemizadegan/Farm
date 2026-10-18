@@ -41,6 +41,7 @@ tags:
   - name: sensors
   - name: notifications
   - name: exports
+  - name: reports
   - name: media
   - name: team
   - name: audit
@@ -1691,6 +1692,29 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /v1/tenants/{tenantId}/reports/summary:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [reports]
+      summary: What the team recorded in a period (whole workspace or one farm)
+      description: |
+        Days are read in each farm's own time zone. Nothing is estimated - spending is only what
+        was entered as a cost, per currency; quantities stay per unit. Deliveries recorded without
+        a farm appear only in the workspace report.
+      operationId: getPeriodReport
+      parameters:
+        - { name: farmId, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PeriodReport" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/tenants/{tenantId}/uploads:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     post:
@@ -1991,6 +2015,105 @@ components:
       type: string
       enum: [owner, admin, manager, verifier, worker, viewer]
 
+    Money:
+      type: object
+      required: [currency, amount, entries]
+      properties:
+        currency: { type: string }
+        amount: { type: string, description: Decimal as text }
+        entries: { type: integer }
+    PeriodReport:
+      type: object
+      required: [from, to, farm, tasks, inputs, harvests, spending, alerts, observations, farms]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        farm:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [id, name]
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+        tasks:
+          type: object
+          required: [completed, due, dueStillOpen, byKind, byPerson]
+          properties:
+            completed: { type: integer }
+            due: { type: integer, description: Tasks due in the period (not cancelled) }
+            dueStillOpen: { type: integer }
+            byKind:
+              type: array
+              items:
+                type: object
+                required: [kind, count]
+                properties:
+                  kind: { type: string }
+                  count: { type: integer }
+            byPerson:
+              type: array
+              items:
+                type: object
+                required: [userId, name, count]
+                properties:
+                  userId: { type: [string, "null"], format: uuid }
+                  name: { type: [string, "null"] }
+                  count: { type: integer }
+        inputs:
+          type: array
+          items:
+            type: object
+            required: [itemId, name, category, unit, used, applications]
+            properties:
+              itemId: { type: string, format: uuid }
+              name: { type: string }
+              category: { type: string }
+              unit: { type: string }
+              used: { type: string }
+              applications: { type: integer }
+        harvests:
+          type: array
+          items:
+            type: object
+            required: [crop, unit, quantity, batches]
+            properties:
+              crop: { type: string }
+              unit: { type: string }
+              quantity: { type: string }
+              batches: { type: integer }
+        spending:
+          type: object
+          required: [deliveries, servicing]
+          properties:
+            deliveries: { type: array, items: { $ref: "#/components/schemas/Money" } }
+            servicing: { type: array, items: { $ref: "#/components/schemas/Money" } }
+        alerts:
+          type: object
+          required: [info, warning, critical]
+          properties:
+            info: { type: integer }
+            warning: { type: integer }
+            critical: { type: integer }
+        observations:
+          type: object
+          required: [userEntered, sensorReported, providerObservation]
+          properties:
+            userEntered: { type: integer }
+            sensorReported: { type: integer }
+            providerObservation: { type: integer }
+        farms:
+          type: array
+          items:
+            type: object
+            required: [farmId, name, tasksCompleted, applications, harvestBatches, alerts]
+            properties:
+              farmId: { type: string, format: uuid }
+              name: { type: string }
+              tasksCompleted: { type: integer }
+              applications: { type: integer }
+              harvestBatches: { type: integer }
+              alerts: { type: integer }
     Me:
       type: object
       required: [userId, tenants]
