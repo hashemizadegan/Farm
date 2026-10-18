@@ -37,7 +37,7 @@ export function csvField(v: Cell): string {
 /** A whole file: byte-order mark, header row, CRLF line endings. */
 export function toCsv(header: readonly string[], rows: readonly (readonly Cell[])[]): string {
   const lines = [header, ...rows].map((r) => r.map(csvField).join(","));
-  return `﻿${lines.join("\r\n")}\r\n`;
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
 }
 
 export function exportFilename(dataset: ExportDataset, q: { from?: string; to?: string }, today: string): string {

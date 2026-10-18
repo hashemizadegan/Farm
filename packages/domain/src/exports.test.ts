@@ -21,7 +21,7 @@ describe("csv", () => {
   });
 
   it("writes a BOM, a header and CRLF rows", () => {
-    expect(toCsv(["a", "b"], [["1", null], ["کود", "x,y"]])).toBe('﻿a,b\r\n1,\r\nکود,"x,y"\r\n');
+    expect(toCsv(["a", "b"], [["1", null], ["کود", "x,y"]])).toBe('\uFEFFa,b\r\n1,\r\nکود,"x,y"\r\n');
   });
 
   it("has the same columns in every language", () => {

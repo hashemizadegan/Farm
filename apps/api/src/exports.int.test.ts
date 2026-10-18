@@ -8,7 +8,7 @@ const url = process.env.DATABASE_URL;
 const d = url ? describe : describe.skip;
 
 const parseCsv = (body: string) => {
-  expect(body.startsWith("﻿")).toBe(true);
+  expect(body.startsWith("\uFEFF")).toBe(true);
   return body.slice(1).trimEnd().split("\r\n");
 };
 
