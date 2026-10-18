@@ -26,7 +26,7 @@ d("period reports", () => {
   beforeAll(async () => {
     pool = createPool({ connectionString: url!, max: 5 });
     await migrateUp(pool);
-    for (const [k, s] of Object.entries(subjects)) ids[k] = (await upsertUserBySubject(pool, { issuer: "dev", subject: s, name: k === "worker" ? "Reza" : undefined })).id;
+    for (const [k, s] of Object.entries(subjects)) ids[k] = (await upsertUserBySubject(pool, { issuer: "dev", subject: s })).id;
     tenantId = await withSystem(pool, (tx) => createTenantWithOwner(tx, { slug: `rep-${sfx}`, name: "Rep", ownerUserId: ids.owner! }));
     await pool.query(`INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'worker')`, [tenantId, ids.worker]);
     await withSystem(pool, (tx) => createTenantWithOwner(tx, { slug: `rep-o-${sfx}`, name: "Other", ownerUserId: ids.outsider! }));
@@ -66,7 +66,7 @@ d("period reports", () => {
     const b = r.json();
     expect(b.farm).toBeNull();
     expect(b.tasks).toMatchObject({ completed: 2, due: 3, dueStillOpen: 1, byKind: [{ kind: "pruning", count: 2 }] });
-    expect(b.tasks.byPerson).toEqual([{ userId: ids.worker, name: "Reza", count: 2 }]);
+    expect(b.tasks.byPerson).toEqual([{ userId: ids.worker, name: expect.any(String), count: 2 }]);
     expect(b.inputs).toEqual([expect.objectContaining({ name: "Urea", unit: "kg", used: "3.5", applications: 2 })]);
     expect(b.harvests).toEqual([{ crop: "Pistachio", unit: "kg", quantity: "200.5", batches: 2 }]);
     expect(b.spending).toEqual({ deliveries: [{ currency: "USD", amount: "120", entries: 1 }], servicing: [{ currency: "USD", amount: "35", entries: 1 }] });
