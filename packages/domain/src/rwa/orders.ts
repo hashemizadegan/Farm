@@ -1,23 +1,29 @@
 /**
  * Orders tie the two rails together. A subscription is paid on TRON and then issued on Solana;
  * a redemption is burned on Solana and then paid out on TRON; a distribution is paid out only.
+ * A registration records a one-of-a-kind asset (a tree, a parcel, an animal) as a compressed NFT
+ * held by its custodian party: one issuance leg, no money moves.
  * There is no cross-chain atomicity, so the second leg only starts once the first is final,
  * and reconciliation reports whatever does not add up.
  */
 import type { IntentStatus, IssuanceAction, ReconciliationKind, SettlementPurpose } from "./model";
 
-export const ORDER_KINDS = ["subscription", "redemption", "distribution"] as const;
+export const ORDER_KINDS = ["subscription", "redemption", "distribution", "registration"] as const;
 export type OrderKind = (typeof ORDER_KINDS)[number];
+
+/** Orders an investor places through the order API. Registrations are created by the platform only. */
+export const INVESTOR_ORDER_KINDS = ["subscription", "redemption", "distribution"] as const satisfies readonly OrderKind[];
+export type InvestorOrderKind = (typeof INVESTOR_ORDER_KINDS)[number];
 
 export const ORDER_STATUSES = ["open", "settling", "issuing", "completed", "cancelled", "exception"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export interface OrderView {
   kind: OrderKind;
-  /** Shares in base units (none for a distribution). */
+  /** Shares in base units (none for a distribution; exactly 1 for a registration). */
   shareAmount: bigint | null;
-  /** Stablecoin in base units. */
-  settlementAmount: bigint;
+  /** Stablecoin in base units (none for a registration). */
+  settlementAmount: bigint | null;
   createdAt: Date;
 }
 
@@ -40,6 +46,7 @@ export const ORDER_LEGS: Record<OrderKind, { first: Leg; second: Leg | null }> =
   subscription: { first: { side: "settlement", purpose: "subscription" }, second: { side: "issuance", action: "mint" } },
   redemption: { first: { side: "issuance", action: "burn" }, second: { side: "settlement", purpose: "redemption" } },
   distribution: { first: { side: "settlement", purpose: "distribution" }, second: null },
+  registration: { first: { side: "issuance", action: "mint" }, second: null },
 };
 type Leg = { side: "issuance"; action: IssuanceAction } | { side: "settlement"; purpose: SettlementPurpose };
 
@@ -106,6 +113,12 @@ export function reconcileOrder(order: OrderView, intents: IntentView[], now: Dat
   }
   if (intents.every((i) => !done(i)) && late(order.createdAt)) out.push({ kind: "stale", expected: { withinMinutes: slaMinutes }, observed: { completed: 0 } });
   return out;
+}
+
+/** Whether every leg this kind of order has (one or two) has completed. */
+export function orderLegsDone(order: OrderView, intents: IntentView[]): boolean {
+  const legs = ORDER_LEGS[order.kind];
+  return [legs.first, legs.second].filter((l): l is Leg => l !== null).every((leg) => intents.some((i) => matches(i, leg) && done(i)));
 }
 
 /** Whether the first leg may start: nothing for it exists yet (a failed first leg needs a person, not a retry). */

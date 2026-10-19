@@ -121,7 +121,7 @@ export async function setOrderStatus(tx: TenantTx, orderId: string, status: Orde
 
 /** An order and its intents on both rails, as reconciliation sees them. */
 export async function orderForReconciliation(tx: TenantTx, orderId: string): Promise<{ reconciliationId: string; status: OrderStatus; order: OrderView; intents: IntentView[] } | undefined> {
-  const o = await tx.query<{ reconciliation_id: string; status: OrderStatus; kind: OrderKind; share_amount: string | null; settlement_amount: string; created_at: Date }>(
+  const o = await tx.query<{ reconciliation_id: string; status: OrderStatus; kind: OrderKind; share_amount: string | null; settlement_amount: string | null; created_at: Date }>(
     `SELECT reconciliation_id, status, kind, share_amount::text, settlement_amount::text, created_at FROM rwa_orders WHERE tenant_id = $1 AND id = $2`,
     [tx.tenantId, orderId],
   );
@@ -144,7 +144,7 @@ export async function orderForReconciliation(tx: TenantTx, orderId: string): Pro
   return {
     reconciliationId: row.reconciliation_id,
     status: row.status,
-    order: { kind: row.kind, shareAmount: big(row.share_amount), settlementAmount: BigInt(row.settlement_amount), createdAt: row.created_at },
+    order: { kind: row.kind, shareAmount: big(row.share_amount), settlementAmount: big(row.settlement_amount), createdAt: row.created_at },
     intents: [
       ...iss.rows.map((i) => ({ side: "issuance" as const, action: i.action, amount: big(i.amount), status: i.status, confirmedOperations: i.confirmed, ...(i.done_at ? { completedAt: i.done_at } : {}) })),
       ...set.rows.map((i) => ({
@@ -227,6 +227,10 @@ export async function walletOfParty(tx: TenantTx, partyId: string, walletId: str
   return ((await tx.query(`SELECT 1 FROM party_wallets WHERE tenant_id = $1 AND party_id = $2 AND id = $3`, [tx.tenantId, partyId, walletId])).rowCount ?? 0) > 0;
 }
 
+/**
+ * An investor order (subscription, redemption or distribution): money always moves, so the
+ * settlement columns are set. Registrations never appear here; they have their own reads.
+ */
 export interface OrderRow {
   id: string;
   reconciliation_id: string;
@@ -252,15 +256,16 @@ const ORDER_SELECT = `
   SELECT o.id, o.reconciliation_id, o.kind, o.party_id, p.display_name AS party_name, o.representation_id, o.share_amount::text,
          o.settlement_network, o.token_contract, o.settlement_amount::text, o.investor_tron_address, o.investor_solana_address,
          o.status, o.created_by, o.approved_by, o.approved_at, o.created_at, o.updated_at
-    FROM rwa_orders o JOIN parties p ON p.tenant_id = o.tenant_id AND p.id = o.party_id`;
+    FROM rwa_orders o JOIN parties p ON p.tenant_id = o.tenant_id AND p.id = o.party_id
+   WHERE o.kind <> 'registration'`;
 
 export async function listOrders(tx: TenantTx, limit = 200): Promise<OrderRow[]> {
-  return (await tx.query<OrderRow>(`${ORDER_SELECT} WHERE o.tenant_id = $1 ORDER BY o.created_at DESC LIMIT $2`, [tx.tenantId, limit])).rows;
+  return (await tx.query<OrderRow>(`${ORDER_SELECT} AND o.tenant_id = $1 ORDER BY o.created_at DESC LIMIT $2`, [tx.tenantId, limit])).rows;
 }
 
 export async function getOrder(tx: TenantTx, orderId: string, forUpdate = false): Promise<OrderRow | undefined> {
   if (forUpdate) await tx.query(`SELECT 1 FROM rwa_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tx.tenantId, orderId]);
-  return (await tx.query<OrderRow>(`${ORDER_SELECT} WHERE o.tenant_id = $1 AND o.id = $2`, [tx.tenantId, orderId])).rows[0];
+  return (await tx.query<OrderRow>(`${ORDER_SELECT} AND o.tenant_id = $1 AND o.id = $2`, [tx.tenantId, orderId])).rows[0];
 }
 
 export async function listOrderIntents(tx: TenantTx, reconciliationId: string) {

@@ -26,6 +26,28 @@ export const RAIL_NETWORKS: Record<Rail, readonly Network[]> = {
 
 export const MAINNETS: readonly Network[] = ["solana-mainnet", "tron-mainnet"];
 
+/** One-of-a-kind assets that are represented as Bubblegum compressed NFTs rather than share tokens. */
+export const CNFT_ASSET_KINDS = ["parcel", "tree", "livestock"] as const satisfies readonly AssetKind[];
+
+/** What a chain operation carries out: an issuance or settlement intent, or the creation of a Merkle tree. */
+export const CHAIN_INTENT_TYPES = ["issuance", "settlement", "tree"] as const;
+export type ChainIntentType = (typeof CHAIN_INTENT_TYPES)[number];
+
+/**
+ * A Bubblegum Merkle tree the platform mints compressed NFTs into. `planned` exists only in the
+ * database; `creating` has a live chain operation; `full` has no leaf left.
+ */
+export const TREE_STATUSES = ["planned", "creating", "active", "full", "failed", "retired"] as const;
+export type TreeStatus = (typeof TREE_STATUSES)[number];
+
+/**
+ * Whether one more leaf may be minted into a tree. The leaf index is the tree's current count, so
+ * the caller must also hold no other mint into the same tree in flight (the database enforces it).
+ */
+export function treeAcceptsMint(tree: { status: TreeStatus; mintedCount: bigint; capacity: bigint }): boolean {
+  return tree.status === "active" && tree.mintedCount < tree.capacity;
+}
+
 export const REPRESENTATION_STATUSES = ["planned", "issuing", "active", "frozen", "retired"] as const;
 export type RepresentationStatus = (typeof REPRESENTATION_STATUSES)[number];
 

@@ -1,5 +1,5 @@
 import { openOrders, openReconciliationCases, orderForReconciliation, setOrderStatus, withSystem, withTenant, type Pool } from "@metafarm/db";
-import { reconcileOrder, type ReconciliationKind } from "@metafarm/domain";
+import { orderLegsDone, reconcileOrder, type ReconciliationKind } from "@metafarm/domain";
 import type { Handler } from "../runner";
 
 /** Discrepancies that mean money or shares may have moved wrongly: the order stops until someone looks. */
@@ -29,9 +29,7 @@ export function rwaReconciliationSweepHandler(pool: Pool, slaMinutes: number, no
           }
           return;
         }
-        const done = (side: "issuance" | "settlement") => view.intents.some((i) => i.side === side && i.status === "completed");
-        const legsDone = view.order.kind === "distribution" ? done("settlement") : done("issuance") && done("settlement");
-        if (found.length === 0 && legsDone && view.status !== "exception") {
+        if (found.length === 0 && orderLegsDone(view.order, view.intents) && view.status !== "exception") {
           await setOrderStatus(tx, o.id, "completed");
           completed++;
         }
