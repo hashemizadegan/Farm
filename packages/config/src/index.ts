@@ -128,9 +128,16 @@ export const apiEnvSchema = z
     MAX_OWNED_WORKSPACES: z.coerce.number().int().min(1).max(100).default(3),
     WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(15_000),
+    /** Serve Swagger UI at /docs. Unset: on in development and test, off in staging and production. */
+    API_DOCS_ENABLED: bool.optional(),
     ...rwa,
   })
   .superRefine(productionGuards);
+
+/** Whether the API serves its interactive docs: an explicit setting wins, else only outside deployed environments. */
+export function apiDocsEnabled(env: { APP_ENV: string; API_DOCS_ENABLED?: boolean }): boolean {
+  return env.API_DOCS_ENABLED ?? !(env.APP_ENV === "staging" || env.APP_ENV === "production");
+}
 
 export const workerEnvSchema = z
   .object({

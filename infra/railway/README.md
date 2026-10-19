@@ -8,10 +8,10 @@ Per-service settings, in case you configure services in the dashboard instead:
 
 | Service | Root directory | Builds | Pre-deploy | Health check path |
 | --- | --- | --- | --- | --- |
-| web | `/` | root `Dockerfile`, app `web` | — | `/sign-in` |
+| web | `/` | root `Dockerfile`, app `web` | — | `/offline` |
 | api | `/` | root `Dockerfile`, app `api` | `node dist/migrate.js` | `/readyz` |
-| worker | `/` | root `Dockerfile`, app `worker` | — | `/healthz` |
-| scheduler | `/` | root `Dockerfile`, app `scheduler` | — | `/healthz` |
+| worker | `/` | root `Dockerfile`, app `worker` | — | `/readyz` |
+| scheduler | `/` | root `Dockerfile`, app `scheduler` | — | `/readyz` |
 
 Watch paths (to avoid rebuilding every service on every commit), set in the service settings:
 

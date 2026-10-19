@@ -90,7 +90,8 @@ export default defineRailway((ctx) => {
 
   const worker = service("worker", {
     source: src(),
-    healthcheck: "/healthz",
+    // Readiness (database + Redis), so a deploy with broken credentials never replaces a working one.
+    healthcheck: "/readyz",
     replicas: prod ? 2 : 1,
     env: {
       ...common,
@@ -106,7 +107,7 @@ export default defineRailway((ctx) => {
   // Exactly one scheduler: job schedulers live in Redis and are idempotent, but one replica keeps logs simple.
   const scheduler = service("scheduler", {
     source: src(),
-    healthcheck: "/healthz",
+    healthcheck: "/readyz", // Redis reachable
     replicas: 1,
     env: {
       ...common,
@@ -117,7 +118,9 @@ export default defineRailway((ctx) => {
 
   const web = service("web", {
     source: src(),
-    healthcheck: "/sign-in",
+    // A static page with no data dependencies. Railway only accepts letters, digits, "/" and "_" in
+    // health check paths, so "/sign-in" is rejected.
+    healthcheck: "/offline",
     replicas: prod ? 2 : 1,
     env: {
       // Browser-facing: must be the API's PUBLIC URL (inlined at build time).
