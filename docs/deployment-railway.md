@@ -56,6 +56,7 @@ Full list with local defaults: `.env.example`. Required when deployed:
 | `WEBHOOK_SIGNING_SECRETS` | api | Comma-separated; two during rotation |
 | `WALLET_AUTH_DOMAIN`, `WALLET_AUTH_URI`, `WALLET_ALLOWED_CHAIN_IDS` | api | Must match the public web origin |
 | `AUDIT_IP_SALT` | api | Random string |
+| `API_DOCS_ENABLED` | api (optional) | Swagger UI at `/docs`. Unset: off in `staging` and `production`, on elsewhere. Set `true` only on a private environment |
 | `NEXT_PUBLIC_API_URL` | web (**build time**) | The API's **public** URL; browsers cannot reach `*.railway.internal` |
 | `NEXT_PUBLIC_MAP_*` | web (build time) | Basemap style/attribution and CSP hosts |
 | `NEXT_PUBLIC_OIDC_AUTHORITY`, `NEXT_PUBLIC_OIDC_CLIENT_ID`, `NEXT_PUBLIC_OIDC_AUDIENCE` | web (build time) | Browser sign-in (Authorization Code + PKCE) |
@@ -73,15 +74,17 @@ Full list with local defaults: `.env.example`. Required when deployed:
 ## 5. Health checks
 
 - `api`: `/readyz` checks Postgres, Redis and object storage; `/healthz` is liveness only. Using `/readyz` for the deploy health check means a deployment with broken credentials never receives traffic.
-- `worker`, `scheduler`: an internal HTTP server on `$PORT` (`HEALTH_PORT` overrides) serves `/healthz` and `/readyz`.
-- During shutdown `/healthz` returns `503 draining`.
+- `worker` (Postgres + Redis), `scheduler` (Redis): an internal HTTP server on `$PORT` (`HEALTH_PORT` overrides) serves `/healthz` and `/readyz`. Use **`/readyz`** as the deploy health check, so a deployment that cannot reach its dependencies never replaces the running one.
+- `web`: no dependency check of its own; any page that renders without the API returns 200 once Next.js serves. Railway accepts only letters, digits, `/` and `_` in a health check path, so `/sign-in` is rejected; `/offline` (always present, client-rendered) qualifies.
+- During shutdown `/healthz` and `/readyz` return `503`.
+- Railway calls the health check **only while deploying**; it does not monitor afterwards. Use an external uptime check on `/readyz` for that.
 
 ## 6. Migrations
 
 - The API service's pre-deploy command is `node dist/migrate.js`. It runs before the new deployment starts serving, takes a Postgres advisory lock (safe if two deploys race), applies pending SQL migrations in order, and refuses to continue if an applied migration file was modified.
 - Migrations must be **backwards-compatible with the currently running version** (expand → migrate → contract across two releases), because old and new API instances overlap during a deploy.
 - The first migration enables `postgis`, `pgcrypto` and `citext`, and creates the `metafarm_app` role used for row-level security. The connecting user must be allowed to create extensions and roles (true for the `postgis/postgis` image's superuser).
-- `migrate:down` is blocked in production unless `ALLOW_DESTRUCTIVE_MIGRATIONS=true`; production rollback uses backups (§9).
+- `migrate:down` is blocked in **staging and production** unless `ALLOW_DESTRUCTIVE_MIGRATIONS=true` is set for that run; deployed rollbacks restore from backup (§11) instead.
 
 ## 7. Graceful shutdown
 
@@ -91,7 +94,9 @@ On `SIGTERM` each process stops accepting work and closes resources in order, bo
 - **worker** (30 s): workers stop taking new jobs and wait for in-flight jobs; jobs that cannot finish are retried later (BullMQ lock expiry + `job_runs` idempotency make this safe).
 - **scheduler** (10 s): closes queues and Redis.
 
-Dockerfiles use exec-form `CMD ["node", …]` so Node is PID 1 and receives the signal directly. Configure the service's draining/teardown period in Railway to be at least the grace period.
+Dockerfiles use exec-form `CMD ["node", …]` so Node is PID 1 and receives the signal directly. Configure the service's draining/teardown period in Railway to be at least the grace period: Railway's default is **0 seconds** (SIGKILL right after SIGTERM), which skips all of the above. Suggested: api 20 s, worker 35 s, scheduler 15 s, web 10 s, plus a short overlap (about 10 s) on api and web.
+
+**No volumes on app services.** Railway never runs two deployments of a service that has a volume attached, so every redeploy of such a service stops the old one first and drops requests. Volumes belong on `postgres` and `redis` only.
 
 ## 8. Object storage
 

@@ -21,6 +21,19 @@ const csv = z
   );
 
 export const AppEnvironment = z.enum(["development", "test", "staging", "production"]);
+
+/** Environments that serve real traffic and get the strict guards (staging included). */
+export function isDeployedEnvironment(appEnv: string | undefined): boolean {
+  return appEnv === "staging" || appEnv === "production";
+}
+
+/**
+ * Whether the API serves interactive docs (Swagger UI at /docs). Off by default wherever the app is
+ * deployed; API_DOCS_ENABLED=true turns it on deliberately (e.g. a private staging).
+ */
+export function docsEnabled(env: { APP_ENV?: string; API_DOCS_ENABLED?: boolean }): boolean {
+  return env.API_DOCS_ENABLED ?? !isDeployedEnvironment(env.APP_ENV);
+}
 export type AppEnvironment = z.infer<typeof AppEnvironment>;
 
 const base = {
@@ -128,6 +141,8 @@ export const apiEnvSchema = z
     MAX_OWNED_WORKSPACES: z.coerce.number().int().min(1).max(100).default(3),
     WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(15_000),
+    /** Serve Swagger UI at /docs. Unset: off in staging and production, on elsewhere (see docsEnabled). */
+    API_DOCS_ENABLED: bool.optional(),
     ...rwa,
   })
   .superRefine(productionGuards);
@@ -221,8 +236,7 @@ export type SchedulerEnv = z.infer<typeof schedulerEnvSchema>;
 
 /** Guards that make unsafe configuration fail fast outside development. */
 function productionGuards(env: Record<string, unknown>, ctx: z.RefinementCtx) {
-  const deployed = env.APP_ENV === "staging" || env.APP_ENV === "production";
-  if (!deployed) return;
+  if (!isDeployedEnvironment(env.APP_ENV as string | undefined)) return;
   if (env.AUTH_PROVIDER === "dev") {
     ctx.addIssue({ code: "custom", path: ["AUTH_PROVIDER"], message: "dev auth is not allowed in staging/production" });
   }
