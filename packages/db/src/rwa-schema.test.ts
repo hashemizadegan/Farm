@@ -22,16 +22,23 @@ import {
   SCREENING_OUTCOMES,
   ORDER_KINDS,
   ORDER_STATUSES,
+  CHAIN_INTENT_TYPES,
+  TREE_STATUSES,
+  RAIL_NETWORKS,
 } from "@metafarm/domain";
 
 const read = (name: string) => readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), `../migrations/${name}`), "utf8");
-const FILES = ["0011_rwa_rails.up.sql", "0012_rwa_orders.up.sql"];
+const FILES = ["0011_rwa_rails.up.sql", "0012_rwa_orders.up.sql", "0016_cnft_trees.up.sql"];
 const sql = FILES.map(read).join("\n");
 
-/** The values of `CHECK (<column> IN (...))` inside one CREATE TABLE. */
+/**
+ * The values of `CHECK (<column> IN (...))`: the latest `ADD CONSTRAINT <table>_<column>_check`
+ * that replaced it in a later migration, else the one inside the table's CREATE TABLE.
+ */
 function checkList(table: string, column: string): string[] {
+  const replaced = [...sql.matchAll(new RegExp(`ADD CONSTRAINT ${table}_${column}_check CHECK \\(${column} IN \\(([^)]*)\\)\\)`, "g"))].at(-1);
   const body = sql.slice(sql.indexOf(`CREATE TABLE ${table} (`));
-  const m = new RegExp(`\\b${column}\\s+text NOT NULL[^,]*?CHECK \\(${column} IN \\(([^)]*)\\)\\)`).exec(body.slice(0, body.indexOf("\n);")));
+  const m = replaced ?? new RegExp(`\\b${column}\\s+text NOT NULL[^,]*?CHECK \\(${column} IN \\(([^)]*)\\)\\)`).exec(body.slice(0, body.indexOf("\n);")));
   if (!m) throw new Error(`no CHECK list for ${table}.${column}`);
   return [...m[1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!);
 }
@@ -58,6 +65,9 @@ describe("RWA schema matches the domain", () => {
     ["compliance_screenings", "outcome", SCREENING_OUTCOMES],
     ["rwa_orders", "kind", ORDER_KINDS],
     ["rwa_orders", "status", ORDER_STATUSES],
+    ["chain_operations", "intent_type", CHAIN_INTENT_TYPES],
+    ["merkle_trees", "status", TREE_STATUSES],
+    ["merkle_trees", "network", RAIL_NETWORKS.SOLANA_BUBBLEGUM_CNFT],
   ] as const)("%s.%s", (table, column, values) => {
     expect(checkList(table, column)).toEqual([...values]);
   });

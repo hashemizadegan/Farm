@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { KYC_STATUSES, PARTY_KINDS, SCREENING_OUTCOMES } from "./compliance";
 import { NETWORKS, baseUnits } from "./model";
-import { ORDER_KINDS } from "./orders";
+import { INVESTOR_ORDER_KINDS } from "./orders";
 
 const country = z
   .string()
@@ -39,7 +39,7 @@ export const screeningSchema = z
 
 export const createOrderSchema = z
   .object({
-    kind: z.enum(ORDER_KINDS),
+    kind: z.enum(INVESTOR_ORDER_KINDS),
     partyId: z.string().uuid(),
     representationId: z.string().uuid().optional(),
     shareAmount: baseUnits.optional(),

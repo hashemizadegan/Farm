@@ -255,10 +255,10 @@ export async function linkMint(tx: TenantTx, id: string, mintAddress: string, de
 
 // ── Payouts and approvals ──────────────────────────────────────────────
 
-/** Orders whose next leg the engine may start (approved redemptions and distributions, paid subscriptions). */
+/** Orders whose next leg the engine may start (approved redemptions and distributions, paid subscriptions). Registrations are driven separately. */
 export async function ordersToAdvance(tx: SystemTx, limit = 500): Promise<{ tenant_id: string; id: string }[]> {
   return (
-    await tx.query<{ tenant_id: string; id: string }>(`SELECT tenant_id, id FROM rwa_orders WHERE status IN ('issuing', 'settling') ORDER BY updated_at LIMIT $1`, [limit])
+    await tx.query<{ tenant_id: string; id: string }>(`SELECT tenant_id, id FROM rwa_orders WHERE status IN ('issuing', 'settling') AND kind <> 'registration' ORDER BY updated_at LIMIT $1`, [limit])
   ).rows;
 }
 

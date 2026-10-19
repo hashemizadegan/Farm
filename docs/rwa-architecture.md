@@ -2,7 +2,10 @@
 
 Status: schema, domain model and ports; Solana Token-2022 issuance, TRON TRC-20 settlement and
 observation adapters for both rails, and compressed-NFT tree planning and DAS reads (`packages/chain`),
-tested against simulated nodes. Not wired into the API or worker yet; nothing issued.
+tested against simulated nodes. Investor orders, compliance gate, payment verification and the
+execution engine for Token-2022 and TRC-20 are wired into the API and worker (devnet/testnets only).
+Compressed NFTs have their schema and repositories (migration 0016) but are not yet driven by the
+engine or exposed by the API. Nothing has been issued on a mainnet.
 
 ## Decisions (October 2026)
 
@@ -101,6 +104,45 @@ Financial tables block deleting their workspace: those records must be retained.
   refused whenever mainnets are enabled. Production needs a KMS/HSM signer behind the same
   `Ed25519Signer` port.
 
+## Compressed NFTs and registrations (migration `0016_cnft_trees`)
+
+- **`merkle_trees`**: the Bubblegum trees the platform mints into, per workspace and network:
+  `planned` (database only) → `creating` (account address known, creation operation live) →
+  `active` → `full`; or `failed`. One current tree per workspace and network (unique index); the
+  shape (depth, buffer, canopy, capacity) and the address are fixed once the address exists;
+  `minted_count` (final leaves) never decreases or exceeds capacity; trees are never deleted.
+- Creating a tree is a **chain operation** of its own (`intent_type = 'tree'`, `intent_id` = the
+  tree), with the same lifecycle, transition log and one-live-attempt rule as intents.
+- **Leaves**: a `SOLANA_BUBBLEGUM_CNFT` representation names its tree (`tree_id`); only that rail
+  may. Its leaf index and asset id are recorded when the mint is prepared (`recordPlannedLeaf`) and
+  the representation becomes `active` once DAS confirms it.
+- **One mint in flight per tree**: the next leaf index is the tree's on-chain `num_minted`, so two
+  concurrent mints would claim the same index. A trigger copies the tree onto every issuance intent
+  of a compressed representation (a composite foreign key keeps it consistent) and a partial unique
+  index allows one live mint per tree. A compressed mint is always for exactly 1.
+- **Registration orders** (`kind = 'registration'`) record a verified one-of-a-kind asset as one leaf
+  held by its custodian party: one issuance leg (`mint`), no settlement columns, no TRON wallet.
+  The custodian passes the same KYC/sanctions gate as an investor. Registrations are created by the
+  platform only: the investor order API accepts `INVESTOR_ORDER_KINDS`, and the investor order
+  reads (`listOrders`, `getOrder`) and the Token-2022/TRC-20 engine sweep exclude them.
+  Reconciliation covers them (`orderLegsDone` completes an order once every leg it has is done).
+
+## Telemetry rollups (migration `0017_telemetry_rollups`)
+
+- **`iot_telemetry_hourly`**: hourly count/avg/min/max per tenant, farm, sensor, metric and unit
+  in UTC hours. A TimescaleDB continuous aggregate (refreshed every 30 minutes, materialised only)
+  where `iot_telemetry` is a hypertable; a plain view elsewhere. The application reads it only
+  through **`iot_telemetry_hourly_tenant`**, a security-barrier view filtered on the current tenant,
+  because the rollup is computed by its owner and row-level security does not reach it.
+- **Retention** is the operator's decision: `SELECT telemetry_set_retention(INTERVAL '180 days')`
+  (at least 7 days; NULL keeps everything). There is no default.
+- **No columnstore compression**: TimescaleDB does not support row-level security on compressed
+  chunks, so compression would remove tenant isolation for older readings.
+- **Open risk (TimescaleDB only)**: hypertable chunks inherit grants but not row-level security
+  policies (timescale/timescaledb#7830), so `metafarm_app` could read other tenants' readings by
+  naming a chunk table directly. The application never does, but a production TimescaleDB must
+  be checked and, if confirmed, chunk access revoked from `metafarm_app` (see Next).
+
 ## Operation lifecycle
 
 ```
@@ -168,10 +210,12 @@ requested → policy_approved → prepared → submitted → observed → confir
 
 ## Next
 
-1. Trees and compressed NFTs in the database, engine and API: plan and create a tree per tenant,
-   mint one leaf per verified tree, parcel or animal, and confirm it through DAS.
-2. A KMS/HSM signer (Ed25519 and secp256k1) and a `CompliancePort` adapter for a KYC/sanctions
+1. Drive trees and registrations in the engine and expose them in the API: plan and create a tree
+   per tenant (`planTree`), mint one leaf per verified tree, parcel or animal, confirm it through DAS.
+2. Run CI against a TimescaleDB + PostGIS image so the hypertable, continuous aggregate and
+   retention paths are tested; verify and close the chunk-privilege risk above.
+3. A KMS/HSM signer (Ed25519 and secp256k1) and a `CompliancePort` adapter for a KYC/sanctions
    provider; until then mainnets stay locked.
-3. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
+4. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
 
 Keys for minting and settlement belong in a KMS/HSM set up by the operator; the app never stores them.

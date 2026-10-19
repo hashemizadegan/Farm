@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { firstLegMayStart, legNeedsAttention, reconcileOrder, secondLegMayStart, type IntentView, type OrderView } from "./orders";
+import { createOrderSchema } from "./requests";
+import { firstLegMayStart, legNeedsAttention, orderLegsDone, reconcileOrder, secondLegMayStart, type IntentView, type OrderView } from "./orders";
 
 const now = new Date("2026-10-18T09:00:00Z");
 const minutesAgo = (n: number) => new Date(now.getTime() - n * 60_000);
@@ -75,5 +76,49 @@ describe("starting and stopping legs", () => {
     expect(legNeedsAttention(sub, [pay(), mint({ status: "policy_rejected" })])).toBe(true);
     expect(legNeedsAttention(sub, [pay(), mint({ status: "failed" }), mint()])).toBe(false);
     expect(legNeedsAttention(sub, [pay(), mint({ status: "in_progress" })])).toBe(false);
+  });
+});
+
+describe("registrations (one compressed NFT, no money)", () => {
+  const reg: OrderView = { kind: "registration", shareAmount: 1n, settlementAmount: null, createdAt: minutesAgo(120) };
+  const leaf = (o: Partial<IntentView> = {}) => mint({ amount: 1n, ...o });
+
+  it("has one leg: the mint, and never a second", () => {
+    expect(firstLegMayStart(reg, [])).toBe(true);
+    expect(firstLegMayStart(reg, [leaf({ status: "in_progress" })])).toBe(false);
+    expect(secondLegMayStart(reg, [leaf()])).toBe(false);
+  });
+
+  it("is done once the leaf is minted, and only then", () => {
+    expect(orderLegsDone(reg, [])).toBe(false);
+    expect(orderLegsDone(reg, [leaf({ status: "in_progress" })])).toBe(false);
+    expect(orderLegsDone(reg, [leaf()])).toBe(true);
+  });
+
+  it("reconciles without a settlement leg", () => {
+    expect(kinds(reg, [leaf()])).toEqual([]);
+    expect(kinds(reg, [leaf(), leaf()])).toEqual(["duplicate"]);
+    expect(kinds(reg, [leaf({ amount: 2n })])).toEqual(["amount_mismatch"]);
+    expect(kinds(reg, [])).toEqual(["stale"]);
+  });
+
+  it("cannot be placed through the investor order API", () => {
+    const body = { kind: "registration", partyId: "6f1c1c3e-2a9b-4c5d-8e7f-0a1b2c3d4e5f", settlementNetwork: "tron-nile", tokenContract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf", settlementAmount: "1", tronWallet: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf" };
+    // The same body is a valid distribution, so the refusal is about the kind alone.
+    expect(createOrderSchema.safeParse({ ...body, kind: "distribution" }).success).toBe(true);
+    const r = createOrderSchema.safeParse(body);
+    expect(r.success).toBe(false);
+    expect(r.error?.issues.map((i) => i.path.join("."))).toEqual(["kind"]);
+  });
+});
+
+describe("orders are done when every leg is", () => {
+  it("needs both legs of a subscription and the single leg of a distribution", () => {
+    expect(orderLegsDone(sub, [pay()])).toBe(false);
+    expect(orderLegsDone(sub, [pay(), mint()])).toBe(true);
+    const dist: OrderView = { ...sub, kind: "distribution", shareAmount: null };
+    expect(orderLegsDone(dist, [pay({ purpose: "distribution" })])).toBe(true);
+    // The wrong kind of leg does not count.
+    expect(orderLegsDone(dist, [pay({ purpose: "subscription" })])).toBe(false);
   });
 });
