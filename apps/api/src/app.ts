@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
+import { docsEnabled } from "@metafarm/config";
 import type { Deps } from "./deps";
 import { contextPlugin } from "./plugins/context";
 import { securityPlugin } from "./plugins/security";
@@ -26,7 +27,7 @@ import { rwaRoutes } from "./routes/rwa";
 export interface BuildOptions {
   deps: Deps;
   isDraining?: () => boolean;
-  /** Serve Swagger UI at /docs. Defaults to on outside production. */
+  /** Serve Swagger UI at /docs. Defaults to docsEnabled(env): off in staging and production unless API_DOCS_ENABLED=true. */
   docs?: boolean;
 }
 
@@ -53,7 +54,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(contextPlugin, { deps });
   await app.register(healthRoutes, { isDraining });
 
-  if (docs ?? deps.env.APP_ENV !== "production") {
+  if (docs ?? docsEnabled(deps.env)) {
     const require = createRequire(import.meta.url);
     const specPath = process.env.OPENAPI_SPEC_PATH ?? path.join(path.dirname(require.resolve("@metafarm/contracts/package.json")), "openapi.yaml");
     await app.register(import("@fastify/swagger"), { mode: "static", specification: { path: specPath, baseDir: path.dirname(specPath) } });

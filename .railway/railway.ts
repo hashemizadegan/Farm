@@ -90,7 +90,7 @@ export default defineRailway((ctx) => {
 
   const worker = service("worker", {
     source: src(),
-    healthcheck: "/healthz",
+    healthcheck: "/readyz", // Postgres + Redis reachable before the new worker replaces the old one
     replicas: prod ? 2 : 1,
     env: {
       ...common,
@@ -106,7 +106,7 @@ export default defineRailway((ctx) => {
   // Exactly one scheduler: job schedulers live in Redis and are idempotent, but one replica keeps logs simple.
   const scheduler = service("scheduler", {
     source: src(),
-    healthcheck: "/healthz",
+    healthcheck: "/readyz", // Redis reachable
     replicas: 1,
     env: {
       ...common,

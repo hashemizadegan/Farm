@@ -90,6 +90,19 @@ export async function migrateUp(pool: Pool, log: (msg: string) => void = () => u
   return appliedNow;
 }
 
+/**
+ * Why a down migration must not run here, or null when it may. Down migrations drop tables, so they are
+ * refused wherever the app is deployed (staging and production alike) unless an operator sets
+ * ALLOW_DESTRUCTIVE_MIGRATIONS=true for that one run; deployed rollbacks restore from backup instead.
+ */
+export function downMigrationRefusal(env: { APP_ENV?: string; ALLOW_DESTRUCTIVE_MIGRATIONS?: string }): string | null {
+  const deployed = env.APP_ENV === "staging" || env.APP_ENV === "production";
+  if (deployed && env.ALLOW_DESTRUCTIVE_MIGRATIONS !== "true") {
+    return `down migrations are blocked in ${env.APP_ENV}; restore from backup instead (or set ALLOW_DESTRUCTIVE_MIGRATIONS=true for this run)`;
+  }
+  return null;
+}
+
 /** Reverts the most recent migration. Intended for development; see the rollback runbook for production. */
 export async function migrateDown(pool: Pool, log: (msg: string) => void = () => undefined): Promise<string | null> {
   await ensureTable(pool);
