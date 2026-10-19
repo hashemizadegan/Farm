@@ -31,10 +31,10 @@ Create in this order. For each **GitHub** service: Source = `hashemizadegan/Farm
 | `postgres` | Docker image `postgis/postgis:16-3.4` | Attach a **volume** at `/var/lib/postgresql/data`. Variables: `POSTGRES_USER=metafarm`, `POSTGRES_DB=metafarm`, `POSTGRES_PASSWORD=<generate a long random value>`, `PGDATA=/var/lib/postgresql/data/pgdata`. No public domain. |
 | `redis` | Railway Redis template | No public domain. Confirm `maxmemory-policy` is `noeviction`. |
 | `uploads` | Railway **bucket** | Keep private. Choose the region nearest your users (cannot change later). |
-| `api` | GitHub | Pre-deploy command: `node dist/migrate.js`. Health check path: `/readyz`. **Generate a public domain.** |
-| `worker` | GitHub | Health check path: `/healthz`. No public domain. |
-| `scheduler` | GitHub | Health check path: `/healthz`. No public domain. 1 replica. |
-| `web` | GitHub | Health check path: `/sign-in`. **Generate a public domain.** |
+| `api` | GitHub | Pre-deploy command: `node dist/migrate.js`. Health check path: `/readyz`, timeout 60 s. Draining time 20 s, overlap 10 s. **No volume.** **Generate a public domain.** |
+| `worker` | GitHub | Health check path: `/readyz`. Draining time 35 s. No public domain. |
+| `scheduler` | GitHub | Health check path: `/readyz`. Draining time 15 s. No public domain. 1 replica. |
+| `web` | GitHub | Health check path: `/offline`. Draining time 10 s, overlap 10 s. **Generate a public domain.** |
 
 The service names matter. The build picks the app from the service name (`api`, `web`, `worker`, `scheduler`), and the variables below reference `postgres`, `redis` and `uploads` by name. If Railway shows **Railpack** in a build log instead of a Docker build, the service is not seeing the root `Dockerfile` — check that its root directory is `/`.
 

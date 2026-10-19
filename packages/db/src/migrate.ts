@@ -90,6 +90,18 @@ export async function migrateUp(pool: Pool, log: (msg: string) => void = () => u
   return appliedNow;
 }
 
+/**
+ * Why `down` must not run here, or null when it may. Deployed environments (staging and production)
+ * hold real records; they roll back by restoring a backup unless the operator explicitly allows it.
+ */
+export function downMigrationBlocked(env: { APP_ENV?: string; ALLOW_DESTRUCTIVE_MIGRATIONS?: string }): string | null {
+  const deployed = env.APP_ENV === "staging" || env.APP_ENV === "production";
+  if (deployed && env.ALLOW_DESTRUCTIVE_MIGRATIONS !== "true") {
+    return `down migrations are blocked in ${env.APP_ENV}; restore from backup instead (or set ALLOW_DESTRUCTIVE_MIGRATIONS=true deliberately)`;
+  }
+  return null;
+}
+
 /** Reverts the most recent migration. Intended for development; see the rollback runbook for production. */
 export async function migrateDown(pool: Pool, log: (msg: string) => void = () => undefined): Promise<string | null> {
   await ensureTable(pool);

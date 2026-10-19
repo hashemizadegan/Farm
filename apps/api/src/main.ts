@@ -1,4 +1,4 @@
-import { apiEnvSchema, loadEnv } from "@metafarm/config";
+import { apiDocsEnabled, apiEnvSchema, loadEnv } from "@metafarm/config";
 import { createPool } from "@metafarm/db";
 import { createLogger, installGracefulShutdown } from "@metafarm/observability";
 import { recoverMessageAddress } from "viem";
@@ -65,6 +65,7 @@ const app = await buildApp({
     solanaRpc: env.RWA_SOLANA_RPC_URL ? httpSolanaRpc(env.RWA_SOLANA_RPC_URL) : undefined,
   },
   isDraining: () => shutdown.isShuttingDown,
+  docs: apiDocsEnabled(env),
 });
 
 // Close order (reverse of registration): HTTP server first, then queue, then DB.

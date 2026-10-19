@@ -6,10 +6,10 @@ Four application services plus three data services, per environment:
 
 | Service | Source | Public? | Health check | Notes |
 | --- | --- | --- | --- | --- |
-| `web` | root `Dockerfile` (app `web`) | Yes (custom domain) | `GET /sign-in` | Next.js standalone server |
+| `web` | root `Dockerfile` (app `web`) | Yes (custom domain) | `GET /offline` | Next.js standalone server |
 | `api` | root `Dockerfile` (app `api`) | Yes (custom domain) | `GET /readyz` | Runs migrations as the pre-deploy command |
-| `worker` | root `Dockerfile` (app `worker`) | No | `GET /healthz` on `$PORT` | BullMQ consumers |
-| `scheduler` | root `Dockerfile` (app `scheduler`) | No | `GET /healthz` on `$PORT` | One replica |
+| `worker` | root `Dockerfile` (app `worker`) | No | `GET /readyz` on `$PORT` | BullMQ consumers |
+| `scheduler` | root `Dockerfile` (app `scheduler`) | No | `GET /readyz` on `$PORT` | One replica |
 | `postgres` | `postgis/postgis:16-3.4` image + volume | No | — | PostGIS is required |
 | `redis` | Railway Redis | No | — | Queue backend |
 | `uploads` | Railway bucket or external S3-compatible storage | No (presigned URLs only) | — | Private |
@@ -56,6 +56,7 @@ Full list with local defaults: `.env.example`. Required when deployed:
 | `WEBHOOK_SIGNING_SECRETS` | api | Comma-separated; two during rotation |
 | `WALLET_AUTH_DOMAIN`, `WALLET_AUTH_URI`, `WALLET_ALLOWED_CHAIN_IDS` | api | Must match the public web origin |
 | `AUDIT_IP_SALT` | api | Random string |
+| `API_DOCS_ENABLED` | api (optional) | Swagger UI at `/docs`. Unset: off in staging and production, on in development. Set `true` only deliberately. |
 | `NEXT_PUBLIC_API_URL` | web (**build time**) | The API's **public** URL; browsers cannot reach `*.railway.internal` |
 | `NEXT_PUBLIC_MAP_*` | web (build time) | Basemap style/attribution and CSP hosts |
 | `NEXT_PUBLIC_OIDC_AUTHORITY`, `NEXT_PUBLIC_OIDC_CLIENT_ID`, `NEXT_PUBLIC_OIDC_AUDIENCE` | web (build time) | Browser sign-in (Authorization Code + PKCE) |
@@ -73,15 +74,18 @@ Full list with local defaults: `.env.example`. Required when deployed:
 ## 5. Health checks
 
 - `api`: `/readyz` checks Postgres, Redis and object storage; `/healthz` is liveness only. Using `/readyz` for the deploy health check means a deployment with broken credentials never receives traffic.
-- `worker`, `scheduler`: an internal HTTP server on `$PORT` (`HEALTH_PORT` overrides) serves `/healthz` and `/readyz`.
-- During shutdown `/healthz` returns `503 draining`.
+- `worker`, `scheduler`: an internal HTTP server on `$PORT` (`HEALTH_PORT` overrides) serves `/healthz` (liveness) and `/readyz` (worker: Postgres and Redis; scheduler: Redis). Use `/readyz` as the deploy health check.
+- `web`: `/offline`, a static page with no data dependencies. Railway accepts only letters, digits, `/` and `_` in health check paths, so `/sign-in` is rejected.
+- During shutdown `/healthz` and `/readyz` return `503`.
+- Railway calls the health check **only while deploying**, never afterwards; use an external uptime monitor on `/readyz` for continuous checks.
+- **Never attach a volume to an app service.** A service with a volume cannot run two deployments at once, so every redeploy stops the old container first and drops requests, health check or not. Volumes belong on `postgres` and `redis` only.
 
 ## 6. Migrations
 
 - The API service's pre-deploy command is `node dist/migrate.js`. It runs before the new deployment starts serving, takes a Postgres advisory lock (safe if two deploys race), applies pending SQL migrations in order, and refuses to continue if an applied migration file was modified.
 - Migrations must be **backwards-compatible with the currently running version** (expand → migrate → contract across two releases), because old and new API instances overlap during a deploy.
 - The first migration enables `postgis`, `pgcrypto` and `citext`, and creates the `metafarm_app` role used for row-level security. The connecting user must be allowed to create extensions and roles (true for the `postgis/postgis` image's superuser).
-- `migrate:down` is blocked in production unless `ALLOW_DESTRUCTIVE_MIGRATIONS=true`; production rollback uses backups (§9).
+- `migrate:down` is blocked in staging and production unless `ALLOW_DESTRUCTIVE_MIGRATIONS=true`; deployed environments roll back from backups (§11).
 
 ## 7. Graceful shutdown
 
@@ -91,7 +95,7 @@ On `SIGTERM` each process stops accepting work and closes resources in order, bo
 - **worker** (30 s): workers stop taking new jobs and wait for in-flight jobs; jobs that cannot finish are retried later (BullMQ lock expiry + `job_runs` idempotency make this safe).
 - **scheduler** (10 s): closes queues and Redis.
 
-Dockerfiles use exec-form `CMD ["node", …]` so Node is PID 1 and receives the signal directly. Configure the service's draining/teardown period in Railway to be at least the grace period.
+Dockerfiles use exec-form `CMD ["node", …]` so Node is PID 1 and receives the signal directly. Railway's draining time (time between `SIGTERM` and `SIGKILL`) **defaults to 0 s**, which kills the process before any of the above runs: set it in each service's settings to a little more than the grace period — api 20 s, worker 35 s, scheduler 15 s, web 10 s — and give api and web an overlap of about 10 s.
 
 ## 8. Object storage
 

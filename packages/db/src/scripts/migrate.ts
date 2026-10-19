@@ -1,5 +1,5 @@
 import { createPool } from "../pool";
-import { migrateDown, migrateUp, migrationStatus } from "../migrate";
+import { downMigrationBlocked, migrateDown, migrateUp, migrationStatus } from "../migrate";
 
 const command = process.argv[2] ?? "up";
 const url = process.env.DATABASE_URL;
@@ -16,9 +16,8 @@ try {
     const applied = await migrateUp(pool, log);
     log(applied.length ? `applied ${applied.join(", ")}` : "already up to date");
   } else if (command === "down") {
-    if (process.env.APP_ENV === "production" && process.env.ALLOW_DESTRUCTIVE_MIGRATIONS !== "true") {
-      throw new Error("down migrations are blocked in production; restore from backup instead");
-    }
+    const blocked = downMigrationBlocked(process.env);
+    if (blocked) throw new Error(blocked);
     const v = await migrateDown(pool, log);
     log(v ? `reverted ${v}` : "nothing to revert");
   } else if (command === "status") {
