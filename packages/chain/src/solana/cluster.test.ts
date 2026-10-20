@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { base58Decode } from "./base58";
-import { ClusterVerificationError, SOLANA_GENESIS_HASHES, probeSolanaMethod, redactEndpoint, verifySolanaCluster, type MethodProbe } from "./cluster";
+import { ClusterVerificationError, PROBE_CATEGORIES, SOLANA_GENESIS_HASHES, classifyRpcError, probeSolanaMethod, redactEndpoint, verifySolanaCluster, type MethodProbe } from "./cluster";
 
 // A made-up credential: it must never appear in any message.
 const KEY = "k3y-not-real-0000";
@@ -125,23 +125,65 @@ describe("Solana cluster verification", () => {
 });
 
 describe("JSON-RPC method probe", () => {
-  const probe = (f: ReturnType<typeof fakeFetch>) => probeSolanaMethod({ url: URL_WITH_KEY, method: "getAsset", params: { id: "11111111111111111111111111111111" }, fetchImpl: f.fetchImpl, timeoutMs: 50 });
+  const probe = (f: ReturnType<typeof fakeFetch>) =>
+    probeSolanaMethod({ url: URL_WITH_KEY, method: "getAsset", params: { id: "11111111111111111111111111111111" }, fetchImpl: f.fetchImpl, timeoutMs: 50 });
+  // Provider text, including a credential, must never come back from a probe.
+  const leaky = (m: string) => `${m} (endpoint ${URL_WITH_KEY}, key ${KEY})`;
   const clean = (p: MethodProbe) => {
-    expect(JSON.stringify(p)).not.toContain(KEY);
+    const s = JSON.stringify(p);
+    expect(s).not.toContain(KEY);
+    expect(s).not.toContain("endpoint https");
+    if (p.category) expect(PROBE_CATEGORIES).toContain(p.category);
     return p;
   };
+  const answer = async (body: unknown, status = 200) => clean(await probe(fakeFetch({ status, body })));
 
-  it("counts any answer but 'method not found' as the method existing", async () => {
-    expect(clean(await probe(fakeFetch({ body: { error: { code: -32000, message: `Asset not found ${URL_WITH_KEY}` } } })))).toMatchObject({ result: "available", detail: "JSON-RPC error -32000" });
-    expect(clean(await probe(fakeFetch({ body: { result: { id: "x" } } })))).toMatchObject({ result: "available" });
-    expect(clean(await probe(fakeFetch({ body: { error: { code: -32601, message: "Method not found" } } })))).toMatchObject({ result: "not_found" });
+  it("recognizes a method only from a result or a clear asset-not-found", async () => {
+    expect(await answer({ result: { id: "x" } })).toMatchObject({ outcome: "recognized", detail: "result" });
+    expect(await answer({ result: null })).toMatchObject({ outcome: "recognized", detail: "result" });
+    for (const message of ["Asset not found", "asset was not found", "Could not find asset", leaky("Asset Not Found")]) {
+      expect(await answer({ error: { code: -32000, message } })).toMatchObject({ outcome: "recognized", category: "asset_not_found", detail: "rpc -32000" });
+    }
   });
 
-  it("reports an endpoint it cannot hear from, without its URL", async () => {
-    expect(clean(await probe(fakeFetch({ status: 401 })))).toMatchObject({ result: "unavailable", detail: "HTTP 401" });
-    expect(clean(await probe(fakeFetch("hang")))).toMatchObject({ result: "unavailable", detail: "no answer within 50 ms" });
-    expect(clean(await probe(fakeFetch(Object.assign(new TypeError(`fetch failed ${URL_WITH_KEY}`), { cause: { code: "ECONNREFUSED" } }))))).toMatchObject({ detail: "ECONNREFUSED" });
-    expect(clean(await probe(fakeFetch({ body: "<html>" })))).toMatchObject({ result: "unavailable" });
+  it("never counts -32000 alone, or any unclear error, as support", async () => {
+    for (const error of [{ code: -32000 }, { code: -32000, message: "Internal error" }, { code: -32000, message: "" }, { code: -32603, message: "server error" }, { code: -32602, message: "invalid params" }, { message: "something went wrong" }]) {
+      expect(await answer({ error })).toMatchObject({ outcome: "inconclusive", category: "unknown" });
+    }
+    // Ambiguous: mentions both "method ... not found" and "asset not found".
+    expect(await answer({ error: { code: -32000, message: "method getAsset: asset not found" } })).toMatchObject({ outcome: "inconclusive", category: "unknown" });
+  });
+
+  it("classifies auth, rate limits, plan limits and unknown methods, all as not establishing support", async () => {
+    expect(await answer({ error: { code: -32601, message: "x" } })).toMatchObject({ outcome: "not_supported", category: "method_not_found" });
+    expect(await answer({ error: { code: -32000, message: leaky("Method not found") } })).toMatchObject({ outcome: "not_supported", category: "method_not_found" });
+    expect(await answer({ error: { code: -32401, message: leaky("Unauthorized: invalid api key") } })).toMatchObject({ outcome: "inconclusive", category: "unauthorized" });
+    expect(await answer(undefined, 401)).toMatchObject({ outcome: "inconclusive", category: "unauthorized", detail: "http 401" });
+    expect(await answer(undefined, 403)).toMatchObject({ category: "unauthorized" });
+    expect(await answer(undefined, 429)).toMatchObject({ outcome: "inconclusive", category: "rate_limited", detail: "http 429" });
+    expect(await answer({ error: { code: -32429, message: "slow down" } })).toMatchObject({ category: "rate_limited" });
+    expect(await answer({ error: { code: -32000, message: leaky("Too many requests") } })).toMatchObject({ category: "rate_limited" });
+    expect(await answer(undefined, 402)).toMatchObject({ outcome: "inconclusive", category: "plan_restricted" });
+    expect(await answer({ error: { code: -32000, message: leaky("This method is not available on your current plan") } })).toMatchObject({ category: "plan_restricted" });
+    expect(await answer({ error: { code: -32000, message: "Please upgrade your plan" } })).toMatchObject({ category: "plan_restricted" });
+    // Auth outranks a "not found" in the same message.
+    expect(await answer({ error: { code: -32000, message: "unauthorized: asset not found" } })).toMatchObject({ category: "unauthorized" });
+    expect(await answer(undefined, 500)).toMatchObject({ outcome: "inconclusive", category: "unknown", detail: "http 500" });
+  });
+
+  it("reports transport failures as inconclusive, without the URL or the error text", async () => {
+    expect(clean(await probe(fakeFetch("hang")))).toMatchObject({ outcome: "inconclusive", category: "unknown", detail: "timeout" });
+    expect(clean(await probe(fakeFetch(Object.assign(new TypeError(`fetch failed ${URL_WITH_KEY}`), { cause: { code: "ECONNREFUSED" } }))))).toMatchObject({ outcome: "inconclusive", detail: "network error" });
+    expect(await answer("<html>")).toMatchObject({ outcome: "inconclusive", detail: "not a JSON-RPC answer" });
+    expect(await answer({})).toMatchObject({ outcome: "inconclusive", detail: "not a JSON-RPC answer" });
     expect((await probe(fakeFetch({ body: {} }))).endpoint).toBe("https://devnet.rpc.invalid/[redacted]");
+  });
+
+  it("classifies from clear statements only", () => {
+    expect(classifyRpcError({})).toBe("unknown");
+    expect(classifyRpcError({ code: -32000 })).toBe("unknown");
+    expect(classifyRpcError({ message: 42 })).toBe("unknown");
+    expect(classifyRpcError({ message: "not found" })).toBe("unknown"); // neither asset nor method named
+    expect(classifyRpcError({ message: "plan" })).toBe("unknown");
   });
 });

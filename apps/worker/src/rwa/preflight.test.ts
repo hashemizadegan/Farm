@@ -16,7 +16,10 @@ const TEST_SEED = base58Encode(new Uint8Array(32).fill(7)); // fixed public test
 const env = (o: Record<string, string>) => workerEnvSchema.parse({ ...base, ...o });
 
 type Outcome = "ok" | "mismatch" | "unavailable" | "boom";
-function deps(o: { RPC?: Outcome; DAS?: Outcome; methods?: Partial<Record<string, MethodProbe["result"]>> } = {}) {
+type Probe = Pick<MethodProbe, "outcome" | "category" | "detail">;
+const RECOGNIZED: Probe = { outcome: "recognized", category: "asset_not_found", detail: "rpc -32000" };
+const GENERIC_32000: Probe = { outcome: "inconclusive", category: "unknown", detail: "rpc -32000" };
+function deps(o: { RPC?: Outcome; DAS?: Outcome; methods?: Partial<Record<string, Probe>> } = {}) {
   const calls: string[] = [];
   const lines: string[] = [];
   const d: PreflightDeps = {
@@ -29,12 +32,13 @@ function deps(o: { RPC?: Outcome; DAS?: Outcome; methods?: Partial<Record<string
     },
     probeMethod: async ({ url, method }) => {
       calls.push(`probe:${method}`);
-      return { method, result: o.methods?.[method] ?? "available", endpoint: redactEndpoint(url) };
+      return { method, endpoint: redactEndpoint(url), ...(o.methods?.[method] ?? RECOGNIZED) };
     },
     log: { info: (x, m) => void lines.push(`${m} ${JSON.stringify(x)}`), warn: (x, m) => void lines.push(`WARN ${m} ${JSON.stringify(x)}`) },
   };
   return { d, calls, lines };
 }
+const both = () => env({ RWA_PREFLIGHT_ENABLED: "true", RWA_SOLANA_RPC_URL: RPC, RWA_SOLANA_DAS_URL: DAS });
 
 describe("Solana endpoint preflight", () => {
   it("is off by default, and off whenever a signer is set", () => {
@@ -46,43 +50,73 @@ describe("Solana endpoint preflight", () => {
   });
 
   it("makes no call at all when not wanted", async () => {
-    const k = deps();
-    expect(await runSolanaPreflight(env({ RWA_SOLANA_RPC_URL: RPC, RWA_SOLANA_DAS_URL: DAS }), k.d)).toBe("skipped");
-    expect(k.calls).toEqual([]);
+    for (const e of [env({ RWA_SOLANA_RPC_URL: RPC, RWA_SOLANA_DAS_URL: DAS }), env({ RWA_PREFLIGHT_ENABLED: "true", RWA_SOLANA_RPC_URL: RPC, RWA_SOLANA_DAS_URL: DAS, RWA_SOLANA_SIGNER_SECRET: TEST_SEED })]) {
+      const k = deps();
+      expect(await runSolanaPreflight(e, k.d)).toBe("skipped");
+      expect(k.calls).toEqual([]);
+    }
   });
 
-  it("checks both clusters and that DAS knows getAsset and getAssetProof", async () => {
+  it("passes only when both clusters are verified and DAS clearly recognizes both methods, saying retrieval is unproven", async () => {
     const k = deps();
-    expect(await runSolanaPreflight(env({ RWA_PREFLIGHT_ENABLED: "true", RWA_SOLANA_RPC_URL: RPC, RWA_SOLANA_DAS_URL: DAS }), k.d)).toBe("passed");
+    expect(await runSolanaPreflight(both(), k.d)).toBe("passed");
     expect(k.calls).toEqual(["genesis:RPC", "genesis:DAS", "probe:getAsset", "probe:getAssetProof"]);
     const out = k.lines.join("\n");
-    expect(out).toContain("RWA preflight: RPC serves solana-devnet");
+    expect(out).toContain("RWA preflight: clusters verified (RPC and DAS serve solana-devnet)");
     expect(out).toContain("EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG");
-    expect(out).toContain("RWA preflight passed (read-only; execution stays off until a signer is set)");
+    expect(out).toContain("RWA preflight: DAS recognizes getAsset (retrieval not proven)");
+    expect(out).toContain("asset and proof retrieval not yet proven");
     expect(out).not.toContain(CRED);
   });
 
-  it("reports failures as status lines, never throwing and never leaking a URL", async () => {
+  it("is inconclusive, never 'passed', when a method answer is unclear (e.g. -32000 alone, auth, rate or plan limits)", async () => {
+    const unclear: Probe[] = [
+      GENERIC_32000,
+      { outcome: "inconclusive", category: "unauthorized", detail: "http 401" },
+      { outcome: "inconclusive", category: "rate_limited", detail: "http 429" },
+      { outcome: "inconclusive", category: "plan_restricted", detail: "rpc -32000" },
+      { outcome: "inconclusive", category: "unknown", detail: "timeout" },
+    ];
+    for (const p of unclear) {
+      for (const method of ["getAsset", "getAssetProof"]) {
+        const k = deps({ methods: { [method]: p } });
+        expect(await runSolanaPreflight(both(), k.d)).toBe("inconclusive");
+        const out = k.lines.join("\n");
+        expect(out).toContain("RWA preflight: clusters verified");
+        expect(out).toContain(`DAS ${method} support inconclusive (${p.category})`);
+        expect(out).toContain("RWA preflight inconclusive: clusters verified, DAS method support not established; execution stays off");
+        expect(out).not.toContain("preflight passed");
+        expect(out).not.toContain(CRED);
+      }
+    }
+    // Exactly what staging showed: both methods answered -32000 with no clear message.
+    const k = deps({ methods: { getAsset: GENERIC_32000, getAssetProof: GENERIC_32000 } });
+    expect(await runSolanaPreflight(both(), k.d)).toBe("inconclusive");
+  });
+
+  it("fails on a cluster failure or a method DAS clearly does not support, never throwing or leaking a URL", async () => {
     const cases: Parameters<typeof deps>[0][] = [
       { RPC: "mismatch" },
       { RPC: "unavailable" },
       { RPC: "boom" },
       { DAS: "mismatch" },
       { DAS: "unavailable" },
-      { methods: { getAsset: "not_found" } },
-      { methods: { getAssetProof: "unavailable" } },
+      { methods: { getAsset: { outcome: "not_supported", category: "method_not_found", detail: "rpc -32601" } } },
     ];
     for (const c of cases) {
       const k = deps(c);
-      expect(await runSolanaPreflight(env({ RWA_PREFLIGHT_ENABLED: "true", RWA_SOLANA_RPC_URL: RPC, RWA_SOLANA_DAS_URL: DAS }), k.d)).toBe("failed");
+      expect(await runSolanaPreflight(both(), k.d)).toBe("failed");
       const out = k.lines.join("\n");
       expect(out).toContain("RWA preflight failed; execution stays off");
+      expect(out).not.toContain("preflight passed");
       expect(out).not.toContain(CRED);
     }
-    // A DAS endpoint on the wrong cluster is not probed further.
+    // Cluster results are reported separately from method support, and a DAS endpoint on the
+    // wrong cluster is not probed at all.
     const wrong = deps({ DAS: "mismatch" });
-    await runSolanaPreflight(env({ RWA_PREFLIGHT_ENABLED: "true", RWA_SOLANA_RPC_URL: RPC, RWA_SOLANA_DAS_URL: DAS }), wrong.d);
+    await runSolanaPreflight(both(), wrong.d);
     expect(wrong.calls).toEqual(["genesis:RPC", "genesis:DAS"]);
+    expect(wrong.lines.join("\n")).toContain("cluster verification incomplete");
   });
 
   it("says so when no DAS endpoint is set", async () => {
@@ -90,6 +124,7 @@ describe("Solana endpoint preflight", () => {
     expect(await runSolanaPreflight(env({ RWA_PREFLIGHT_ENABLED: "true", RWA_SOLANA_RPC_URL: RPC }), k.d)).toBe("passed");
     expect(k.calls).toEqual(["genesis:RPC"]);
     expect(k.lines.join("\n")).toContain("no DAS endpoint set");
+    expect(k.lines.join("\n")).toContain("RPC cluster verified; no DAS endpoint");
   });
 });
 

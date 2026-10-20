@@ -135,21 +135,74 @@ function isHash(s: string): boolean {
 }
 
 /**
- * Whether an endpoint knows a JSON-RPC method, without needing a real answer: any reply other
- * than "method not found" (-32601) means it exists (an invalid or unknown id is fine). Read-only;
- * used by the worker's opt-in preflight. Like verifySolanaCluster, it reports the endpoint by
- * scheme and host only and never echoes the URL or the endpoint's own error text.
+ * Fixed, sanitized categories for a method probe's error. Assigned only when the response clearly
+ * says so; anything else is `unknown`. The provider's own text is read to classify but never kept,
+ * logged or returned.
  */
-export type MethodProbe = { method: string; result: "available" | "not_found" | "unavailable"; endpoint: string; detail?: string };
+export const PROBE_CATEGORIES = ["asset_not_found", "unauthorized", "rate_limited", "plan_restricted", "method_not_found", "unknown"] as const;
+export type ProbeCategory = (typeof PROBE_CATEGORIES)[number];
 
+/**
+ * What a probe establishes about the method itself:
+ * - `recognized`: the endpoint answered with a result, or clearly said the asset does not exist
+ *   (so it knows the method). This is not proof that a real asset or proof can be retrieved.
+ * - `not_supported`: it clearly does not know the method.
+ * - `inconclusive`: anything else, including auth, rate limits, plan limits, transport errors and
+ *   generic JSON-RPC errors such as -32000 on their own.
+ */
+export type ProbeOutcome = "recognized" | "not_supported" | "inconclusive";
+
+export interface MethodProbe {
+  method: string;
+  outcome: ProbeOutcome;
+  /** Only for an error answer or no answer; absent when the endpoint returned a result. */
+  category?: ProbeCategory;
+  /** Scheme and host only. */
+  endpoint: string;
+  /** Fixed-form facts only: `http <status>`, `rpc <code>`, `rpc error`, `timeout`, `network error`, `not a JSON-RPC answer`, `result`. Never provider text. */
+  detail: string;
+}
+
+const RULES: { category: Exclude<ProbeCategory, "unknown">; message: RegExp }[] = [
+  { category: "unauthorized", message: /\b(unauthori[sz]ed|forbidden|access denied|invalid api[- ]?key|api[- ]?key (is )?(missing|invalid|required)|missing api[- ]?key|authentication (failed|required))\b/i },
+  { category: "rate_limited", message: /\b(rate[- ]?limit(ed)?|too many requests|request limit (exceeded|reached)|credits? (exhausted|exceeded))\b/i },
+  { category: "plan_restricted", message: /\b((upgrade|paid|higher) (your )?plan|plan (does not|doesn't) (support|include|allow)|not (available|supported|included|allowed) (on|in|for) (your|the|this) (current |free )?plan|requires? an? (paid|higher|upgraded) plan)\b/i },
+  { category: "method_not_found", message: /\b(method not found|unknown method|method .{0,40}(not found|not supported|does not exist|unsupported)|unsupported method)\b/i },
+  { category: "asset_not_found", message: /\b(asset (was )?not found|could not find (the )?asset|no asset (found|exists)|asset .{0,40}does not exist|not found.{0,20}asset)\b/i },
+];
+
+/** Classifies an error answer from what it clearly states; `unknown` unless one rule matches. */
+export function classifyRpcError(e: { httpStatus?: number; code?: unknown; message?: unknown }): ProbeCategory {
+  if (e.httpStatus === 401 || e.httpStatus === 403) return "unauthorized";
+  if (e.httpStatus === 429 || e.code === -32429) return "rate_limited";
+  if (e.httpStatus === 402) return "plan_restricted";
+  if (e.code === -32601) return "method_not_found";
+  const text = typeof e.message === "string" ? e.message.slice(0, 500) : "";
+  if (!text) return "unknown";
+  const hits = RULES.filter((r) => r.message.test(text)).map((r) => r.category);
+  // Only an unambiguous message classifies: one category, or auth/limits outranking "not found".
+  for (const c of ["unauthorized", "rate_limited", "plan_restricted"] as const) if (hits.includes(c)) return c;
+  if (hits.includes("method_not_found") && !hits.includes("asset_not_found")) return "method_not_found";
+  if (hits.includes("asset_not_found") && !hits.includes("method_not_found")) return "asset_not_found";
+  return "unknown";
+}
+
+const outcomeOf = (c: ProbeCategory): ProbeOutcome => (c === "asset_not_found" ? "recognized" : c === "method_not_found" ? "not_supported" : "inconclusive");
+
+/**
+ * Whether an endpoint knows a JSON-RPC method, asked with an id that is not an asset. Read-only;
+ * used by the worker's opt-in preflight. Reports the endpoint by scheme and host only, and never
+ * returns the provider's error text: only a fixed category, outcome and code.
+ */
 export async function probeSolanaMethod(c: { url: string; method: string; params: unknown; timeoutMs?: number; fetchImpl?: Fetch }): Promise<MethodProbe> {
   const endpoint = redactEndpoint(c.url);
   const fetchImpl = c.fetchImpl ?? (fetch as unknown as Fetch);
   const controller = new AbortController();
   const timeoutMs = c.timeoutMs ?? 10_000;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const out = (result: MethodProbe["result"], detail?: string): MethodProbe => ({ method: c.method, result, endpoint, ...(detail ? { detail } : {}) });
+  const err = (category: ProbeCategory, detail: string): MethodProbe => ({ method: c.method, outcome: outcomeOf(category), category, endpoint, detail });
   try {
+    let status = 0;
     let body: unknown;
     try {
       const res = await fetchImpl(c.url, {
@@ -158,17 +211,24 @@ export async function probeSolanaMethod(c: { url: string; method: string; params
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: c.method, params: c.params }),
         signal: controller.signal,
       });
-      if (!res.ok) return out("unavailable", `HTTP ${res.status}`);
-      body = await res.json();
-    } catch (err) {
-      if (controller.signal.aborted) return out("unavailable", `no answer within ${timeoutMs} ms`);
-      const code = (err as { cause?: { code?: unknown } }).cause?.code ?? (err as { code?: unknown }).code;
-      return out("unavailable", typeof code === "string" && /^[A-Z_]{2,32}$/.test(code) ? code : "request failed");
+      status = res.status;
+      body = await res.json().catch(() => undefined);
+      if (!res.ok) {
+        const e = (body as { error?: { code?: unknown; message?: unknown } } | undefined)?.error;
+        return err(classifyRpcError({ httpStatus: status, code: e?.code, message: e?.message }), `http ${status}`);
+      }
+    } catch {
+      if (controller.signal.aborted) return err("unknown", "timeout");
+      return err("unknown", "network error");
     }
-    const r = body as { result?: unknown; error?: { code?: unknown } } | null;
-    if (!r || typeof r !== "object" || (!("result" in r) && !r.error)) return out("unavailable", "not a JSON-RPC answer");
-    if (r.error && r.error.code === -32601) return out("not_found", "JSON-RPC error -32601");
-    return out("available", r.error ? `JSON-RPC error ${typeof r.error.code === "number" ? r.error.code : ""}`.trim() : undefined);
+    const r = body as { result?: unknown; error?: { code?: unknown; message?: unknown } } | null | undefined;
+    if (!r || typeof r !== "object") return err("unknown", "not a JSON-RPC answer");
+    if (r.error && typeof r.error === "object") {
+      const code = typeof r.error.code === "number" ? r.error.code : undefined;
+      return err(classifyRpcError({ httpStatus: status, code, message: r.error.message }), code !== undefined ? `rpc ${code}` : "rpc error");
+    }
+    if ("result" in r) return { method: c.method, outcome: "recognized", endpoint, detail: "result" };
+    return err("unknown", "not a JSON-RPC answer");
   } finally {
     clearTimeout(timer);
   }
