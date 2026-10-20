@@ -76,6 +76,8 @@ function AssetTable({ items }: { items: Asset[] }) {
   const { m, fmt } = useI18n();
   const t = m.rwa;
   return (
+    // Narrow screens scroll wide tables sideways; the region takes focus so keyboard users can scroll it too.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
     <div className="table-wrap" role="region" aria-label={t.assetsHeading} tabIndex={0}>
       <table>
         <thead>
@@ -129,6 +131,8 @@ function RegistrationTable({ items }: { items: Registration[] }) {
   const { m, fmt } = useI18n();
   const t = m.rwa;
   return (
+    // Narrow screens scroll wide tables sideways; the region takes focus so keyboard users can scroll it too.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
     <div className="table-wrap" role="region" aria-label={t.registrationsHeading} tabIndex={0}>
       <table>
         <thead>
