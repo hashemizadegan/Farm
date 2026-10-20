@@ -19,6 +19,8 @@ import { canonicalJson } from "../harvest";
 import { commitToRecord, contentHash, merkleAuditPath, merkleLeaf, merkleRoot, type InclusionProof, MAX_BATCH_LEAVES } from "./commitments";
 
 export const SNAPSHOT_SCHEME = "metafarm-farm-snapshot/1";
+/** Schema name of the data commitment that records a stored snapshot; reserved for the snapshot API. */
+export const SNAPSHOT_COMMITMENT_SCHEMA = "metafarm.farm-snapshot";
 /** Version of the entity schemas below; bump when an entity's fields change meaning. */
 export const SNAPSHOT_ENTITY_SCHEMA_VERSION = 1;
 

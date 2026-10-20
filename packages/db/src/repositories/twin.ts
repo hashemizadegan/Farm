@@ -148,7 +148,7 @@ export async function findDataCommitmentByRequest(tx: TenantTx, requestId: strin
 /** Commitments, newest first; `before` is the id of the last row of the previous page. */
 export async function listDataCommitments(
   tx: TenantTx,
-  q: { subjectType?: DataSubjectType; subjectId?: string; limit: number; before?: string },
+  q: { subjectType?: DataSubjectType; subjectId?: string; schema?: string; limit: number; before?: string },
 ): Promise<DataCommitmentRow[]> {
   return (
     await tx.query<DataCommitmentRow>(
@@ -157,9 +157,10 @@ export async function listDataCommitments(
           AND ($2::text IS NULL OR c.subject_type = $2)
           AND ($3::text IS NULL OR c.subject_id = $3)
           AND ($4::uuid IS NULL OR (c.created_at, c.id) < (SELECT created_at, id FROM data_commitments WHERE tenant_id = $1 AND id = $4))
+          AND ($6::text IS NULL OR c.data_schema = $6)
         ORDER BY c.created_at DESC, c.id DESC
         LIMIT $5`,
-      [tx.tenantId, q.subjectType ?? null, q.subjectId ?? null, q.before ?? null, q.limit],
+      [tx.tenantId, q.subjectType ?? null, q.subjectId ?? null, q.before ?? null, q.limit, q.schema ?? null],
     )
   ).rows;
 }
