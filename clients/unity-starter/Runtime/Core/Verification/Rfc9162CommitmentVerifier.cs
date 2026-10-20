@@ -33,6 +33,27 @@ namespace Metafarm.Twin.Core.Verification
             return ToHex(Hash(new byte[] { 0 }, FromHex(contentSha256)));
         }
 
+        /// <summary>The RFC 9162 root of leaf hashes in order (the platform's merkleRoot).</summary>
+        public static string ComputeRoot(IReadOnlyList<string> leafHashes)
+        {
+            if (leafHashes == null || leafHashes.Count == 0 || leafHashes.Count > MaxBatchLeaves) throw new ArgumentException("a batch holds 1-4096 leaves", nameof(leafHashes));
+            var leaves = new byte[leafHashes.Count][];
+            for (var i = 0; i < leaves.Length; i++)
+            {
+                if (!IsHex64(leafHashes[i])) throw new ArgumentException("leaf hashes must be 64 lowercase hex characters", nameof(leafHashes));
+                leaves[i] = FromHex(leafHashes[i]);
+            }
+            return ToHex(Subtree(leaves, 0, leaves.Length));
+        }
+
+        private static byte[] Subtree(byte[][] leaves, int lo, int hi)
+        {
+            if (hi - lo == 1) return leaves[lo];
+            var k = 1;
+            while (k * 2 < hi - lo) k *= 2;
+            return Hash(new byte[] { 1 }, Subtree(leaves, lo, lo + k), Subtree(leaves, lo + k, hi));
+        }
+
         /// <summary>RFC 9162 section 2.1.3.2. Malformed input is not a proof: the answer is false.</summary>
         public static bool VerifyInclusion(string leaf, int index, int size, IReadOnlyList<string> path, string root)
         {
