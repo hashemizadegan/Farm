@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createPool, createTenantWithOwner, migrateUp, upsertUserBySubject, withSystem, type Pool } from "@metafarm/db";
 import { verifyFarmSnapshot, type FarmSnapshot } from "@metafarm/domain";
-import { contentKey } from "./storage/content-store";
+import { contentKey } from "@metafarm/storage";
 import { buildTestApp, tokenFor } from "./test/helpers";
 
 const url = process.env.DATABASE_URL;
@@ -120,6 +120,50 @@ d("farm-state snapshots API", () => {
       sourceTime: "2026-10-21T08:00:00Z",
     });
     expect(forged.json().error).toBe("reserved_schema");
+  });
+
+  it("plans a data-only anchor for a snapshot root and for a batch root; nothing is executable", async () => {
+    expect((await call("viewer", "GET", `/snapshots/${first.id}/anchor-plan?carrier=token2022_metadata`)).statusCode).toBe(403);
+    const r = await call("manager", "GET", `/snapshots/${first.id}/anchor-plan?carrier=token2022_metadata`);
+    expect(r.statusCode).toBe(200);
+    const label = `farm-${farmId.replace(/-/g, "").slice(0, 14)}`;
+    expect(r.json()).toEqual({
+      commitmentId: first.id,
+      snapshotId: first.snapshotId,
+      plan: {
+        scheme: "metafarm-anchor/1",
+        carrier: "token2022_metadata",
+        network: "solana-devnet",
+        subject: "snapshot",
+        root: first.root,
+        metadataField: { key: `mf:snapshot:${label}`, value: `metafarm-farm-snapshot/1:${first.root}` },
+        executable: false,
+        reason: "anchoring_not_enabled",
+      },
+    });
+    expect((await call("manager", "GET", `/snapshots/${first.id}/anchor-plan?carrier=token2022_metadata&network=solana-mainnet`)).json().error).toBe("anchor_plan_refused");
+    expect((await call("manager", "GET", `/snapshots/${first.id}/anchor-plan?carrier=bubblegum_v1_leaf`)).json().error).toBe("not_configured");
+    expect((await call("manager", "GET", `/snapshots/${first.id}/anchor-plan?carrier=evm`)).statusCode).toBe(400);
+    expect((await call("manager", "GET", `/snapshots/${crypto.randomUUID()}/anchor-plan?carrier=token2022_metadata`)).statusCode).toBe(404);
+
+    const c = (await call("admin", "POST", "/data-commitments", { subjectType: "farm", subjectId: farmId, schema: "metafarm.survey", schemaVersion: 1, contentSha256: "c".repeat(64), sourceTime: "2026-10-21T08:00:00Z" })).json();
+    const batch = (await call("admin", "POST", "/data-commitments/batches", { dataset: "survey/26", commitmentIds: [c.id] })).json();
+    const b = await call("manager", "GET", `/data-commitments/batches/${batch.id}/anchor-plan?carrier=token2022_metadata`);
+    expect(b.statusCode).toBe(200);
+    expect(b.json().plan).toMatchObject({ subject: "batch", root: batch.merkleRoot, metadataField: { key: "mf:batch:survey/26", value: `metafarm-merkle-sha256/1:${batch.merkleRoot}` }, executable: false });
+    const long = (await call("admin", "POST", "/data-commitments/batches", { dataset: "a-dataset-name-that-is-long", commitmentIds: [(await call("admin", "POST", "/data-commitments", { subjectType: "farm", subjectId: farmId, schema: "metafarm.survey", schemaVersion: 1, contentSha256: "d".repeat(64), sourceTime: "2026-10-21T08:00:00Z" })).json().id] })).json();
+    expect((await call("manager", "GET", `/data-commitments/batches/${long.id}/anchor-plan?carrier=token2022_metadata`)).json().error).toBe("anchor_plan_refused");
+  });
+
+  it("plans a Bubblegum anchor only with a configured https document base", async () => {
+    const { app: configured } = await buildTestApp({ pool, env: { RWA_CNFT_METADATA_BASE_URL: "https://metadata.example.test" }, deps: { storage } });
+    try {
+      const r = await configured.inject({ method: "GET", url: `/v1/tenants/${tenantId}/twin/snapshots/${first.id}/anchor-plan?carrier=bubblegum_v1_leaf`, headers: { authorization: `Bearer ${await tokenFor(subjects.manager)}` } });
+      expect(r.statusCode).toBe(200);
+      expect(r.json().plan).toMatchObject({ carrier: "bubblegum_v1_leaf", leafMetadata: { symbol: "MFANCHOR", uri: `https://metadata.example.test/v1/public/anchors/${first.root}` }, executable: false });
+    } finally {
+      await configured.close();
+    }
   });
 
   it("notices stored bytes that changed or went missing", async () => {

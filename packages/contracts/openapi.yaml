@@ -2831,6 +2831,63 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/BadRequest" }
 
+  /v1/tenants/{tenantId}/twin/data-commitments/batches/{batchId}/anchor-plan:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: batchId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { $ref: "#/components/parameters/AnchorCarrier" }
+      - { $ref: "#/components/parameters/AnchorNetwork" }
+    get:
+      tags: [twin]
+      summary: What would anchor a batch's Merkle root on Solana (data only)
+      description: Nothing is stored, signed or sent; the plan always says `executable false`. Mainnet is refused unless mainnet is enabled.
+      operationId: planBatchAnchor
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [batchId, plan]
+                properties:
+                  batchId: { type: string, format: uuid }
+                  plan: { $ref: "#/components/schemas/AnchorPlan" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/twin/snapshots/{commitmentId}/anchor-plan:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: commitmentId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { $ref: "#/components/parameters/AnchorCarrier" }
+      - { $ref: "#/components/parameters/AnchorNetwork" }
+    get:
+      tags: [twin]
+      summary: What would anchor a snapshot's root on Solana (data only)
+      description: The stored snapshot is re-verified first; a snapshot that does not verify is not planned. Nothing is stored, signed or sent; the plan always says `executable false`.
+      operationId: planSnapshotAnchor
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [commitmentId, snapshotId, plan]
+                properties:
+                  commitmentId: { type: string, format: uuid }
+                  snapshotId: { type: string }
+                  plan: { $ref: "#/components/schemas/AnchorPlan" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2839,6 +2896,16 @@ components:
       bearerFormat: JWT
 
   parameters:
+    AnchorCarrier:
+      name: carrier
+      in: query
+      required: true
+      schema: { type: string, enum: [token2022_metadata, bubblegum_v1_leaf] }
+    AnchorNetwork:
+      name: network
+      in: query
+      required: false
+      schema: { type: string, enum: [solana-devnet, solana-mainnet], default: solana-devnet }
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -3172,6 +3239,26 @@ components:
               id: { type: string }
               data: { type: object, additionalProperties: true }
               sha256: { type: string }
+    AnchorPlan:
+      type: object
+      description: Data only. Says what would be written on-chain; never executed in this release.
+      required: [scheme, carrier, network, subject, root, executable, reason]
+      properties:
+        scheme: { type: string, enum: [metafarm-anchor/1] }
+        carrier: { type: string, enum: [token2022_metadata, bubblegum_v1_leaf] }
+        network: { type: string }
+        subject: { type: string, enum: [batch, snapshot] }
+        root: { type: string }
+        metadataField:
+          type: object
+          required: [key, value]
+          properties: { key: { type: string }, value: { type: string } }
+        leafMetadata:
+          type: object
+          required: [name, symbol, uri]
+          properties: { name: { type: string }, symbol: { type: string }, uri: { type: string } }
+        executable: { type: boolean, enum: [false] }
+        reason: { type: string, enum: [anchoring_not_enabled] }
     FarmSnapshotDocument:
       type: object
       required: [commitment, check, snapshot]
