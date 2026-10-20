@@ -18,6 +18,7 @@ import {
   localEd25519Signer,
   localTronSigner,
   planTree,
+  probeSolanaMethod,
   verifySolanaCluster,
   type ClusterCheck,
 } from "@metafarm/chain";
@@ -25,6 +26,7 @@ import type { WorkerEnv } from "@metafarm/config";
 import type { Pool } from "@metafarm/db";
 import type { Logger } from "@metafarm/observability";
 import { runTick, type Rails } from "./engine";
+import { preflightWanted, runSolanaPreflight, type PreflightDeps } from "./preflight";
 
 export interface RailChecks {
   /** Resolves when the endpoint serves the configured cluster; throws ClusterVerificationError otherwise. */
@@ -96,7 +98,9 @@ export async function buildRails(env: WorkerEnv, checks: RailChecks): Promise<Ra
 }
 
 /** Builds and verifies the rails, then starts the engine; resolves to undefined when no rail is on. */
-export async function startRwaEngine(env: WorkerEnv, pool: Pool, logger: Logger, intervalMs = 10_000, checks?: RailChecks) {
+export async function startRwaEngine(env: WorkerEnv, pool: Pool, logger: Logger, intervalMs = 10_000, checks?: RailChecks, preflight?: PreflightDeps) {
+  // Opt-in, read-only, and only while there is no signer: it runs in the background and never throws.
+  if (preflightWanted(env)) void runSolanaPreflight(env, preflight ?? { verifyCluster: verifySolanaCluster, probeMethod: probeSolanaMethod, log: logger }).catch(() => undefined);
   const rails = await buildRails(env, checks ?? { verifyCluster: verifySolanaCluster, log: logger });
   if (!rails.solana && !rails.tron) {
     const configured = Boolean(env.RWA_SOLANA_RPC_URL && env.RWA_SOLANA_SIGNER_SECRET) || Boolean(env.RWA_TRON_API_URL && env.RWA_TRON_SIGNER_PRIVATE_KEY && env.RWA_TRON_TREASURY);

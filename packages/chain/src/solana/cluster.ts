@@ -133,3 +133,43 @@ function isHash(s: string): boolean {
     return false;
   }
 }
+
+/**
+ * Whether an endpoint knows a JSON-RPC method, without needing a real answer: any reply other
+ * than "method not found" (-32601) means it exists (an invalid or unknown id is fine). Read-only;
+ * used by the worker's opt-in preflight. Like verifySolanaCluster, it reports the endpoint by
+ * scheme and host only and never echoes the URL or the endpoint's own error text.
+ */
+export type MethodProbe = { method: string; result: "available" | "not_found" | "unavailable"; endpoint: string; detail?: string };
+
+export async function probeSolanaMethod(c: { url: string; method: string; params: unknown; timeoutMs?: number; fetchImpl?: Fetch }): Promise<MethodProbe> {
+  const endpoint = redactEndpoint(c.url);
+  const fetchImpl = c.fetchImpl ?? (fetch as unknown as Fetch);
+  const controller = new AbortController();
+  const timeoutMs = c.timeoutMs ?? 10_000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const out = (result: MethodProbe["result"], detail?: string): MethodProbe => ({ method: c.method, result, endpoint, ...(detail ? { detail } : {}) });
+  try {
+    let body: unknown;
+    try {
+      const res = await fetchImpl(c.url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: c.method, params: c.params }),
+        signal: controller.signal,
+      });
+      if (!res.ok) return out("unavailable", `HTTP ${res.status}`);
+      body = await res.json();
+    } catch (err) {
+      if (controller.signal.aborted) return out("unavailable", `no answer within ${timeoutMs} ms`);
+      const code = (err as { cause?: { code?: unknown } }).cause?.code ?? (err as { code?: unknown }).code;
+      return out("unavailable", typeof code === "string" && /^[A-Z_]{2,32}$/.test(code) ? code : "request failed");
+    }
+    const r = body as { result?: unknown; error?: { code?: unknown } } | null;
+    if (!r || typeof r !== "object" || (!("result" in r) && !r.error)) return out("unavailable", "not a JSON-RPC answer");
+    if (r.error && r.error.code === -32601) return out("not_found", "JSON-RPC error -32601");
+    return out("available", r.error ? `JSON-RPC error ${typeof r.error.code === "number" ? r.error.code : ""}`.trim() : undefined);
+  } finally {
+    clearTimeout(timer);
+  }
+}
