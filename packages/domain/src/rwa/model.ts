@@ -6,7 +6,17 @@
 import { z } from "zod";
 
 /** What a business asset is. Spatial assets point at surveyed geometry, never at the illustrative 3D scene. */
-export const ASSET_KINDS = ["parcel", "tree", "livestock", "equipment", "harvest_lot", "farm_share"] as const;
+export const ASSET_KINDS = [
+  "parcel",
+  "tree",
+  "livestock",
+  "equipment",
+  "harvest_lot",
+  "farm_share",
+  "building",
+  "storage_unit",
+  "logistics_lot",
+] as const;
 export type AssetKind = (typeof ASSET_KINDS)[number];
 
 export const ASSET_STATUSES = ["draft", "verified", "active", "suspended", "retired"] as const;

@@ -20,3 +20,4 @@ export * from "./repositories/rwa";
 export * from "./repositories/telemetry";
 export * from "./repositories/rwa-execution";
 export * from "./repositories/cnft";
+export * from "./repositories/twin";

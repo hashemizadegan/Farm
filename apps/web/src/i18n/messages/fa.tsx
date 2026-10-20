@@ -1392,7 +1392,7 @@ export const fa: Messages = {
       metadata: "فراداده",
       updated: "به‌روزرسانی",
     },
-    kinds: { parcel: "قطعه زمین", tree: "درخت", livestock: "دام", equipment: "ماشین‌آلات", harvest_lot: "محمولهٔ برداشت", farm_share: "سهام مزرعه" } as Record<string, string>,
+    kinds: { parcel: "قطعه زمین", tree: "درخت", livestock: "دام", equipment: "ماشین‌آلات", harvest_lot: "محمولهٔ برداشت", farm_share: "سهام مزرعه", building: "ساختمان", storage_unit: "انبار", logistics_lot: "محمولهٔ حمل" } as Record<string, string>,
     assetStatuses: { draft: "پیش‌نویس", verified: "تأییدشده", active: "فعال", suspended: "معلق", retired: "بازنشسته" } as Record<string, string>,
     representationStatuses: { planned: "برنامه‌ریزی‌شده", issuing: "در حال صدور", active: "فعال", frozen: "مسدود", retired: "بازنشسته" } as Record<string, string>,
     registrationStatuses: {

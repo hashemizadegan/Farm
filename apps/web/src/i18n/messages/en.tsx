@@ -1317,7 +1317,7 @@ export const en = {
       metadata: "Metadata",
       updated: "Updated",
     },
-    kinds: { parcel: "Parcel", tree: "Tree", livestock: "Livestock", equipment: "Equipment", harvest_lot: "Harvest lot", farm_share: "Farm shares" } as Record<string, string>,
+    kinds: { parcel: "Parcel", tree: "Tree", livestock: "Livestock", equipment: "Equipment", harvest_lot: "Harvest lot", farm_share: "Farm shares", building: "Building", storage_unit: "Storage unit", logistics_lot: "Logistics lot" } as Record<string, string>,
     assetStatuses: { draft: "Draft", verified: "Verified", active: "Active", suspended: "Suspended", retired: "Retired" } as Record<string, string>,
     representationStatuses: { planned: "Planned", issuing: "Issuing", active: "Active", frozen: "Frozen", retired: "Retired" } as Record<string, string>,
     registrationStatuses: {

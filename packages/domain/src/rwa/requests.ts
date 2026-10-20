@@ -1,7 +1,7 @@
 /** Request bodies for the RWA API. Addresses are checked per rail by the API (packages/chain). */
 import { z } from "zod";
 import { KYC_STATUSES, PARTY_KINDS, SCREENING_OUTCOMES } from "./compliance";
-import { NETWORKS, baseUnits } from "./model";
+import { ASSET_KINDS, NETWORKS, baseUnits } from "./model";
 import { INVESTOR_ORDER_KINDS } from "./orders";
 
 const country = z
@@ -74,7 +74,7 @@ export const assetGeometrySchema = z.discriminatedUnion("type", [
 export const createAssetSchema = z
   .object({
     farmId: z.string().uuid(),
-    kind: z.enum(["parcel", "tree", "livestock", "equipment", "harvest_lot", "farm_share"]),
+    kind: z.enum(ASSET_KINDS),
     name: z.string().trim().min(1).max(200),
     externalRef: z.string().trim().min(1).max(120).optional(),
     parcelLabel: z.string().trim().min(1).max(80).optional(),
