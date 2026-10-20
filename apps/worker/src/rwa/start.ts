@@ -1,6 +1,13 @@
-/** Runs the RWA execution engine every few seconds when at least one rail is configured. */
+/**
+ * Runs the RWA execution engine every few seconds when at least one rail is configured.
+ *
+ * The Solana network setting is only a label: before any Solana rail is built, the RPC endpoint (and,
+ * for compressed NFTs, the DAS endpoint) must prove with `getGenesisHash` that it serves that cluster.
+ * The engine starts only after these checks, so nothing is signed while they are pending.
+ */
 import {
   BubblegumAdapter,
+  ClusterVerificationError,
   DasCompressedAssetAdapter,
   SolanaObservationAdapter,
   SolanaToken2022Adapter,
@@ -11,33 +18,66 @@ import {
   localEd25519Signer,
   localTronSigner,
   planTree,
+  verifySolanaCluster,
+  type ClusterCheck,
 } from "@metafarm/chain";
 import type { WorkerEnv } from "@metafarm/config";
 import type { Pool } from "@metafarm/db";
 import type { Logger } from "@metafarm/observability";
 import { runTick, type Rails } from "./engine";
 
-export function buildRails(env: WorkerEnv): Rails {
+export interface RailChecks {
+  /** Resolves when the endpoint serves the configured cluster; throws ClusterVerificationError otherwise. */
+  verifyCluster: (c: Pick<ClusterCheck, "url" | "network" | "label">) => Promise<void>;
+  log: { warn: (o: object, m: string) => void; error: (o: object, m: string) => void };
+}
+
+/**
+ * Whether an endpoint passed its cluster check. A wrong cluster or a non-Solana answer is a
+ * configuration error and stops the worker (as a key that does not match its issuer does); an
+ * endpoint that cannot be reached leaves the rail it serves off until the worker restarts.
+ */
+async function clusterVerified(checks: RailChecks, c: Pick<ClusterCheck, "url" | "network" | "label">, offMeans: string): Promise<boolean> {
+  try {
+    await checks.verifyCluster(c);
+    return true;
+  } catch (err) {
+    if (err instanceof ClusterVerificationError && err.reason === "unavailable") {
+      checks.log.error({ endpoint: err.endpoint, reason: err.reason, err: err.message }, `${offMeans}: the ${c.label} endpoint's cluster could not be verified`);
+      return false;
+    }
+    if (err instanceof ClusterVerificationError) throw new Error(`refusing to start: ${err.message}`);
+    // Anything unexpected is treated like an endpoint that could not be verified, without its message (it may hold the URL).
+    checks.log.error({ label: c.label }, `${offMeans}: the ${c.label} endpoint's cluster check failed unexpectedly`);
+    return false;
+  }
+}
+
+export async function buildRails(env: WorkerEnv, checks: RailChecks): Promise<Rails> {
   const rails: Rails = {};
   if (env.RWA_SOLANA_RPC_URL && env.RWA_SOLANA_SIGNER_SECRET) {
     const network = env.RWA_SOLANA_NETWORK;
+    // Local checks first (no network call): mainnet keys are refused and the issuer must match.
     const signer = localEd25519Signer(env.RWA_SOLANA_SIGNER_SECRET, network);
     if (env.RWA_SOLANA_ISSUER && env.RWA_SOLANA_ISSUER !== signer.address) throw new Error("RWA_SOLANA_ISSUER does not match the signing key");
-    const rpc = httpSolanaRpc(env.RWA_SOLANA_RPC_URL);
-    rails.solana = {
-      network,
-      issuance: new SolanaToken2022Adapter({ network, rpc, signer, mainnetEnabled: env.RWA_MAINNET_ENABLED, maxPriorityFeeMicroLamports: env.RWA_SOLANA_MAX_PRIORITY_FEE }),
-      observer: new SolanaObservationAdapter({ network, rpc }),
-    };
-    // Compressed NFTs (registrations) need a DAS index to confirm leaves; off without one.
-    if (env.RWA_SOLANA_DAS_URL) {
-      const shape = planTree(env.RWA_CNFT_TREE_CAPACITY);
-      rails.solana.compressed = {
-        issuance: new BubblegumAdapter({ network, rpc, signer, mainnetEnabled: env.RWA_MAINNET_ENABLED, maxPriorityFeeMicroLamports: env.RWA_SOLANA_MAX_PRIORITY_FEE }),
-        assets: new DasCompressedAssetAdapter({ network, dasUrl: env.RWA_SOLANA_DAS_URL, rpc }),
-        creator: signer.address,
-        treeShape: { maxDepth: shape.maxDepth, maxBufferSize: shape.maxBufferSize, canopyDepth: shape.canopyDepth, capacity: shape.capacity },
+    if (await clusterVerified(checks, { url: env.RWA_SOLANA_RPC_URL, network, label: "RPC" }, "Solana execution is off")) {
+      const rpc = httpSolanaRpc(env.RWA_SOLANA_RPC_URL);
+      rails.solana = {
+        network,
+        issuance: new SolanaToken2022Adapter({ network, rpc, signer, mainnetEnabled: env.RWA_MAINNET_ENABLED, maxPriorityFeeMicroLamports: env.RWA_SOLANA_MAX_PRIORITY_FEE }),
+        observer: new SolanaObservationAdapter({ network, rpc }),
       };
+      // Compressed NFTs (registrations) need a DAS index to confirm leaves; off without one, or
+      // until the DAS endpoint proves it serves the same cluster (never assumed from the label).
+      if (env.RWA_SOLANA_DAS_URL && (await clusterVerified(checks, { url: env.RWA_SOLANA_DAS_URL, network, label: "DAS" }, "compressed NFTs are off"))) {
+        const shape = planTree(env.RWA_CNFT_TREE_CAPACITY);
+        rails.solana.compressed = {
+          issuance: new BubblegumAdapter({ network, rpc, signer, mainnetEnabled: env.RWA_MAINNET_ENABLED, maxPriorityFeeMicroLamports: env.RWA_SOLANA_MAX_PRIORITY_FEE }),
+          assets: new DasCompressedAssetAdapter({ network, dasUrl: env.RWA_SOLANA_DAS_URL, rpc }),
+          creator: signer.address,
+          treeShape: { maxDepth: shape.maxDepth, maxBufferSize: shape.maxBufferSize, canopyDepth: shape.canopyDepth, capacity: shape.capacity },
+        };
+      }
     }
   }
   if (env.RWA_TRON_API_URL && env.RWA_TRON_SIGNER_PRIVATE_KEY && env.RWA_TRON_TREASURY) {
@@ -55,10 +95,12 @@ export function buildRails(env: WorkerEnv): Rails {
   return rails;
 }
 
-export function startRwaEngine(env: WorkerEnv, pool: Pool, logger: Logger, intervalMs = 10_000) {
-  const rails = buildRails(env);
+/** Builds and verifies the rails, then starts the engine; resolves to undefined when no rail is on. */
+export async function startRwaEngine(env: WorkerEnv, pool: Pool, logger: Logger, intervalMs = 10_000, checks?: RailChecks) {
+  const rails = await buildRails(env, checks ?? { verifyCluster: verifySolanaCluster, log: logger });
   if (!rails.solana && !rails.tron) {
-    logger.info("RWA execution is off (no Solana or TRON signer configured)");
+    const configured = Boolean(env.RWA_SOLANA_RPC_URL && env.RWA_SOLANA_SIGNER_SECRET) || Boolean(env.RWA_TRON_API_URL && env.RWA_TRON_SIGNER_PRIVATE_KEY && env.RWA_TRON_TREASURY);
+    logger.info(configured ? "RWA execution is off (no rail passed its startup checks)" : "RWA execution is off (no Solana or TRON signer configured)");
     return undefined;
   }
   const deps = {
