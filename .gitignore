@@ -20,3 +20,7 @@ tests/e2e/.tokens.json
 
 # Generated at build time
 apps/web/public/maplibre-gl-worker.mjs
+
+# .NET build output (clients/unity-starter/Tests~)
+clients/**/bin/
+clients/**/obj/

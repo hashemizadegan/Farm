@@ -25,10 +25,11 @@ import {
   CHAIN_INTENT_TYPES,
   TREE_STATUSES,
   RAIL_NETWORKS,
+  DATA_SUBJECT_TYPES,
 } from "@metafarm/domain";
 
 const read = (name: string) => readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), `../migrations/${name}`), "utf8");
-const FILES = ["0011_rwa_rails.up.sql", "0012_rwa_orders.up.sql", "0016_cnft_trees.up.sql", "0018_cnft_leaf.up.sql"];
+const FILES = ["0011_rwa_rails.up.sql", "0012_rwa_orders.up.sql", "0016_cnft_trees.up.sql", "0018_cnft_leaf.up.sql", "0019_twin_foundation.up.sql"];
 const sql = FILES.map(read).join("\n");
 
 /**
@@ -68,6 +69,7 @@ describe("RWA schema matches the domain", () => {
     ["chain_operations", "intent_type", CHAIN_INTENT_TYPES],
     ["merkle_trees", "status", TREE_STATUSES],
     ["merkle_trees", "network", RAIL_NETWORKS.SOLANA_BUBBLEGUM_CNFT],
+    ["data_commitments", "subject_type", DATA_SUBJECT_TYPES],
   ] as const)("%s.%s", (table, column, values) => {
     expect(checkList(table, column)).toEqual([...values]);
   });

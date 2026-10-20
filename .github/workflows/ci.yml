@@ -228,6 +228,26 @@ jobs:
       # Fails on high/critical advisories in production dependencies.
       - run: pnpm audit --prod --audit-level high
 
+  unity-starter:
+    name: Unity starter core (C#)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build Runtime/Core as netstandard2.1 (C# 9) and run its tests
+        # Runtime/Unity needs the Unity editor and is not built here.
+        # On failure, the relevant lines are surfaced as annotations (readable without log access).
+        run: |
+          set -o pipefail
+          dotnet test "clients/unity-starter/Tests~/Metafarm.Twin.Core.Tests/Metafarm.Twin.Core.Tests.csproj" --nologo 2>&1 | tee dotnet.txt || {
+            grep -E "error|Failed|Assert|Expected|Actual" dotnet.txt | tail -40 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          }
+          # Surface the test counts as an annotation, so the result is visible without log access.
+          grep -E "Passed!|Failed!|Total tests" dotnet.txt | while IFS= read -r l; do echo "::notice::$l"; done
+
   docker:
     name: Docker image (${{ matrix.app }})
     needs: [build]

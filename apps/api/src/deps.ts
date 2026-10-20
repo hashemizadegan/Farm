@@ -1,7 +1,7 @@
 import type { SolanaRpc, TronHttp } from "@metafarm/chain";
 import type { ApiEnv } from "@metafarm/config";
 import type { Pool } from "@metafarm/db";
-import type { JobPayloads } from "@metafarm/domain";
+import type { JobPayloads, OwnershipReader } from "@metafarm/domain";
 import type { Logger } from "@metafarm/observability";
 import type { AuthProvider } from "./auth/provider";
 import type { SolanaClusterCheck } from "./lib/solana-cluster";
@@ -36,4 +36,9 @@ export interface Deps {
   solanaRpc?: SolanaRpc;
   /** Proves solanaRpc serves RWA_SOLANA_NETWORK (getGenesisHash); required wherever solanaRpc is read. */
   solanaCluster?: SolanaClusterCheck;
+  /**
+   * Who holds an asset on chain, for the digital twin. Absent by default: the twin then reports
+   * ownership as `not_indexed` and never substitutes its own records.
+   */
+  ownershipReader?: OwnershipReader;
 }

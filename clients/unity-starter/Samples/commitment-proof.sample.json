@@ -1,0 +1,34 @@
+{
+  "commitment": {
+    "id": "77777777-7777-4777-8777-777777777777",
+    "farmId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "subjectType": "telemetry_window",
+    "subjectId": "sensor-7/2026-10-20T10",
+    "schema": "metafarm.telemetry-hour",
+    "schemaVersion": 1,
+    "contentSha256": "7c377ad0322c2a80bcb539c96c3ab4dd7bf5c1dbe17132b3d177e22ff258460d",
+    "byteSize": 6,
+    "storageRef": "sha256:7c377ad0322c2a80bcb539c96c3ab4dd7bf5c1dbe17132b3d177e22ff258460d",
+    "sourceTime": "2026-10-20T10:00:00.000Z",
+    "attestationRef": null,
+    "batch": { "id": "88888888-8888-4888-8888-888888888888", "leafIndex": 3 },
+    "createdAt": "2026-10-20T11:00:00.000Z"
+  },
+  "state": "included",
+  "proof": {
+    "scheme": "metafarm-merkle-sha256/1",
+    "batchId": "88888888-8888-4888-8888-888888888888",
+    "dataset": "telemetry/2026-10-20",
+    "leaf": "3aa1754f4d1aac016470f0ecc25b329665666cec4496d631766691a2549d0058",
+    "leafIndex": 3,
+    "size": 5,
+    "path": [
+      "d9e1b610b0813a5d887b9c429d7744747c5ce4160c2dd371d57b29229fd8efb1",
+      "2cc48cb60f755f56376fa75d3dea9adbc093d339ef3ccc29557dd4c528e29028",
+      "879653c5f920149ba78b5a222b4d1fad2b917dc1d3a73b0dcc8bc3a372303b47"
+    ],
+    "root": "5610b47577351888d614cb915e3b0d11fbc5d440a689446c1bd8e87d75194da5"
+  },
+  "checks": { "leavesMatchCommitments": true, "rootMatches": true, "inclusionVerified": true },
+  "anchor": null
+}

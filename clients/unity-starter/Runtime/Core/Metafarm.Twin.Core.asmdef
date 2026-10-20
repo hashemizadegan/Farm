@@ -1,0 +1,9 @@
+{
+  "name": "Metafarm.Twin.Core",
+  "rootNamespace": "Metafarm.Twin.Core",
+  "references": [],
+  "precompiledReferences": ["Newtonsoft.Json.dll"],
+  "overrideReferences": true,
+  "noEngineReferences": true,
+  "autoReferenced": true
+}

@@ -1,0 +1,22 @@
+<!--
+  Builds Runtime/Core (the engine-independent part of the starter) outside Unity, for CI.
+  netstandard2.1 and C# 9 are what Unity 6 compiles; Newtonsoft.Json 13 is what the Unity package
+  com.unity.nuget.newtonsoft-json provides. Runtime/Unity needs the Unity editor and is not built here.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Metafarm.Twin.Core</AssemblyName>
+    <RootNamespace>Metafarm.Twin.Core</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Runtime/Core/**/*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>
