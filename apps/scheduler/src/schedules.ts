@@ -14,6 +14,8 @@ export interface ScheduleConfig {
   chainCron: string;
   chainId: number;
   contracts: { address: string; fromBlock: string }[];
+  /** Digital-twin snapshot sweep; no schedule when unset. */
+  twinSnapshotCron?: string;
 }
 
 /**
@@ -36,6 +38,9 @@ export function buildSchedules(cfg: ScheduleConfig): ScheduleDefinition[] {
       pattern: cfg.chainCron,
       data: { chainId: cfg.chainId, contractAddress: c.address.toLowerCase(), fromBlock: c.fromBlock },
     });
+  }
+  if (cfg.twinSnapshotCron) {
+    schedules.push({ id: "twin-snapshots-sweep", queue: QUEUES.twinSnapshots, jobName: "sweep", pattern: cfg.twinSnapshotCron, data: {} });
   }
   return schedules;
 }

@@ -16,6 +16,8 @@ import { rwaReconciliationSweepHandler } from "./handlers/rwa";
 import { wrapHandler, type DeadLetterSink, type JobRunStore } from "./runner";
 import { startTelemetryConsumer } from "./telemetry/consumer";
 import { startRwaEngine } from "./rwa/start";
+import { twinSnapshotHandler, twinSnapshotSweepHandler } from "./handlers/twin-snapshots";
+import { createObjectContentStore, createStorageFromEnv } from "@metafarm/storage";
 
 // On Railway the platform assigns PORT; the health server uses it unless HEALTH_PORT is set.
 const env = loadEnv(workerEnvSchema, { ...process.env, HEALTH_PORT: process.env.HEALTH_PORT ?? process.env.PORT });
@@ -55,6 +57,8 @@ async function enqueue<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloa
 }
 
 const deps = { store, deadLetter, logger };
+// Object storage for twin snapshots, created only when they are enabled.
+const twinObjectStorage = env.TWIN_SNAPSHOTS_ENABLED ? createStorageFromEnv(env) : undefined;
 const chainReader = env.CHAIN_RPC_URL ? createViemChainReader(env.CHAIN_RPC_URL) : undefined;
 
 const harvestRegistry =
@@ -96,6 +100,17 @@ const processors: Record<string, Processor> = {
       return wrapHandler("boundary-sweep", pendingBoundarySweepHandler(pool, enqueue), deps)(view(`boundary-sweep:${bucket}`));
     }
     return wrapHandler(QUEUES.alerts, alertEvaluationHandler(pool), deps)(job);
+  }) as Processor,
+  [QUEUES.twinSnapshots]: (async (job) => {
+    // Opt-in: without TWIN_SNAPSHOTS_ENABLED the job completes without reading or writing anything.
+    const objectStorage = twinObjectStorage;
+    if (!objectStorage) return { skipped: "twin snapshots are disabled" };
+    if (job.name === "sweep") {
+      const bucket: string = job.data.bucket ?? timeBucket(new Date(), 60);
+      const view = { id: job.id, name: job.name, attemptsMade: job.attemptsMade, opts: job.opts, discard: () => job.discard(), data: { bucket, idempotencyKey: `twin-snapshots-sweep:${bucket}` } };
+      return wrapHandler("twin-snapshots-sweep", twinSnapshotSweepHandler(pool, enqueue), deps)(view);
+    }
+    return wrapHandler(QUEUES.twinSnapshots, twinSnapshotHandler(pool, (tenantId) => createObjectContentStore(objectStorage, tenantId)), deps)(job);
   }) as Processor,
   [QUEUES.chain]: (async (job) => {
     if (!chainReader) {

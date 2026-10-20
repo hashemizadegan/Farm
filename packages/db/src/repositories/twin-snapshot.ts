@@ -5,7 +5,7 @@
  * free text beyond names and labels) goes into a snapshot.
  */
 import type { SnapshotEntityInput } from "@metafarm/domain";
-import type { TenantTx } from "../tenant";
+import type { SystemTx, TenantTx } from "../tenant";
 
 const ASSET_TYPE = `CASE a.kind
     WHEN 'parcel' THEN 'plot' WHEN 'tree' THEN 'crop' WHEN 'livestock' THEN 'animal'
@@ -47,4 +47,22 @@ export async function farmSnapshotEntities(tx: TenantTx, farmId: string): Promis
     [tx.tenantId, farmId],
   );
   return r.rows;
+}
+
+/** Farms that have something to snapshot (system-wide; for the scheduled sweep). */
+export async function farmsToSnapshot(tx: SystemTx, limit = 5_000): Promise<{ tenant_id: string; farm_id: string }[]> {
+  return (
+    await tx.query<{ tenant_id: string; farm_id: string }>(
+      `SELECT f.tenant_id, f.id AS farm_id
+         FROM farms f
+        WHERE f.archived_at IS NULL
+          AND (EXISTS (SELECT 1 FROM business_assets a WHERE a.tenant_id = f.tenant_id AND a.farm_id = f.id AND a.status <> 'retired')
+            OR EXISTS (SELECT 1 FROM equipment e WHERE e.tenant_id = f.tenant_id AND e.farm_id = f.id AND e.status <> 'retired')
+            OR EXISTS (SELECT 1 FROM crop_seasons s WHERE s.tenant_id = f.tenant_id AND s.farm_id = f.id)
+            OR EXISTS (SELECT 1 FROM stock_movements m WHERE m.tenant_id = f.tenant_id AND m.farm_id = f.id))
+        ORDER BY f.tenant_id, f.id
+        LIMIT $1`,
+      [limit],
+    )
+  ).rows;
 }

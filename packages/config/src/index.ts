@@ -201,6 +201,8 @@ export const workerEnvSchema = z
      * RPC and DAS endpoints, and whether DAS knows getAsset/getAssetProof. Off: no outbound call.
      */
     RWA_PREFLIGHT_ENABLED: bool.default("false"),
+    /** Digital twin: record scheduled farm-state snapshots (content-addressed storage + a data commitment). Off by default; writes nothing on-chain. */
+    TWIN_SNAPSHOTS_ENABLED: bool.default("false"),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {
@@ -228,6 +230,8 @@ export const schedulerEnvSchema = z
     HEALTH_PORT: z.coerce.number().int().min(1).max(65535).default(4200),
     ALERT_EVALUATION_CRON: z.string().default("*/5 * * * *"),
     CHAIN_INDEX_CRON: z.string().default("*/1 * * * *"),
+    /** Digital twin: cron for the farm-snapshot sweep. Unset = no schedule (the default). */
+    TWIN_SNAPSHOT_CRON: z.string().min(9).max(100).optional(),
     CHAIN_ID: z.coerce.number().int().positive().default(31337),
     /** Comma-separated "0xaddress@fromBlock" entries. */
     CHAIN_INDEX_CONTRACTS: csv.default(""),

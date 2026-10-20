@@ -112,7 +112,7 @@ export interface NewDataCommitment {
   storageRef: string | null;
   sourceTime: Date;
   attestationRef: string | null;
-  recordedBy: string;
+  recordedBy: string | null;
   clientRequestId: string | null;
 }
 

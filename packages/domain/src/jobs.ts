@@ -14,9 +14,17 @@ export const QUEUES = {
   alerts: "alert-evaluation",
   chain: "chain-event-indexing",
   anchor: "harvest-anchoring",
+  twinSnapshots: "twin-snapshots",
   deadLetter: "dead-letter",
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
+
+/** Record a farm-state snapshot (digital twin) for one farm, at most once per bucket. */
+export interface TwinSnapshotJob {
+  tenantId: string;
+  farmId: string;
+  bucket: string;
+}
 
 export interface GisValidationJob {
   tenantId: string;
@@ -67,6 +75,7 @@ export interface JobPayloads {
   [QUEUES.alerts]: AlertEvaluationJob;
   [QUEUES.chain]: ChainEventIndexingJob;
   [QUEUES.anchor]: HarvestAnchorJob;
+  [QUEUES.twinSnapshots]: TwinSnapshotJob;
 }
 
 export function idempotencyKey<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloads[Q]): string {
@@ -94,6 +103,10 @@ export function idempotencyKey<Q extends keyof JobPayloads>(queue: Q, payload: J
     case QUEUES.anchor: {
       const p = payload as HarvestAnchorJob;
       return `anchor:${p.tenantId}:${p.batchId}:${p.action}:${p.attempt}`;
+    }
+    case QUEUES.twinSnapshots: {
+      const p = payload as TwinSnapshotJob;
+      return `twin-snapshot:${p.tenantId}:${p.farmId}:${p.bucket}`;
     }
     default:
       throw new Error(`unknown queue ${String(queue)}`);
