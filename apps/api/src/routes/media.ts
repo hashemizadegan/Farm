@@ -5,7 +5,7 @@ import { createUploadSchema, uuid } from "@metafarm/domain";
 import { z } from "zod";
 import { HttpError, notFound, parse } from "../lib/http";
 import { toMedia } from "../lib/mappers";
-import { buildStorageKey } from "../storage/object-storage";
+import { buildStorageKey } from "@metafarm/storage";
 
 /** Purposes allowed per content type. GeoJSON is only accepted for boundary imports, models only for assets. */
 const ALLOWED: Record<string, readonly string[]> = {

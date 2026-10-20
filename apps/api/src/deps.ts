@@ -5,7 +5,7 @@ import type { JobPayloads, OwnershipReader } from "@metafarm/domain";
 import type { Logger } from "@metafarm/observability";
 import type { AuthProvider } from "./auth/provider";
 import type { SolanaClusterCheck } from "./lib/solana-cluster";
-import type { ObjectStorage } from "./storage/object-storage";
+import type { ObjectStorage } from "@metafarm/storage";
 
 export interface JobProducer {
   enqueue<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloads[Q]): Promise<void>;

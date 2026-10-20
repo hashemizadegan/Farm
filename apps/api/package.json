@@ -26,6 +26,7 @@
     "@metafarm/domain": "workspace:*",
     "@metafarm/map-scene": "workspace:*",
     "@metafarm/observability": "workspace:*",
+    "@metafarm/storage": "workspace:*",
     "bullmq": "^5.56.0",
     "fastify": "^5.4.0",
     "fastify-plugin": "^5.0.1",
