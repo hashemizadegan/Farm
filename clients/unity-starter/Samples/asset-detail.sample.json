@@ -1,0 +1,52 @@
+{
+  "object": {
+    "twinObjectId": "asset:33333333-3333-4333-8333-333333333333",
+    "assetId": "33333333-3333-4333-8333-333333333333",
+    "layer": "buildings",
+    "kind": "building",
+    "name": "Packing shed",
+    "status": "draft",
+    "geometry": { "type": "Point", "coordinates": [56.0008, 30.4008] },
+    "physical": { "externalRef": null, "parcelLabel": null, "geomProvenance": "user-entered", "verifiedAt": null },
+    "chain": [
+      {
+        "representationId": "44444444-4444-4444-8444-444444444444",
+        "rail": "SOLANA_TOKEN_2022",
+        "network": "solana-devnet",
+        "status": "active",
+        "chainId": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z"
+      }
+    ]
+  },
+  "lifecycle": [{ "event": "registered", "at": "2026-10-03T08:00:00.000Z" }],
+  "ownership": [
+    {
+      "representationId": "44444444-4444-4444-8444-444444444444",
+      "status": "indexed",
+      "source": "fixture",
+      "assurance": "fixture",
+      "asOfSlot": "310000900",
+      "holders": [
+        { "owner": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn", "amount": "750000" },
+        { "owner": "swqrv48gsrwpBFbftEwnP2vB4jckpvfGJfXkwaniLCC", "amount": "250000" }
+      ]
+    }
+  ],
+  "dataCommitments": [
+    {
+      "id": "66666666-6666-4666-8666-666666666666",
+      "farmId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+      "subjectType": "asset",
+      "subjectId": "33333333-3333-4333-8333-333333333333",
+      "schema": "metafarm.building-survey",
+      "schemaVersion": 1,
+      "contentSha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+      "byteSize": 3,
+      "storageRef": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+      "sourceTime": "2026-10-03T07:30:00.000Z",
+      "attestationRef": null,
+      "batch": null,
+      "createdAt": "2026-10-03T08:05:00.000Z"
+    }
+  ]
+}

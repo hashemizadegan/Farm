@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { FIXTURE_ASSETS, FIXTURE_EVENTS, FIXTURE_WALLETS, createFixtureLedger } from "@metafarm/chain";
 import { createPool, createTenantWithOwner, migrateUp, upsertUserBySubject, withSystem, withTenant, type Pool } from "@metafarm/db";
-import { twinSceneSchema, verifyMerkleInclusion } from "@metafarm/domain";
+import { twinAssetDetailSchema, twinSceneSchema, verifyMerkleInclusion } from "@metafarm/domain";
 import { buildTestApp, tokenFor } from "./test/helpers";
 
 const url = process.env.DATABASE_URL;
@@ -138,9 +138,9 @@ d("digital twin API", () => {
     });
 
     it("reports holders from an ownership reader, labelled with its source and assurance", async () => {
-      const shed = (await req(indexed, "manager", "GET", `/assets/${assets[1]}`)).json();
+      const shed = twinAssetDetailSchema.parse((await req(indexed, "manager", "GET", `/assets/${assets[1]}`)).json());
       expect(shed.ownership[0]).toMatchObject({ status: "indexed", source: "fixture", assurance: "fixture", asOfSlot: "310000900" });
-      expect(shed.ownership[0].holders).toContainEqual({ owner: FIXTURE_WALLETS.investor, amount: "250000" });
+      expect((shed.ownership[0] as { holders: unknown[] }).holders).toContainEqual({ owner: FIXTURE_WALLETS.investor, amount: "250000" });
     });
   });
 

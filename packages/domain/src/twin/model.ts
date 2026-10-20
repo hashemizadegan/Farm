@@ -159,3 +159,40 @@ export const twinSceneSchema = z.object({
   nextCursor: z.string().uuid().nullable(),
 });
 export type TwinScene = z.infer<typeof twinSceneSchema>;
+
+export const twinOwnershipSchema = z.discriminatedUnion("status", [
+  z.object({ representationId: z.string().uuid(), status: z.literal("not_on_chain") }),
+  z.object({ representationId: z.string().uuid(), status: z.literal("not_indexed"), reason: z.enum(["no_ownership_reader", "not_covered", "reader_unavailable"]) }),
+  z.object({
+    representationId: z.string().uuid(),
+    status: z.literal("indexed"),
+    source: z.enum(["chain_index", "das", "fixture"]),
+    assurance: z.enum(["inclusion_verified", "indexer_reported", "fixture"]),
+    asOfSlot: z.string().regex(/^[0-9]+$/).nullable(),
+    holders: z.array(z.object({ owner: z.string(), amount: z.string().regex(/^[0-9]+$/) })),
+  }),
+]);
+
+export const dataCommitmentViewSchema = z.object({
+  id: z.string().uuid(),
+  farmId: z.string().uuid().nullable(),
+  subjectType: z.enum(DATA_SUBJECT_TYPES),
+  subjectId: z.string(),
+  schema: schemaName,
+  schemaVersion: z.number().int(),
+  contentSha256: sha256,
+  byteSize: z.number().int().nullable(),
+  storageRef: z.string().nullable(),
+  sourceTime: z.string(),
+  attestationRef: z.string().nullable(),
+  batch: z.object({ id: z.string().uuid(), leafIndex: z.number().int() }).nullable(),
+  createdAt: z.string(),
+});
+
+export const twinAssetDetailSchema = z.object({
+  object: twinObjectSummarySchema,
+  lifecycle: z.array(z.object({ event: z.enum(["registered", "verified"]), at: z.string() })),
+  ownership: z.array(twinOwnershipSchema),
+  dataCommitments: z.array(dataCommitmentViewSchema),
+});
+export type TwinAssetDetail = z.infer<typeof twinAssetDetailSchema>;
