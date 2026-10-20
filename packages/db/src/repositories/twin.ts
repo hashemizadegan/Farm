@@ -164,9 +164,12 @@ export async function listDataCommitments(
   ).rows;
 }
 
-/** The given commitments, locked against joining two batches at once, in the order asked. */
-export async function lockCommitmentsForBatch(tx: TenantTx, ids: string[]): Promise<DataCommitmentRow[]> {
-  await tx.query(`SELECT 1 FROM data_commitments WHERE tenant_id = $1 AND id = ANY($2::uuid[]) ORDER BY id FOR UPDATE`, [tx.tenantId, ids]);
+/**
+ * The given commitments, in the order asked. Not locked: the application role has no UPDATE right
+ * (which row locks need), and a commitment joining two batches at once is stopped by the unique
+ * commitment_id on commitment_batch_leaves instead.
+ */
+export async function commitmentsInOrder(tx: TenantTx, ids: string[]): Promise<DataCommitmentRow[]> {
   const rows = (await tx.query<DataCommitmentRow>(`${COMMITMENT_SELECT} WHERE c.tenant_id = $1 AND c.id = ANY($2::uuid[])`, [tx.tenantId, ids])).rows;
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));

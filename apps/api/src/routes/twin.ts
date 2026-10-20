@@ -23,13 +23,14 @@ import {
   getOperation,
   insertCommitmentBatch,
   insertDataCommitment,
+  commitmentsInOrder,
   listDataCommitments,
-  lockCommitmentsForBatch,
   twinAssetsOfFarm,
   twinChainCounts,
   twinChainIdentities,
   twinChainIdentity,
   type BusinessAssetRow,
+  type CommitmentBatchRow,
   type DataCommitmentRow,
   type TwinChainRow,
 } from "@metafarm/db";
@@ -278,20 +279,28 @@ export async function twinRoutes(app: FastifyInstance) {
           return { batch: seen, created: false };
         }
       }
-      const rows = await lockCommitmentsForBatch(tx, body.commitmentIds);
+      const rows = await commitmentsInOrder(tx, body.commitmentIds);
       if (rows.length !== body.commitmentIds.length) throw new HttpError(400, "unknown_commitments", "every commitment must exist in this workspace");
       const batched = rows.filter((r) => r.batch_id !== null).map((r) => r.id);
       if (batched.length) throw new HttpError(409, "already_batched", "a commitment joins at most one batch", { commitmentIds: batched });
       const leaves = await Promise.all(rows.map((r) => merkleLeaf(r.content_sha256)));
       const root = await merkleRoot(leaves);
-      const batch = await insertCommitmentBatch(tx, {
-        dataset: body.dataset,
-        scheme: MERKLE_SCHEME,
-        merkleRoot: root,
-        leaves: rows.map((r, i) => ({ commitmentId: r.id, leafHash: leaves[i]! })),
-        createdBy: req.user!.id,
-        clientRequestId: key ?? null,
-      });
+      let batch: CommitmentBatchRow;
+      try {
+        await tx.query("SAVEPOINT twin_batch");
+        batch = await insertCommitmentBatch(tx, {
+          dataset: body.dataset,
+          scheme: MERKLE_SCHEME,
+          merkleRoot: root,
+          leaves: rows.map((r, i) => ({ commitmentId: r.id, leafHash: leaves[i]! })),
+          createdBy: req.user!.id,
+          clientRequestId: key ?? null,
+        });
+      } catch (err) {
+        // Another batch took one of these commitments in the meantime (unique commitment_id).
+        if ((err as { code?: string }).code === "23505") throw new HttpError(409, "already_batched", "a commitment joins at most one batch");
+        throw err;
+      }
       await app.audit(req, tx, { action: "twin.batch.created", targetType: "commitment_batch", targetId: batch.id, metadata: { dataset: body.dataset, merkleRoot: root, leafCount: rows.length } });
       return { batch, created: true };
     });
