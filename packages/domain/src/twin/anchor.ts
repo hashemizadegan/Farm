@@ -63,7 +63,9 @@ export function planAnchor(p: {
   const base: Omit<AnchorPlan, "metadataField" | "leafMetadata"> = { scheme: ANCHOR_SCHEME, carrier: p.carrier, network: p.network, subject: p.subject, root: p.root, executable: false, reason: "anchoring_not_enabled" };
 
   if (p.carrier === "token2022_metadata") {
-    const key = `mf:${p.subject}:${p.label}`.slice(0, TOKEN2022_ANCHOR_LIMITS.key);
+    // Never truncated: two labels must not collapse into the same key.
+    const key = `mf:${p.subject}:${p.label}`;
+    if (utf8Length(key) > TOKEN2022_ANCHOR_LIMITS.key) throw new RangeError(`the metadata key ${key} is longer than ${TOKEN2022_ANCHOR_LIMITS.key} bytes; use a shorter label`);
     const value = `${ANCHOR_SUBJECTS[p.subject]}:${p.root}`;
     if (utf8Length(value) > TOKEN2022_ANCHOR_LIMITS.value) throw new RangeError("anchor value too long");
     return { ...base, metadataField: { key, value } };

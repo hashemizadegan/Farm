@@ -9,8 +9,7 @@ import { createOidcProvider } from "./auth/oidc";
 import type { AuthProvider } from "./auth/provider";
 import { createHarvestChainReader } from "./lib/harvest-chain";
 import { createBullProducer } from "./queue/producer";
-import { createMemoryStorage } from "./storage/memory";
-import { createS3Storage } from "./storage/s3";
+import { createStorageFromEnv } from "@metafarm/storage";
 import { solanaClusterCheck } from "./lib/solana-cluster";
 
 const env = loadEnv(apiEnvSchema);
@@ -31,20 +30,7 @@ function authProvider(): AuthProvider {
   return createDevProvider(env.DEV_AUTH_SECRET);
 }
 
-function storage() {
-  if (env.STORAGE_DRIVER === "memory") return createMemoryStorage();
-  if (!env.S3_BUCKET || !env.S3_ACCESS_KEY_ID || !env.S3_SECRET_ACCESS_KEY) {
-    throw new Error("S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required for s3 storage");
-  }
-  return createS3Storage({
-    endpoint: env.S3_ENDPOINT,
-    region: env.S3_REGION,
-    bucket: env.S3_BUCKET,
-    accessKeyId: env.S3_ACCESS_KEY_ID,
-    secretAccessKey: env.S3_SECRET_ACCESS_KEY,
-    forcePathStyle: env.S3_FORCE_PATH_STYLE,
-  });
-}
+const storage = () => createStorageFromEnv(env);
 
 const pool = createPool({ connectionString: env.DATABASE_URL, max: env.DATABASE_POOL_MAX, ssl: env.DATABASE_SSL, applicationName: "metafarm-api" });
 const jobs = createBullProducer(env.REDIS_URL, env.QUEUE_PREFIX);

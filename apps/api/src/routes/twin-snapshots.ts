@@ -11,7 +11,7 @@ import { farmSnapshotEntities, findDataCommitmentByRequest, getDataCommitment, g
 import { ContentIntegrityError, buildFarmSnapshot, reconstructFarmSnapshot, serializeFarmSnapshot, SNAPSHOT_COMMITMENT_SCHEMA, type FarmSnapshot } from "@metafarm/domain";
 import { z } from "zod";
 import { HttpError, idempotencyKey, keyReused, notFound, parse } from "../lib/http";
-import { createObjectContentStore } from "../storage/content-store";
+import { createObjectContentStore } from "@metafarm/storage";
 import { toCommitment } from "./twin";
 
 const SNAPSHOT_MEDIA_TYPE = "application/json";

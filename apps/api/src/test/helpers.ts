@@ -5,7 +5,7 @@ import { buildApp } from "../app";
 import { createDevProvider, mintDevToken } from "../auth/dev";
 import type { Deps } from "../deps";
 import { createMemoryProducer } from "../queue/producer";
-import { createMemoryStorage } from "../storage/memory";
+import { createMemoryStorage } from "@metafarm/storage";
 
 export const DEV_SECRET = "test-secret-test-secret-test-secret-0000";
 

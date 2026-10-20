@@ -25,6 +25,7 @@ describe("anchor plans (reserved formats, never executed)", () => {
     expect(() => planAnchor({ ...base, network: "tron-nile", carrier: "token2022_metadata", subject: "batch", label: "x" })).toThrow(/Solana only/);
     expect(() => planAnchor({ ...base, root: "ABC", carrier: "token2022_metadata", subject: "batch", label: "x" })).toThrow(/root/);
     expect(() => planAnchor({ ...base, carrier: "token2022_metadata", subject: "batch", label: "Bad Label" })).toThrow(/label/);
+    expect(() => planAnchor({ ...base, carrier: "token2022_metadata", subject: "batch", label: "a-very-long-dataset-name-indeed" })).toThrow(/shorter label/);
     expect(() => planAnchor({ ...base, carrier: "bubblegum_v1_leaf", subject: "batch", label: "x", documentBaseUrl: "http://insecure" })).toThrow(/https/);
     expect(() => planAnchor({ ...base, carrier: "bubblegum_v1_leaf", subject: "batch", label: "x", documentBaseUrl: `https://${"a".repeat(150)}.org` })).toThrow(/longer than/);
   });

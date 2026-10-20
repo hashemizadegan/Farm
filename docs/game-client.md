@@ -51,6 +51,8 @@ All endpoints are in `packages/contracts/openapi.yaml` under the `twin` tag.
 | `GET /farms/{farmId}/snapshots?limit&cursor` | `rwa:read` | A farm's state snapshots (data commitments), newest first: the sync check |
 | `POST /farms/{farmId}/snapshots` | `rwa:operate` | Record a snapshot of the farm's current state (stored content-addressed; nothing on-chain) |
 | `GET /snapshots/{commitmentId}` | `rwa:read` | The stored snapshot, re-verified on read; ETag = snapshotId |
+| `GET /snapshots/{commitmentId}/anchor-plan?carrier&network` | `rwa:read` | What would anchor the snapshot's root on Solana; data only, `executable: false` |
+| `GET /data-commitments/batches/{batchId}/anchor-plan?carrier&network` | `rwa:read` | The same for a batch root |
 | `GET /sync-status` | `rwa:read` | Whether ownership is indexed and submission available; commitment and batch counts |
 
 Conventions (as in the rest of the API): errors are `{ error, message, requestId, details? }`;

@@ -2,6 +2,7 @@ import { Queue } from "bullmq";
 import { Redis } from "ioredis";
 import { loadEnv, schedulerEnvSchema } from "@metafarm/config";
 import { createLogger, installGracefulShutdown, startHealthServer } from "@metafarm/observability";
+import { QUEUES } from "@metafarm/domain";
 import { buildSchedules } from "./schedules";
 
 // On Railway the platform assigns PORT; the health server uses it unless HEALTH_PORT is set.
@@ -22,6 +23,7 @@ const schedules = buildSchedules({
   chainCron: env.CHAIN_INDEX_CRON,
   chainId: env.CHAIN_ID,
   contracts,
+  twinSnapshotCron: env.TWIN_SNAPSHOT_CRON,
 });
 
 const queues = new Map<string, Queue>();
@@ -39,6 +41,13 @@ for (const s of schedules) {
     },
   );
   logger.info({ scheduler: s.id, queue: s.queue, pattern: s.pattern }, "schedule upserted");
+}
+
+// The twin snapshot sweep is opt-in: when its cron is unset, make sure no earlier schedule lingers.
+if (!env.TWIN_SNAPSHOT_CRON) {
+  const q = queues.get(QUEUES.twinSnapshots) ?? new Queue(QUEUES.twinSnapshots, { connection, prefix: env.QUEUE_PREFIX });
+  queues.set(QUEUES.twinSnapshots, q);
+  if (await q.removeJobScheduler("twin-snapshots-sweep")) logger.info({ scheduler: "twin-snapshots-sweep" }, "schedule removed (TWIN_SNAPSHOT_CRON unset)");
 }
 
 const health = startHealthServer({

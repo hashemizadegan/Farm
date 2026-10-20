@@ -1,8 +1,10 @@
 # Farm-state snapshots, content-addressed storage, anchors and unsigned intents
 
-Status: domain modules with tests (`packages/domain/src/twin/`). Snapshots and the content store are
-wired into the API (`apps/api/src/routes/twin-snapshots.ts`, `apps/api/src/storage/content-store.ts`);
-anchors and intents are not. Nothing is written on-chain, and nothing can be signed or submitted.
+Status: domain modules with tests (`packages/domain/src/twin/`). Snapshots and the content store
+(`packages/storage`, shared by the API and the worker) are wired into the API
+(`apps/api/src/routes/twin-snapshots.ts`) and, behind a flag that is off by default, into a scheduled
+worker job. Anchor plans are served read-only; intents are not wired. Nothing is written on-chain, and
+nothing can be signed or submitted.
 
 ## Snapshot API and client sync
 
@@ -54,6 +56,39 @@ Rules and functions:
 - **References:** `put` returns a `sha256:<hex>` reference that `checkStorageRef` accepts for data commitments.
 - **Implementations:** `createMemoryContentStore` is for tests and local work. A production adapter over the existing S3-compatible `ObjectStorage` (keys `<prefix>/<sha256>`) is a later PR.
 
+## Scheduled snapshots (worker, off by default)
+
+Two settings, both unset or false by default, so deploying this changes nothing:
+
+| Setting | Service | Effect |
+| --- | --- | --- |
+| `TWIN_SNAPSHOT_CRON` | scheduler | Registers the repeatable `twin-snapshots-sweep` job (queue `twin-snapshots`). When unset the scheduler removes it. |
+| `TWIN_SNAPSHOTS_ENABLED` | worker | Lets the worker run the jobs and create object storage for them. When false, every job finishes as `skipped`. |
+
+- The sweep lists every farm (system transaction, at most 5000) and enqueues one job per farm, with
+  the idempotency key `twin-snapshot:<tenant>:<farm>:<hour bucket>`, so a farm gets at most one job per
+  hour however often the sweep runs.
+- The farm job builds the snapshot exactly as `POST …/snapshots` does, in the farm's tenant (RLS). It
+  records nothing when the root equals the newest stored snapshot's root (`unchanged`), or when the
+  farm is gone, has nothing to snapshot, or is too large (`skipped`). A newest snapshot whose bytes no
+  longer verify counts as changed, so a fresh one is stored.
+- A recorded snapshot has `recorded_by` null and an audit entry `twin.snapshot.recorded` with actor
+  type `job`.
+- Storage is the same S3-compatible store and the same content-addressed keys as the API.
+
+## Anchor plans (read-only)
+
+- `GET /v1/tenants/{t}/twin/data-commitments/batches/{batchId}/anchor-plan?carrier=&network=`
+- `GET /v1/tenants/{t}/twin/snapshots/{commitmentId}/anchor-plan?carrier=&network=`
+
+Both need `rwa:read`, store nothing and return `planAnchor`'s result (`executable: false`). The
+snapshot endpoint re-reads and re-verifies the stored snapshot first (409 if it does not verify). The
+label is the batch's dataset, or `farm-` and the first 14 hex digits of the farm id for snapshots, so
+Token-2022 keys stay within 32 bytes; a longer key is refused (422 `anchor_plan_refused`), never
+truncated. `network` defaults to `solana-devnet`; `solana-mainnet` is refused unless
+`RWA_MAINNET_ENABLED`. The Bubblegum carrier needs `RWA_CNFT_METADATA_BASE_URL` (409 `not_configured`
+otherwise) and an https base (422 otherwise).
+
 ## Reserved anchor formats (`anchor.ts`, scheme `metafarm-anchor/1`)
 
 `planAnchor` describes exactly what would be written on Solana for a batch or snapshot root. Every plan has `executable: false` and `reason: anchoring_not_enabled`.
@@ -84,6 +119,5 @@ What each builder checks:
 
 ## Next steps
 
-1. Scheduled snapshots (worker) and batching snapshot commitments for anchoring.
-2. Anchor execution (writing roots on-chain), only behind an explicit flag, a KMS signer and review.
-3. Wallet-signed submission of intents, only after Solana wallet linking and the ownership indexer.
+1. Anchor execution (writing roots on-chain), only behind an explicit flag, a KMS signer and review.
+2. Wallet-signed submission of intents, only after Solana wallet linking and the ownership indexer.
