@@ -196,6 +196,11 @@ export const workerEnvSchema = z
     RWA_SOLANA_DAS_URL: z.string().url().optional(),
     /** Leaves each new Bubblegum tree is planned for (rounded up to a power of two by the tree shape). */
     RWA_CNFT_TREE_CAPACITY: z.coerce.number().int().min(8).max(1_048_576).default(16_384),
+    /**
+     * Opt-in, read-only check of the Solana endpoints while no signer is set: getGenesisHash on the
+     * RPC and DAS endpoints, and whether DAS knows getAsset/getAssetProof. Off: no outbound call.
+     */
+    RWA_PREFLIGHT_ENABLED: bool.default("false"),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {

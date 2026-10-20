@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { base58Decode } from "./base58";
-import { ClusterVerificationError, SOLANA_GENESIS_HASHES, redactEndpoint, verifySolanaCluster } from "./cluster";
+import { ClusterVerificationError, SOLANA_GENESIS_HASHES, probeSolanaMethod, redactEndpoint, verifySolanaCluster, type MethodProbe } from "./cluster";
 
 // A made-up credential: it must never appear in any message.
 const KEY = "k3y-not-real-0000";
@@ -108,5 +108,40 @@ describe("Solana cluster verification", () => {
     expect(redactEndpoint("https://user:pass@rpc.invalid:8899/")).toBe("https://rpc.invalid:8899");
     expect(redactEndpoint("https://rpc.invalid")).toBe("https://rpc.invalid");
     expect(redactEndpoint("not a url")).toBe("[invalid URL]");
+    // Credentials in the user part, an "@" in the password, query, fragment, path parameters, IPv6, case.
+    for (const [url, out] of [
+      [`https://user:p%40ss@rpc.invalid/v2/${KEY}?api-key=${KEY}#${KEY}`, "https://rpc.invalid/[redacted]"],
+      [`https://u:p@${KEY}@rpc.invalid:8899/`, "https://rpc.invalid:8899"],
+      [`https://[2001:db8::1]:8899/?k=${KEY}`, "https://[2001:db8::1]:8899/[redacted]"],
+      [`HTTPS://RPC.INVALID/${KEY}`, "https://rpc.invalid/[redacted]"],
+      [`https://rpc.invalid/#${KEY}`, "https://rpc.invalid/[redacted]"],
+      [`https://rpc.invalid:443/path;${KEY}`, "https://rpc.invalid/[redacted]"],
+      [`rpc.invalid/${KEY}`, "[invalid URL]"],
+    ] as const) {
+      expect(redactEndpoint(url)).toBe(out);
+      expect(redactEndpoint(url)).not.toContain(KEY);
+    }
+  });
+});
+
+describe("JSON-RPC method probe", () => {
+  const probe = (f: ReturnType<typeof fakeFetch>) => probeSolanaMethod({ url: URL_WITH_KEY, method: "getAsset", params: { id: "11111111111111111111111111111111" }, fetchImpl: f.fetchImpl, timeoutMs: 50 });
+  const clean = (p: MethodProbe) => {
+    expect(JSON.stringify(p)).not.toContain(KEY);
+    return p;
+  };
+
+  it("counts any answer but 'method not found' as the method existing", async () => {
+    expect(clean(await probe(fakeFetch({ body: { error: { code: -32000, message: `Asset not found ${URL_WITH_KEY}` } } })))).toMatchObject({ result: "available", detail: "JSON-RPC error -32000" });
+    expect(clean(await probe(fakeFetch({ body: { result: { id: "x" } } })))).toMatchObject({ result: "available" });
+    expect(clean(await probe(fakeFetch({ body: { error: { code: -32601, message: "Method not found" } } })))).toMatchObject({ result: "not_found" });
+  });
+
+  it("reports an endpoint it cannot hear from, without its URL", async () => {
+    expect(clean(await probe(fakeFetch({ status: 401 })))).toMatchObject({ result: "unavailable", detail: "HTTP 401" });
+    expect(clean(await probe(fakeFetch("hang")))).toMatchObject({ result: "unavailable", detail: "no answer within 50 ms" });
+    expect(clean(await probe(fakeFetch(Object.assign(new TypeError(`fetch failed ${URL_WITH_KEY}`), { cause: { code: "ECONNREFUSED" } }))))).toMatchObject({ detail: "ECONNREFUSED" });
+    expect(clean(await probe(fakeFetch({ body: "<html>" })))).toMatchObject({ result: "unavailable" });
+    expect((await probe(fakeFetch({ body: {} }))).endpoint).toBe("https://devnet.rpc.invalid/[redacted]");
   });
 });
