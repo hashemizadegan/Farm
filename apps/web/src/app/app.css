@@ -1493,3 +1493,10 @@ html[lang="fa"] body {
     break-inside: avoid;
   }
 }
+
+/* Real-world assets: a token per line inside a table cell. */
+.rwa-tokens {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
