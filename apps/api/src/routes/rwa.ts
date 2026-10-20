@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { TOKEN_2022_PROGRAM, isSolanaAddress, isTronAddress, parseMintAccount, verifyIncomingTrc20 } from "@metafarm/chain";
+import { ClusterVerificationError, TOKEN_2022_PROGRAM, isSolanaAddress, isTronAddress, parseMintAccount, verifyIncomingTrc20 } from "@metafarm/chain";
 import {
   addWallet,
   approveOrder,
@@ -535,8 +535,8 @@ export async function rwaRoutes(app: FastifyInstance) {
     const { representationId } = parse(representationParams, req.params);
     const { mintAddress } = parse(linkMintSchema, req.body);
     if (!isSolanaAddress(mintAddress)) throw new HttpError(400, "invalid_address", "not a Solana address");
-    const { solanaRpc } = app.deps;
-    if (!solanaRpc || !env.RWA_SOLANA_ISSUER) throw new HttpError(503, "issuance_not_configured", "Solana issuance is not configured on this platform");
+    const { solanaRpc, solanaCluster } = app.deps;
+    if (!solanaRpc || !solanaCluster || !env.RWA_SOLANA_ISSUER) throw new HttpError(503, "issuance_not_configured", "Solana issuance is not configured on this platform");
     const rep = await app.inTenant(req, "rwa:operate", async (tx) => {
       const r = await getRepresentation(tx, representationId);
       if (!r) throw notFound("share token");
@@ -544,6 +544,17 @@ export async function rwaRoutes(app: FastifyInstance) {
       if (r.network !== env.RWA_SOLANA_NETWORK) throw new HttpError(409, "wrong_network", `this platform issues on ${env.RWA_SOLANA_NETWORK}`);
       return r;
     });
+    // The network setting is only a label: the RPC must prove it serves that cluster before a mint is read from it.
+    try {
+      await solanaCluster();
+    } catch (err) {
+      // Logged by scheme and host only; the response names neither, nor any credential.
+      const e = err instanceof ClusterVerificationError ? { reason: err.reason, endpoint: err.endpoint } : { reason: "unexpected" };
+      req.log.error(e, "Solana RPC cluster check failed; mint not linked");
+      if (err instanceof ClusterVerificationError && err.reason !== "unavailable")
+        throw new HttpError(422, "solana_cluster_mismatch", `the platform's Solana RPC does not serve ${env.RWA_SOLANA_NETWORK}; the mint was not checked or linked`);
+      throw new HttpError(503, "solana_rpc_unavailable", "the platform's Solana RPC could not be verified; try again later");
+    }
     const account = await solanaRpc.getAccountInfo(mintAddress);
     if (!account || account.owner !== TOKEN_2022_PROGRAM) throw new HttpError(422, "not_a_mint", "no Token-2022 mint at that address");
     const mint = parseMintAccount(account.data);

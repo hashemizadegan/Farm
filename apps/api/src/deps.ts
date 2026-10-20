@@ -4,6 +4,7 @@ import type { Pool } from "@metafarm/db";
 import type { JobPayloads } from "@metafarm/domain";
 import type { Logger } from "@metafarm/observability";
 import type { AuthProvider } from "./auth/provider";
+import type { SolanaClusterCheck } from "./lib/solana-cluster";
 import type { ObjectStorage } from "./storage/object-storage";
 
 export interface JobProducer {
@@ -33,4 +34,6 @@ export interface Deps {
   tron?: TronHttp;
   /** Solana node for checking share-token mints; present when RWA_SOLANA_RPC_URL is configured. */
   solanaRpc?: SolanaRpc;
+  /** Proves solanaRpc serves RWA_SOLANA_NETWORK (getGenesisHash); required wherever solanaRpc is read. */
+  solanaCluster?: SolanaClusterCheck;
 }
