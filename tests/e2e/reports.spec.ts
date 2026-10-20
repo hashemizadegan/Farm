@@ -22,7 +22,7 @@ test.describe("reports", () => {
     await signIn(page);
     await page.goto("/reports");
     await expect(page.getByRole("heading", { level: 1, name: "Reports" })).toBeVisible();
-    await page.getByLabel("Farm").selectOption({ label: farmName });
+    await page.getByLabel("Farm", { exact: true }).selectOption({ label: farmName });
     await page.getByLabel("Period").selectOption("last30");
 
     const report = page.getByRole("article");
