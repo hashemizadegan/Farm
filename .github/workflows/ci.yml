@@ -245,6 +245,8 @@ jobs:
             grep -E "error|Failed|Assert|Expected|Actual" dotnet.txt | tail -40 | while IFS= read -r l; do echo "::error::$l"; done
             exit 1
           }
+          # Surface the test counts as an annotation, so the result is visible without log access.
+          grep -E "Passed!|Failed!|Total tests" dotnet.txt | while IFS= read -r l; do echo "::notice::$l"; done
 
   docker:
     name: Docker image (${{ matrix.app }})
