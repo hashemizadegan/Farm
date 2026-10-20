@@ -112,4 +112,20 @@ describe("RWA engine start with the preflight", () => {
     expect(k.calls[0]).toBe("genesis:RPC");
     expect(k.lines.join("\n")).toContain("execution stays off");
   });
+  it("with the real clients and the flag off, never touches the network", async () => {
+    const original = globalThis.fetch;
+    let fetched = 0;
+    globalThis.fetch = (async () => {
+      fetched++;
+      throw new Error("no network expected");
+    }) as typeof fetch;
+    try {
+      // No injected checks: the production code paths, with RPC and DAS URLs set but no signer.
+      expect(await startRwaEngine(env({ RWA_SOLANA_RPC_URL: RPC, RWA_SOLANA_DAS_URL: DAS }), untouchable, quiet, 5)).toBeUndefined();
+      await new Promise((r) => setTimeout(r, 30));
+      expect(fetched).toBe(0);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
 });

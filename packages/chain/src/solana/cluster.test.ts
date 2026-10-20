@@ -108,6 +108,19 @@ describe("Solana cluster verification", () => {
     expect(redactEndpoint("https://user:pass@rpc.invalid:8899/")).toBe("https://rpc.invalid:8899");
     expect(redactEndpoint("https://rpc.invalid")).toBe("https://rpc.invalid");
     expect(redactEndpoint("not a url")).toBe("[invalid URL]");
+    // Credentials in the user part, an "@" in the password, query, fragment, path parameters, IPv6, case.
+    for (const [url, out] of [
+      [`https://user:p%40ss@rpc.invalid/v2/${KEY}?api-key=${KEY}#${KEY}`, "https://rpc.invalid/[redacted]"],
+      [`https://u:p@${KEY}@rpc.invalid:8899/`, "https://rpc.invalid:8899"],
+      [`https://[2001:db8::1]:8899/?k=${KEY}`, "https://[2001:db8::1]:8899/[redacted]"],
+      [`HTTPS://RPC.INVALID/${KEY}`, "https://rpc.invalid/[redacted]"],
+      [`https://rpc.invalid/#${KEY}`, "https://rpc.invalid/[redacted]"],
+      [`https://rpc.invalid:443/path;${KEY}`, "https://rpc.invalid/[redacted]"],
+      [`rpc.invalid/${KEY}`, "[invalid URL]"],
+    ] as const) {
+      expect(redactEndpoint(url)).toBe(out);
+      expect(redactEndpoint(url)).not.toContain(KEY);
+    }
   });
 });
 
