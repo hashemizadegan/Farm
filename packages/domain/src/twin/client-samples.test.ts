@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { checkStorageRef, merkleLeaf, verifyMerkleInclusion } from "./commitments";
 import { twinAssetDetailSchema, twinLayerOf, twinSceneSchema } from "./model";
+import { reconstructFarmSnapshot } from "./snapshot";
 
 const samples = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../clients/unity-starter/Samples");
 const load = (name: string): unknown => JSON.parse(readFileSync(path.join(samples, name), "utf8"));
@@ -28,5 +29,11 @@ describe("client starter samples", () => {
     expect(await merkleLeaf(sample.commitment.contentSha256)).toBe(sample.proof.leaf);
     expect(sample.commitment.batch.leafIndex).toBe(sample.proof.leafIndex);
     expect(await verifyMerkleInclusion({ leaf: sample.proof.leaf, index: sample.proof.leafIndex, size: sample.proof.size, path: sample.proof.path, root: sample.proof.root })).toBe(true);
+  });
+
+  it("farm-snapshot.sample.json reconstructs and verifies with the platform's snapshot verifier (the C# tests use it too)", async () => {
+    const { snapshot, check } = await reconstructFarmSnapshot(readFileSync(path.join(samples, "farm-snapshot.sample.json"), "utf8"));
+    expect(check).toEqual({ ok: true, problems: [] });
+    expect(snapshot.entityCount).toBe(7);
   });
 });
