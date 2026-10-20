@@ -63,6 +63,19 @@ Full list with local defaults: `.env.example`. Required when deployed:
 | `CHAIN_RPC_URL`, `CHAIN_ID`, `CHAIN_INDEX_CONTRACTS` | worker, scheduler | Optional; indexing is skipped without an RPC URL |
 | `APP` | each app (optional) | Only if the service name is not `web`/`api`/`worker`/`scheduler` |
 
+**Real-world asset rails** (optional; everything stays off until set; testnets only unless `RWA_MAINNET_ENABLED`). Signer keys go on the **worker only**, as **sealed** variables, one new key per environment, never shared:
+
+| Variable | Services | Notes |
+| --- | --- | --- |
+| `RWA_SOLANA_RPC_URL`, `RWA_SOLANA_NETWORK` | api, worker | Solana JSON-RPC endpoint; `solana-devnet` |
+| `RWA_SOLANA_ISSUER` | api, worker | The signer's public address; the worker refuses to start if it does not match the key |
+| `RWA_SOLANA_SIGNER_SECRET` | worker (**sealed**) | Devnet key (base58, Solana CLI format); refused when mainnets are enabled |
+| `RWA_SOLANA_DAS_URL` | worker | A DAS-capable devnet endpoint (the public devnet RPC does not serve DAS); turns on compressed NFTs |
+| `RWA_CNFT_TREE_CAPACITY` | worker | Leaves per new tree (default 16 384; rounded up to a power of two) |
+| `RWA_CNFT_METADATA_BASE_URL` | api | The API's public URL; leaf URIs are `<base>/v1/public/rwa/cnft/<id>` and must fit in 200 bytes |
+| `RWA_TRON_API_URL`, `RWA_TRON_API_KEY`, `RWA_TRON_NETWORK`, `RWA_TRON_TREASURY` | api, worker | TRON full node (e.g. Nile) and the treasury address |
+| `RWA_TRON_SIGNER_PRIVATE_KEY` | worker (**sealed**) | Testnet treasury key; must match `RWA_TRON_TREASURY` |
+
 `NEXT_PUBLIC_*` values are inlined into the browser bundle at build time. Railway exposes service variables to a Docker build only when the Dockerfile declares them with `ARG`; the root `Dockerfile` does this for every `NEXT_PUBLIC_*` value. Changing one requires a rebuild.
 
 ## 4. Private service communication

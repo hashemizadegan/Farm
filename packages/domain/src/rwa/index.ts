@@ -5,3 +5,4 @@ export * from "./observation";
 export * from "./compliance";
 export * from "./orders";
 export * from "./requests";
+export * from "./cnft";

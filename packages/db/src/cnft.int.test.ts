@@ -50,6 +50,13 @@ d("compressed NFT trees and registrations", () => {
     capacity: 8n,
     creatorAddress: SIGNER,
   };
+  const leafMetadata = (asset: string) => ({
+    name: `Tree ${asset.slice(0, 8)}`,
+    symbol: "TREE",
+    uri: `https://api.example.com/v1/public/rwa/cnft/${asset}`,
+    commitment: { algorithm: "sha256" as const, scheme: "metafarm-rwa-asset/1", hash: "0".repeat(64) },
+    commitmentSalt: "00112233445566778899aabbccddeeff",
+  });
   const address = () =>
     `Tree${randomUUID()
       .replace(/[^1-9a-km-zA-HJ-NP-Z]/g, "")
@@ -139,7 +146,7 @@ d("compressed NFT trees and registrations", () => {
     });
     const register = (asset: string) =>
       inA(async (tx) => {
-        const rep = await createCompressedRepresentation(tx, asset, "solana-devnet", tree.id);
+        const rep = await createCompressedRepresentation(tx, { assetId: asset, network: "solana-devnet", metadata: leafMetadata(asset), treeId: tree.id });
         const order = await createRegistrationOrder(tx, {
           partyId: custodian,
           representationId: rep,

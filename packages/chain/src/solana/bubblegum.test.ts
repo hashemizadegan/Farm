@@ -82,6 +82,24 @@ describe("Bubblegum adapter", () => {
     expect(() => new BubblegumAdapter({ network: "solana-mainnet", rpc: fakeRpc(), signer, mainnetEnabled: false })).toThrow(/not enabled/);
   });
 
+  it("reads a tree's on-chain state, the finalized height first", async () => {
+    const calls: string[] = [];
+    const rpc = (config?: Uint8Array, owner = BUBBLEGUM_PROGRAM): SolanaRpc => ({
+      ...fakeRpc(),
+      getBlockHeight: async () => (calls.push("height"), 900n),
+      getAccountInfo: async (address) => (calls.push("account"), config && address === treeConfigAddress(TREE) ? { owner, data: config } : null),
+    });
+    const config = treeConfigBytes({ creator: signer.address, delegate: signer.address, capacity: 16_384n, minted: 41n });
+    const adapter = new BubblegumAdapter({ network: "solana-devnet", rpc: rpc(config), signer, mainnetEnabled: false });
+    expect(await adapter.readTree("solana-devnet", TREE)).toEqual({ finalizedBlockHeight: 900n, tree: { creator: signer.address, numMinted: 41n, capacity: 16_384n } });
+    expect(calls).toEqual(["height", "account"]);
+    // Never created: no config account.
+    expect(await new BubblegumAdapter({ network: "solana-devnet", rpc: rpc(), signer, mainnetEnabled: false }).readTree("solana-devnet", TREE)).toEqual({ finalizedBlockHeight: 900n, tree: null });
+    // Something else at that address is not a tree to reason about.
+    await expect(new BubblegumAdapter({ network: "solana-devnet", rpc: rpc(config, ACCOUNT_COMPRESSION_PROGRAM), signer, mainnetEnabled: false }).readTree("solana-devnet", TREE)).rejects.toThrow(/not a Bubblegum tree config/);
+    await expect(adapter.readTree("solana-mainnet", TREE)).rejects.toThrow(/serves solana-devnet/);
+  });
+
   it("applies the program's metadata limits", () => {
     const ok: CompressedMetadata = { name: "a", symbol: "b", uri: "c", sellerFeeBasisPoints: 0, primarySaleHappened: false, isMutable: true, creators: [] };
     expect(() => checkMetadata(ok)).not.toThrow();

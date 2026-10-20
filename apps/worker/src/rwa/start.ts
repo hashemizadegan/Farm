@@ -1,5 +1,7 @@
 /** Runs the RWA execution engine every few seconds when at least one rail is configured. */
 import {
+  BubblegumAdapter,
+  DasCompressedAssetAdapter,
   SolanaObservationAdapter,
   SolanaToken2022Adapter,
   TronObservationAdapter,
@@ -8,6 +10,7 @@ import {
   httpTron,
   localEd25519Signer,
   localTronSigner,
+  planTree,
 } from "@metafarm/chain";
 import type { WorkerEnv } from "@metafarm/config";
 import type { Pool } from "@metafarm/db";
@@ -26,6 +29,16 @@ export function buildRails(env: WorkerEnv): Rails {
       issuance: new SolanaToken2022Adapter({ network, rpc, signer, mainnetEnabled: env.RWA_MAINNET_ENABLED, maxPriorityFeeMicroLamports: env.RWA_SOLANA_MAX_PRIORITY_FEE }),
       observer: new SolanaObservationAdapter({ network, rpc }),
     };
+    // Compressed NFTs (registrations) need a DAS index to confirm leaves; off without one.
+    if (env.RWA_SOLANA_DAS_URL) {
+      const shape = planTree(env.RWA_CNFT_TREE_CAPACITY);
+      rails.solana.compressed = {
+        issuance: new BubblegumAdapter({ network, rpc, signer, mainnetEnabled: env.RWA_MAINNET_ENABLED, maxPriorityFeeMicroLamports: env.RWA_SOLANA_MAX_PRIORITY_FEE }),
+        assets: new DasCompressedAssetAdapter({ network, dasUrl: env.RWA_SOLANA_DAS_URL, rpc }),
+        creator: signer.address,
+        treeShape: { maxDepth: shape.maxDepth, maxBufferSize: shape.maxBufferSize, canopyDepth: shape.canopyDepth, capacity: shape.capacity },
+      };
+    }
   }
   if (env.RWA_TRON_API_URL && env.RWA_TRON_SIGNER_PRIVATE_KEY && env.RWA_TRON_TREASURY) {
     const network = env.RWA_TRON_NETWORK;
@@ -61,12 +74,20 @@ export function startRwaEngine(env: WorkerEnv, pool: Pool, logger: Logger, inter
     if (running) return;
     running = runTick(deps)
       .then((s) => {
-        if (s.started || s.attempts || s.moves) logger.info(s, "RWA execution");
+        if (s.started || s.attempts || s.moves || s.confirmed) logger.info(s, "RWA execution");
       })
       .catch((err: unknown) => logger.error({ err }, "RWA execution tick failed"))
       .finally(() => (running = undefined));
   }, intervalMs);
-  logger.info({ solana: rails.solana?.network ?? null, tron: rails.tron?.network ?? null, treasury: rails.tron?.treasury ?? null }, "RWA execution started");
+  logger.info(
+    {
+      solana: rails.solana?.network ?? null,
+      compressedNfts: rails.solana?.compressed ? { treeCapacity: rails.solana.compressed.treeShape.capacity } : null,
+      tron: rails.tron?.network ?? null,
+      treasury: rails.tron?.treasury ?? null,
+    },
+    "RWA execution started",
+  );
   return {
     async close() {
       clearInterval(timer);

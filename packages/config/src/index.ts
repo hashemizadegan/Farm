@@ -103,6 +103,11 @@ const rwa = {
   RWA_TRON_NETWORK: z.enum(["tron-nile", "tron-shasta", "tron-mainnet"]).default("tron-nile"),
   /** The operator's TRON treasury: receives subscriptions and pays redemptions and distributions. */
   RWA_TRON_TREASURY: z.string().regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "a TRON address").optional(),
+  /**
+   * Public base URL of this API, used in compressed NFT metadata URIs (`<base>/v1/public/rwa/cnft/<id>`).
+   * Unset: registrations are refused. Keep it short: the whole URI must fit in 200 bytes.
+   */
+  RWA_CNFT_METADATA_BASE_URL: z.string().url().optional(),
 };
 
 export const apiEnvSchema = z
@@ -187,6 +192,10 @@ export const workerEnvSchema = z
     RWA_TRON_SIGNER_PRIVATE_KEY: z.string().regex(/^(0x)?[0-9a-fA-F]{64}$/, "64 hex characters").optional(),
     /** Most TRX (sun) one payout may burn for energy. */
     RWA_TRON_MAX_FEE_LIMIT_SUN: z.coerce.bigint().min(1n).default(100_000_000n),
+    /** A DAS-capable Solana RPC endpoint; compressed NFTs (registrations) run only when this is set. */
+    RWA_SOLANA_DAS_URL: z.string().url().optional(),
+    /** Leaves each new Bubblegum tree is planned for (rounded up to a power of two by the tree shape). */
+    RWA_CNFT_TREE_CAPACITY: z.coerce.number().int().min(8).max(1_048_576).default(16_384),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {

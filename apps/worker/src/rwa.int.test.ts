@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createFarm, createOrder, createParty, createPool, createTenantWithOwner, migrateUp, recordInboundPayment, upsertUserBySubject, withSystem, withTenant, type Pool } from "@metafarm/db";
 import { createLogger } from "@metafarm/observability";
 import { rwaReconciliationSweepHandler } from "./handlers/rwa";
+import { ENGINE_TEST_LOCK_WAIT_MS, takeEngineTestLock } from "./test/engine-lock";
 
 const url = process.env.DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -40,8 +41,12 @@ d("RWA reconciliation sweep", () => {
     });
   }
 
+  let unlock: (() => Promise<void>) | undefined;
+
   beforeAll(async () => {
     pool = createPool({ connectionString: url!, max: 4 });
+    // The sweep reconciles every workspace: not while an engine test is driving its own.
+    unlock = await takeEngineTestLock(pool);
     await migrateUp(pool);
     const sfx = Math.random().toString(36).slice(2, 8);
     user = (await upsertUserBySubject(pool, { issuer: "test", subject: `rs-${sfx}` })).id;
@@ -52,9 +57,10 @@ d("RWA reconciliation sweep", () => {
       return (await tx.query<{ id: string }>(`INSERT INTO asset_representations (tenant_id, asset_id, rail, network) VALUES ($1, $2, 'SOLANA_TOKEN_2022', 'solana-devnet') RETURNING id`, [tx.tenantId, a])).rows[0]!.id;
     });
     party = await withTenant(pool, tenant, (tx) => createParty(tx, { kind: "person", displayName: "Investor", createdBy: user }));
-  });
+  }, ENGINE_TEST_LOCK_WAIT_MS);
 
   afterAll(async () => {
+    await unlock?.();
     await pool?.end();
   });
 

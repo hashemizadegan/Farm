@@ -89,3 +89,13 @@ export const createRepresentationSchema = z
   .strict();
 
 export const linkMintSchema = z.object({ mintAddress: z.string().trim().min(32).max(44) }).strict();
+
+/** Records a verified one-of-a-kind asset as a compressed NFT held by a custodian party. */
+export const createRegistrationSchema = z
+  .object({
+    network: z.enum(["solana-devnet", "solana-mainnet"]),
+    /** The custodian: a party with verified KYC whose Solana wallet below is screened. */
+    partyId: z.string().uuid(),
+    solanaWallet: z.string().trim().min(32).max(44),
+  })
+  .strict();
