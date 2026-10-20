@@ -48,6 +48,9 @@ All endpoints are in `packages/contracts/openapi.yaml` under the `twin` tag.
 | `GET /data-commitments/{id}/proof` | `rwa:read` | Inclusion proof, re-checked on every call |
 | `POST /transfers/preview` | `rwa:operate` | A fingerprinted, expiring description of a transfer; refused unless chain holders are known and include the sender; `submission.available` is always false in this release |
 | `GET /transactions/{operationId}` | `rwa:read` | State of one chain operation |
+| `GET /farms/{farmId}/snapshots?limit&cursor` | `rwa:read` | A farm's state snapshots (data commitments), newest first: the sync check |
+| `POST /farms/{farmId}/snapshots` | `rwa:operate` | Record a snapshot of the farm's current state (stored content-addressed; nothing on-chain) |
+| `GET /snapshots/{commitmentId}` | `rwa:read` | The stored snapshot, re-verified on read; ETag = snapshotId |
 | `GET /sync-status` | `rwa:read` | Whether ownership is indexed and submission available; commitment and batch counts |
 
 Conventions (as in the rest of the API): errors are `{ error, message, requestId, details? }`;

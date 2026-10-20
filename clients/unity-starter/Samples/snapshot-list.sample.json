@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "id": "99999999-9999-4999-8999-999999999999",
+      "farmId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+      "subjectType": "farm",
+      "subjectId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+      "schema": "metafarm.farm-snapshot",
+      "schemaVersion": 1,
+      "contentSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "byteSize": 2048,
+      "storageRef": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "sourceTime": "2026-10-20T12:00:00.000Z",
+      "attestationRef": null,
+      "batch": null,
+      "createdAt": "2026-10-20T12:00:01.000Z"
+    }
+  ],
+  "nextCursor": null
+}
