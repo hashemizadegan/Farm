@@ -3,7 +3,13 @@
 The 3D farm metaverse is a **separate client** (Unity 6 with URP is the recommended first engine; see
 "Engine" below). It is not a page of `apps/web`. The web app remains the place for administration,
 operations, approvals, reporting and monitoring. This document is the contract between the client
-and the platform. A starter lives in [`clients/unity-starter`](../clients/unity-starter).
+and the platform.
+
+A read-only starter lives in [`clients/unity-starter`](../clients/unity-starter). Its
+engine-independent core (models, GET-only transport, read client, ownership display, Merkle
+verification, mocks) builds and is tested in CI as netstandard2.1. Its Unity layer (HTTP transport,
+local frame, scene loader) must be compiled in Unity 6. It is a starting point for the first
+milestone, not a production client or a complete metaverse.
 
 ## Trust model
 
