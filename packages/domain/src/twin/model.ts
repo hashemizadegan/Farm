@@ -155,5 +155,7 @@ export const twinSceneSchema = z.object({
   /** Layers the caller may not see (e.g. assets without `rwa:read`). */
   redacted: z.array(z.enum(TWIN_LAYERS)),
   objects: z.array(twinObjectSummarySchema),
+  /** Pass as `cursor` for the next page of objects; null on the last page. */
+  nextCursor: z.string().uuid().nullable(),
 });
 export type TwinScene = z.infer<typeof twinSceneSchema>;

@@ -43,6 +43,8 @@ tags:
   - name: exports
   - name: reports
   - name: rwa
+  - name: twin
+    description: Digital twin for a separate 3D client (read-mostly; no transaction is ever submitted)
   - name: media
   - name: team
   - name: audit
@@ -1917,7 +1919,7 @@ paths:
               required: [farmId, kind, name]
               properties:
                 farmId: { type: string, format: uuid }
-                kind: { type: string, enum: [parcel, tree, livestock, equipment, harvest_lot, farm_share] }
+                kind: { type: string, enum: [parcel, tree, livestock, equipment, harvest_lot, farm_share, building, storage_unit, logistics_lot] }
                 name: { type: string, minLength: 1, maxLength: 200 }
                 externalRef: { type: string }
                 parcelLabel: { type: string }
@@ -2523,6 +2525,240 @@ paths:
         "200": { description: Duplicate delivery ignored }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/tenants/{tenantId}/twin/farms/{farmId}/scene:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [twin]
+      summary: A farm's digital-twin scene for a 3D client
+      description: |
+        The farm, and its assets as scene objects with their physical and chain identities. Assets
+        need `rwa:read`; without it the farm is returned and every asset layer is listed in
+        `redacted`. Ownership is not part of the scene: ask for an asset's detail.
+      operationId: getTwinScene
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 200 } }
+        - { name: cursor, in: query, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TwinScene" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/twin/assets/{assetId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: assetId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [twin]
+      summary: An asset's identities, lifecycle, on-chain ownership and data commitments
+      description: |
+        Ownership comes only from the chain (an ownership reader). Without one, each representation
+        reports `not_indexed`; the platform's own records are never shown as ownership.
+      operationId: getTwinAsset
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TwinAssetDetail" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/twin/data-commitments:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [twin]
+      summary: Data commitments, newest first
+      operationId: listDataCommitments
+      parameters:
+        - { name: subjectType, in: query, schema: { type: string, enum: [farm, asset, telemetry_window, media, record, scene_bundle] } }
+        - { name: subjectId, in: query, schema: { type: string, maxLength: 200 } }
+        - { $ref: "#/components/parameters/Limit" }
+        - { name: cursor, in: query, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/DataCommitment" } }
+                  nextCursor: { type: [string, "null"], format: uuid }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [twin]
+      summary: Record the hash of off-chain data
+      description: |
+        Records that data about a subject, under a schema version, had this SHA-256 at its source
+        time. `storageRef`, when given, must be content-addressed. Recording the same fact again
+        returns the existing commitment (200). Nothing is verified on-chain.
+      operationId: createDataCommitment
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subjectType, subjectId, schema, schemaVersion, contentSha256, sourceTime]
+              properties:
+                farmId: { type: string, format: uuid }
+                subjectType: { type: string, enum: [farm, asset, telemetry_window, media, record, scene_bundle] }
+                subjectId: { type: string, minLength: 1, maxLength: 200 }
+                schema: { type: string, pattern: "^[a-z0-9][a-z0-9._-]{0,63}$" }
+                schemaVersion: { type: integer, minimum: 1, maximum: 10000 }
+                contentSha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+                byteSize: { type: integer, minimum: 0 }
+                storageRef: { type: string, maxLength: 512, description: "sha256:<hex>, s3://bucket/…/<hex>[.ext], ipfs://<cid> or ar://<id>" }
+                sourceTime: { type: string, format: date-time }
+                attestationRef: { type: string, maxLength: 512 }
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataCommitment" }
+        "200":
+          description: Already recorded (same fact, or a resend with the same Idempotency-Key)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataCommitment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/twin/data-commitments/batches:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    post:
+      tags: [twin]
+      summary: Fix a Merkle batch of commitments
+      description: |
+        Orders the given commitments into an RFC 9162 Merkle tree (metafarm-merkle-sha256/1) and
+        stores its root. A commitment joins at most one batch. Roots are not written on-chain yet
+        (`anchor` is null).
+      operationId: createCommitmentBatch
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [dataset, commitmentIds]
+              properties:
+                dataset: { type: string, pattern: "^[a-z0-9][a-z0-9._/-]{0,99}$" }
+                commitmentIds: { type: array, minItems: 1, maxItems: 4096, items: { type: string, format: uuid } }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommitmentBatch" }
+        "200":
+          description: A resend with the same Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommitmentBatch" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/twin/data-commitments/{commitmentId}/proof:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: commitmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [twin]
+      summary: A commitment's Merkle inclusion proof, re-checked now
+      operationId: getDataCommitmentProof
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataCommitmentProof" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/twin/transfers/preview:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    post:
+      tags: [twin]
+      summary: Prepare a transfer for review (never submitted)
+      description: |
+        Checks a transfer against the chain's current holders and returns a fingerprinted preview
+        that expires. Refused (409) unless an ownership reader covers the asset and shows the sender
+        holding enough. Submission is unavailable in this release.
+      operationId: previewTwinTransfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [representationId, from, to, amount]
+              properties:
+                representationId: { type: string, format: uuid }
+                from: { type: string, pattern: "^[1-9A-HJ-NP-Za-km-z]{32,44}$" }
+                to: { type: string, pattern: "^[1-9A-HJ-NP-Za-km-z]{32,44}$" }
+                amount: { type: string, pattern: "^[1-9][0-9]{0,19}$", description: Base units (u64) }
+      responses:
+        "200":
+          description: Preview
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TransferPreview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/twin/transactions/{operationId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: operationId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [twin]
+      summary: The state of one chain operation
+      operationId: getTwinTransaction
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TwinTransaction" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/twin/sync-status:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [twin]
+      summary: Whether ownership is indexed, submission is available, and what is batched
+      operationId: getTwinSyncStatus
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TwinSyncStatus" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2614,6 +2850,225 @@ components:
       type: string
       enum: [owner, admin, manager, verifier, worker, viewer]
 
+    TwinChainIdentity:
+      type: object
+      required: [representationId, rail, network, status, chainId]
+      properties:
+        representationId: { type: string, format: uuid }
+        rail: { type: string, enum: [SOLANA_TOKEN_2022, SOLANA_BUBBLEGUM_CNFT, TRON_TRC20] }
+        network: { type: string }
+        status: { type: string }
+        chainId: { type: [string, "null"], description: "Mint (Token-2022), asset id (Bubblegum) or contract (TRC-20)" }
+    TwinObject:
+      type: object
+      required: [twinObjectId, assetId, layer, kind, name, status, geometry, physical, chain]
+      properties:
+        twinObjectId: { type: string, description: "asset:<assetId>" }
+        assetId: { type: string, format: uuid }
+        layer: { type: string, enum: [terrain, plots, crops_trees, livestock, equipment, buildings, storage, output_batches, logistics, shares] }
+        kind: { type: string, enum: [parcel, tree, livestock, equipment, harvest_lot, farm_share, building, storage_unit, logistics_lot] }
+        name: { type: string }
+        status: { type: string, enum: [draft, verified, active, suspended, retired] }
+        geometry: { type: [object, "null"], description: GeoJSON (WGS 84) }
+        physical:
+          type: object
+          required: [externalRef, parcelLabel, geomProvenance, verifiedAt]
+          properties:
+            externalRef: { type: [string, "null"] }
+            parcelLabel: { type: [string, "null"] }
+            geomProvenance: { type: [string, "null"] }
+            verifiedAt: { type: [string, "null"], format: date-time }
+        chain: { type: array, items: { $ref: "#/components/schemas/TwinChainIdentity" } }
+    TwinScene:
+      type: object
+      required: [scheme, generatedAt, farm, redacted, objects, nextCursor]
+      properties:
+        scheme: { type: string, enum: [metafarm-twin-scene/1] }
+        generatedAt: { type: string, format: date-time }
+        farm:
+          type: object
+          required: [id, name, origin, outline]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            origin:
+              type: [object, "null"]
+              required: [lon, lat]
+              properties:
+                lon: { type: number }
+                lat: { type: number }
+            outline:
+              type: [array, "null"]
+              description: Simplified outer ring of the current boundary, [lon, lat] pairs
+              items: { type: array, items: { type: number }, minItems: 2, maxItems: 2 }
+        redacted: { type: array, items: { type: string } }
+        objects: { type: array, items: { $ref: "#/components/schemas/TwinObject" } }
+        nextCursor: { type: [string, "null"], format: uuid }
+    TwinOwnership:
+      type: object
+      required: [representationId, status]
+      properties:
+        representationId: { type: string, format: uuid }
+        status: { type: string, enum: [indexed, not_indexed, not_on_chain] }
+        reason: { type: string, enum: [no_ownership_reader, not_covered, reader_unavailable] }
+        source: { type: string, enum: [chain_index, das, fixture] }
+        assurance: { type: string, enum: [inclusion_verified, indexer_reported, fixture] }
+        asOfSlot: { type: [string, "null"] }
+        holders:
+          type: array
+          items:
+            type: object
+            required: [owner, amount]
+            properties:
+              owner: { type: string }
+              amount: { type: string, description: Base units }
+    TwinAssetDetail:
+      type: object
+      required: [object, lifecycle, ownership, dataCommitments]
+      properties:
+        object: { $ref: "#/components/schemas/TwinObject" }
+        lifecycle:
+          type: array
+          items:
+            type: object
+            required: [event, at]
+            properties:
+              event: { type: string, enum: [registered, verified] }
+              at: { type: string, format: date-time }
+        ownership: { type: array, items: { $ref: "#/components/schemas/TwinOwnership" } }
+        dataCommitments: { type: array, items: { $ref: "#/components/schemas/DataCommitment" } }
+    DataCommitment:
+      type: object
+      required: [id, farmId, subjectType, subjectId, schema, schemaVersion, contentSha256, byteSize, storageRef, sourceTime, attestationRef, batch, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        farmId: { type: [string, "null"], format: uuid }
+        subjectType: { type: string, enum: [farm, asset, telemetry_window, media, record, scene_bundle] }
+        subjectId: { type: string }
+        schema: { type: string }
+        schemaVersion: { type: integer }
+        contentSha256: { type: string }
+        byteSize: { type: [integer, "null"] }
+        storageRef: { type: [string, "null"] }
+        sourceTime: { type: string, format: date-time }
+        attestationRef: { type: [string, "null"] }
+        batch:
+          type: [object, "null"]
+          required: [id, leafIndex]
+          properties:
+            id: { type: string, format: uuid }
+            leafIndex: { type: integer }
+        createdAt: { type: string, format: date-time }
+    CommitmentBatch:
+      type: object
+      required: [id, dataset, scheme, merkleRoot, leafCount, anchor, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        dataset: { type: string }
+        scheme: { type: string, enum: [metafarm-merkle-sha256/1] }
+        merkleRoot: { type: string }
+        leafCount: { type: integer }
+        anchor: { type: "null", description: On-chain anchoring is not implemented yet }
+        createdAt: { type: string, format: date-time }
+    DataCommitmentProof:
+      type: object
+      required: [commitment, state, proof, anchor]
+      properties:
+        commitment: { $ref: "#/components/schemas/DataCommitment" }
+        state:
+          type: string
+          enum: [recorded, included, anchored]
+          description: "`included` only when the proof was re-checked against the stored root just now; `anchored` is not produced yet"
+        proof:
+          type: [object, "null"]
+          required: [scheme, batchId, dataset, leaf, leafIndex, size, path, root]
+          properties:
+            scheme: { type: string }
+            batchId: { type: string, format: uuid }
+            dataset: { type: string }
+            leaf: { type: string }
+            leafIndex: { type: integer }
+            size: { type: integer }
+            path: { type: array, items: { type: string } }
+            root: { type: string }
+        checks:
+          type: object
+          required: [leavesMatchCommitments, rootMatches, inclusionVerified]
+          properties:
+            leavesMatchCommitments: { type: boolean }
+            rootMatches: { type: boolean }
+            inclusionVerified: { type: boolean }
+        anchor: { type: "null" }
+    TransferPreview:
+      type: object
+      required: [scheme, representationId, asset, from, to, amount, createdAt, expiresAt, digest, ownershipAsOfSlot, submission]
+      properties:
+        scheme: { type: string, enum: [metafarm-transfer-preview/1] }
+        representationId: { type: string, format: uuid }
+        asset:
+          type: object
+          required: [network, rail, id]
+          properties:
+            network: { type: string }
+            rail: { type: string }
+            id: { type: string }
+        from: { type: string }
+        to: { type: string }
+        amount: { type: string }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        digest: { type: string, description: SHA-256 of the canonical preview }
+        ownershipAsOfSlot: { type: [string, "null"] }
+        submission:
+          type: object
+          required: [available, reason]
+          properties:
+            available: { type: boolean, enum: [false] }
+            reason: { type: string, enum: [not_enabled, no_signer, mainnet_blocked, not_implemented] }
+    TwinTransaction:
+      type: object
+      required: [id, intentType, intentId, attempt, network, state, txRef, expiresAt, failed]
+      properties:
+        id: { type: string, format: uuid }
+        intentType: { type: string }
+        intentId: { type: string, format: uuid }
+        attempt: { type: integer }
+        network: { type: string }
+        state: { type: string }
+        txRef: { type: [string, "null"] }
+        expiresAt: { type: [string, "null"], format: date-time }
+        failed: { type: boolean }
+    TwinSyncStatus:
+      type: object
+      required: [ownership, submission, representations, dataCommitments]
+      properties:
+        ownership:
+          type: object
+          required: [status, source]
+          properties:
+            status: { type: string, enum: [configured, not_configured] }
+            source: { type: [string, "null"] }
+        submission:
+          type: object
+          required: [available, reason]
+          properties:
+            available: { type: boolean }
+            reason: { type: [string, "null"] }
+        representations:
+          type: object
+          required: [total, withChainId, active]
+          properties:
+            total: { type: integer }
+            withChainId: { type: integer }
+            active: { type: integer }
+        dataCommitments:
+          type: object
+          required: [total, batched, batches, anchoredBatches]
+          properties:
+            total: { type: integer }
+            batched: { type: integer }
+            batches: { type: integer }
+            anchoredBatches: { type: integer }
     RwaAsset:
       type: object
       required: [id, farmId, farmName, kind, name, externalRef, parcelLabel, geometry, geomProvenance, status, verifiedAt, createdAt, representations]
