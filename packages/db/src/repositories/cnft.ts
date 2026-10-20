@@ -315,16 +315,35 @@ export async function leavesToConfirm(tx: SystemTx, limit = 200): Promise<{ tena
   ).rows;
 }
 
-/** What DAS must report for a minted leaf: its asset id, tree, index and owner (the mint's holder). */
+/**
+ * What DAS must report for a minted leaf: its asset id, tree, index and owner (the mint's holder),
+ * and the leaf hash computed when the mint was prepared, which commits to the owner and metadata.
+ */
 export async function leafForConfirmation(tx: TenantTx, representationId: string) {
   return (
-    await tx.query<{ network: Network; das_asset_id: string; merkle_tree: string; leaf_index: string; owner: string; reconciliation_id: string }>(
-      `SELECT r.network, r.das_asset_id, r.merkle_tree, r.leaf_index::text, i.holder_address AS owner, i.reconciliation_id
+    await tx.query<{ network: Network; das_asset_id: string; merkle_tree: string; leaf_index: string; leaf_hash: string | null; owner: string; reconciliation_id: string }>(
+      `SELECT r.network, r.das_asset_id, r.merkle_tree, r.leaf_index::text, r.leaf_hash, i.holder_address AS owner, i.reconciliation_id
          FROM asset_representations r
          JOIN issuance_intents i ON i.tenant_id = r.tenant_id AND i.representation_id = r.id AND i.action = 'mint' AND i.status = 'completed'
         WHERE r.tenant_id = $1 AND r.id = $2 AND r.status = 'issuing' AND r.das_asset_id IS NOT NULL
         ORDER BY i.updated_at DESC LIMIT 1`,
       [tx.tenantId, representationId],
+    )
+  ).rows[0];
+}
+
+/**
+ * The leaf position a compressed mint intent holds in its tree, once an attempt has been prepared
+ * (undefined for other intents and before then). Released only when the chain shows it unused.
+ */
+export async function plannedLeafOfIntent(tx: TenantTx, intentId: string) {
+  return (
+    await tx.query<{ representation_id: string; network: Network; tree_id: string; merkle_tree: string; leaf_index: string; das_asset_id: string | null; reconciliation_id: string }>(
+      `SELECT r.id AS representation_id, r.network, i.tree_id, r.merkle_tree, r.leaf_index::text, r.das_asset_id, i.reconciliation_id
+         FROM issuance_intents i JOIN asset_representations r ON r.tenant_id = i.tenant_id AND r.id = i.representation_id
+        WHERE i.tenant_id = $1 AND i.id = $2 AND i.tree_id IS NOT NULL AND i.action = 'mint'
+          AND r.status = 'issuing' AND r.merkle_tree IS NOT NULL AND r.leaf_index IS NOT NULL`,
+      [tx.tenantId, intentId],
     )
   ).rows[0];
 }

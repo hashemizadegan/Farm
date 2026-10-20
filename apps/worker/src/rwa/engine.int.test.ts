@@ -20,6 +20,7 @@ import {
 import type { AssetIssuancePort, ChainObservation, ChainObservationPort, IssuanceRequest, PreparedTransaction, SettlementPort, SettlementTransfer } from "@metafarm/domain";
 import { createLogger } from "@metafarm/observability";
 import { rwaReconciliationSweepHandler } from "../handlers/rwa";
+import { ENGINE_TEST_LOCK_WAIT_MS, takeEngineTestLock } from "../test/engine-lock";
 import { runTick, type EngineDeps } from "./engine";
 
 const url = process.env.DATABASE_URL;
@@ -39,11 +40,14 @@ function fakeSolana() {
     prepareIssuance: async (r) => {
       prepared.push(r);
       const txRef = `sig-${randomUUID()}`;
+      own.add(txRef);
       return { network: r.network, txRef, wire: Buffer.from(txRef).toString("base64"), validity: { lastValidBlockHeight: 1_000n }, fees: { priorityFeeMicroLamports: 5n }, summary: { action: r.action } };
     },
   };
+  const own = new Set<string>();
   const observer: ChainObservationPort = {
     submit: async (p: PreparedTransaction) => {
+      if (!own.has(p.txRef)) return; // another chain's transaction (the engine drives every workspace)
       if (refuse) throw Object.assign(new Error(refuse), { definitive: true });
       sent.push(p.txRef);
       if (!fate.has(p.txRef)) fate.set(p.txRef, "pending");
@@ -66,11 +70,14 @@ function fakeTron(treasury: string) {
     prepareTransfer: async (t) => {
       transfers.push(t);
       const txRef = randomUUID().replace(/-/g, "").padEnd(64, "0");
+      own.add(txRef);
       return { network: t.network, txRef, wire: JSON.stringify({ txID: txRef }), validity: { expiresAt: new Date(Date.now() + 60_000) }, fees: { feeLimitSun: 3_000_000n, estimatedEnergy: 14_000n }, summary: { action: "trc20_transfer" } };
     },
   };
+  const own = new Set<string>();
   const observer: ChainObservationPort = {
     submit: async (p: PreparedTransaction) => {
+      if (!own.has(p.txRef)) return;
       if (!fate.has(p.txRef)) fate.set(p.txRef, "pending");
     },
     observe: async (t) => ({ status: fate.get(t.txRef) ?? "not_found", slotOrBlock: 7n }),
@@ -135,8 +142,11 @@ d("RWA execution engine", () => {
   const intentOf = async (recon: string) => (await q<{ id: string; status: string }>(`SELECT id, status FROM issuance_intents WHERE reconciliation_id = $1 ORDER BY created_at`, [recon]));
   const opsOf = async (intentId: string) => q<{ attempt: number; state: string; tx_ref: string | null; error: string | null }>(`SELECT attempt, state, tx_ref, error FROM chain_operations WHERE intent_id = $1 ORDER BY attempt`, [intentId]);
 
+  let unlock: (() => Promise<void>) | undefined;
+
   beforeAll(async () => {
     pool = createPool({ connectionString: url!, max: 4 });
+    unlock = await takeEngineTestLock(pool);
     await migrateUp(pool);
     const sfx = Math.random().toString(36).slice(2, 8);
     user = (await upsertUserBySubject(pool, { issuer: "test", subject: `eng-${sfx}` })).id;
@@ -152,9 +162,10 @@ d("RWA execution engine", () => {
         )
       ).rows[0]!.id;
     });
-  });
+  }, ENGINE_TEST_LOCK_WAIT_MS);
 
   afterAll(async () => {
+    await unlock?.();
     await pool?.end();
   });
 

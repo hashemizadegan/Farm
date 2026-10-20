@@ -9,6 +9,11 @@
  * re-sent byte for byte, and a new attempt is made only after the previous one provably expired.
  * Network and signing calls happen outside database transactions; each result is written under a
  * row lock after checking the attempt is still where it was.
+ *
+ * An attempt observed as expired or failed is not taken as proof that nothing happened on chain:
+ * before a tree is given up or a leaf position is handed to another mint, the tree is read back at
+ * finalized commitment once its blockhash can no longer land. Until that answer is definitive the
+ * work stays where it is; a position the chain shows as taken opens a reconciliation case.
  */
 import {
   activateLeaf,
@@ -39,6 +44,8 @@ import {
   issuanceContext,
   latestOperation,
   moveOperation,
+  noteOperation,
+  plannedLeafOfIntent,
   operationsToDrive,
   orderForReconciliation,
   ordersToAdvance,
@@ -67,6 +74,7 @@ import {
   type CompressedIssuancePort,
   type CompliancePolicy,
   type Network,
+  type OperationState,
   type PreparedTransaction,
   type SettlementPort,
 } from "@metafarm/domain";
@@ -179,35 +187,105 @@ async function advanceRegistrations(d: EngineDeps): Promise<number> {
 
 /**
  * Gives each planned tree one creation attempt and settles the tree from its outcome. An attempt
- * that expired or failed fails the tree (its address was a key generated for that attempt only);
- * the next registration plans a new tree.
+ * that did not succeed fails the tree only once the chain shows the tree was never created (its
+ * address was a key generated for that attempt only, so nothing else can create it later); one that
+ * landed anyway activates the tree. The next registration plans a new tree after a failure.
  */
 async function driveTrees(d: EngineDeps): Promise<number> {
   const solana = d.rails.solana;
-  if (!solana?.compressed) return 0;
+  const c = solana?.compressed;
+  if (!solana || !c) return 0;
   let n = 0;
   for (const t of await withSystem(d.pool, (tx) => treesToDrive(tx))) {
-    n += await withTenant(d.pool, t.tenant_id, async (tx) => {
-      const tree = await getMerkleTree(tx, t.id, true);
-      if (!tree || tree.network !== solana.network || (tree.status !== "planned" && tree.status !== "creating")) return 0;
-      const last = await latestOperation(tx, "tree", tree.id);
-      if (!last) {
-        if (tree.status !== "planned") return 0;
-        await createOperation(tx, "tree", tree.id, 1, tree.network);
-        return 1;
-      }
-      if (last.state === "business_completed") return (await activateMerkleTree(tx, tree.id)) ? 1 : 0;
-      if (last.state === "failed" || last.state === "expired" || last.state === "policy_rejected") return (await failMerkleTree(tx, tree.id)) ? 1 : 0;
-      return 0;
-    });
+    try {
+      n += await driveTree(d, solana.network, c, t.tenant_id, t.id);
+    } catch (err) {
+      d.log.warn({ treeId: t.id, err: (err as Error).message }, "Merkle tree step failed");
+    }
   }
   return n;
 }
 
+const UNSUCCESSFUL: ReadonlySet<OperationState> = new Set(["failed", "expired", "policy_rejected"]);
+
+async function driveTree(d: EngineDeps, network: Network, c: CompressedRail, tenantId: string, id: string): Promise<number> {
+  const seen = await withTenant(d.pool, tenantId, async (tx) => {
+    const tree = await getMerkleTree(tx, id);
+    if (!tree || tree.network !== network || (tree.status !== "planned" && tree.status !== "creating")) return undefined;
+    return { tree, last: await latestOperation(tx, "tree", id) };
+  });
+  if (!seen) return 0;
+  const { tree, last } = seen;
+
+  let action: "create" | "activate" | "fail" | undefined;
+  let note: string | undefined;
+  if (!last) action = tree.status === "planned" ? "create" : undefined;
+  else if (last.state === "business_completed") action = "activate";
+  else if (UNSUCCESSFUL.has(last.state)) {
+    if (!tree.address) action = "fail"; // never prepared: no transaction could create it
+    else {
+      const landed = await treeLanded(d, c, network, tree.address, last);
+      if (landed === undefined) return 0;
+      action = landed ? "activate" : "fail";
+      if (landed) note = `the tree exists on chain although this attempt was recorded as ${last.state}`;
+    }
+  }
+  if (!action) return 0;
+
+  return withTenant(d.pool, tenantId, async (tx) => {
+    const now = await getMerkleTree(tx, id, true);
+    const op = await latestOperation(tx, "tree", id);
+    if (!now || now.status !== tree.status || op?.id !== last?.id || op?.state !== last?.state) return 0;
+    if (action === "create") {
+      await createOperation(tx, "tree", id, 1, now.network);
+      return 1;
+    }
+    if (action === "activate") {
+      if (!(await activateMerkleTree(tx, id))) return 0;
+      if (note && last) {
+        await noteOperation(tx, last.id, note);
+        d.log.warn({ treeId: id, operationId: last.id, state: last.state }, "tree creation landed although it was not observed to");
+      }
+      return 1;
+    }
+    return (await failMerkleTree(tx, id)) ? 1 : 0;
+  });
+}
+
 /**
- * Confirms minted leaves through DAS: the indexed asset must sit in the expected tree at the
- * expected index, owned by the custodian. Until the indexer catches up nothing happens; a different
- * asset opens a reconciliation case for a person to look at.
+ * Whether a tree whose creation did not end well exists on chain: true or false once that is
+ * definitive, undefined while the transaction could still land or the chain cannot be read.
+ */
+async function treeLanded(d: EngineDeps, c: CompressedRail, network: Network, address: string, op: OperationRow): Promise<boolean | undefined> {
+  let s;
+  try {
+    s = await c.issuance.readTree(network, address);
+  } catch (err) {
+    d.log.warn({ tree: address, err: (err as Error).message }, "could not read the tree from the chain; trying again later");
+    return undefined;
+  }
+  if (s.tree) {
+    if (s.tree.creator === c.creator) return true;
+    d.log.warn({ tree: address, creator: s.tree.creator }, "the tree on chain was created by someone else; leaving it for a person");
+    return undefined;
+  }
+  if (!stillCouldLand(op, s.finalizedBlockHeight)) return false;
+  return undefined;
+}
+
+/** True while the attempt's blockhash is still valid at the finalized height, or its validity is unknown. */
+function stillCouldLand(op: OperationRow, finalizedBlockHeight: bigint): boolean {
+  if (op.signed_wire === null) return false; // never signed: nothing could land
+  if (op.last_valid_block_height === null) return true;
+  return finalizedBlockHeight <= BigInt(op.last_valid_block_height);
+}
+
+/**
+ * Confirms minted leaves through DAS: the indexed asset must be the expected asset id, in the
+ * expected tree at the expected index, owned by the custodian, and its proof (checked against the
+ * roots the tree accepts on chain) must carry the leaf hash computed when the mint was prepared,
+ * which commits to the owner and the metadata. Until the indexer catches up, or while its proof is
+ * stale, nothing happens; anything else opens a reconciliation case for a person to look at.
  */
 async function confirmLeaves(d: EngineDeps): Promise<number> {
   const solana = d.rails.solana;
@@ -220,16 +298,20 @@ async function confirmLeaves(d: EngineDeps): Promise<number> {
       if (!leaf || leaf.network !== solana.network) continue;
       const asset = await c.assets.getAsset(leaf.network, leaf.das_asset_id);
       if (!asset) continue;
-      const matches = asset.compressed && !asset.burnt && asset.tree === leaf.merkle_tree && String(asset.leafIndex) === leaf.leaf_index && asset.owner === leaf.owner;
+      const expected = { assetId: leaf.das_asset_id, tree: leaf.merkle_tree, leafIndex: leaf.leaf_index, owner: leaf.owner, leafHash: leaf.leaf_hash };
+      let observed: Record<string, string | number | null> = { assetId: asset.id, tree: asset.tree, leafIndex: asset.leafIndex, owner: asset.owner, burnt: asset.burnt ? "yes" : "no" };
+      let matches =
+        asset.id === leaf.das_asset_id && asset.compressed && !asset.burnt && asset.tree === leaf.merkle_tree && String(asset.leafIndex) === leaf.leaf_index && asset.owner === leaf.owner;
+      if (matches) {
+        // Throws while the indexer is behind the chain (stale proof): tried again next tick.
+        const proof = await c.assets.getAssetProof(leaf.network, leaf.das_asset_id);
+        const proofIndex = proof.nodeIndex - 2 ** proof.proof.length;
+        observed = { ...observed, leafHash: proof.leaf, proofTree: proof.tree, proofLeafIndex: proofIndex, root: proof.root };
+        matches = leaf.leaf_hash !== null && proof.leaf === leaf.leaf_hash && proof.tree === leaf.merkle_tree && String(proofIndex) === leaf.leaf_index;
+      }
       n += await withTenant(d.pool, ref.tenant_id, async (tx) => {
         if (matches) return (await activateLeaf(tx, ref.id)) ? 1 : 0;
-        await openReconciliationCases(tx, leaf.reconciliation_id, [
-          {
-            kind: "asset_mismatch",
-            expected: { assetId: leaf.das_asset_id, tree: leaf.merkle_tree, leafIndex: leaf.leaf_index, owner: leaf.owner },
-            observed: { assetId: asset.id, tree: asset.tree, leafIndex: asset.leafIndex, owner: asset.owner, burnt: asset.burnt ? "yes" : "no" },
-          },
-        ]);
+        await openReconciliationCases(tx, leaf.reconciliation_id, [{ kind: "asset_mismatch", expected, observed }]);
         return 0;
       });
     } catch (err) {
@@ -299,32 +381,101 @@ async function advanceOrders(d: EngineDeps): Promise<number> {
   return n;
 }
 
-/** Every live intent has exactly one live attempt; finished attempts settle the intent. */
+/**
+ * Every live intent has exactly one live attempt; finished attempts settle the intent. A compressed
+ * mint that did not succeed keeps its leaf position until the chain shows the position unused: only
+ * then is it given back (or tried again). A position the chain shows as taken ends the intent and
+ * opens a case: the leaf may exist, so it is neither minted again nor handed to another asset.
+ */
 async function driveIntents(d: EngineDeps): Promise<number> {
   let n = 0;
   for (const i of await withSystem(d.pool, (tx) => intentsToDrive(tx))) {
-    n += await withTenant(d.pool, i.tenant_id, async (tx) => {
-      const last = await latestOperation(tx, i.type, i.id);
-      const settled = { business_completed: "completed", failed: "failed", policy_rejected: "policy_rejected" } as const;
-      if (last && last.state in settled) {
-        const status = settled[last.state as keyof typeof settled];
-        await setIntentStatus(tx, i.type, i.id, status);
-        // A compressed mint that will never land gives its tree position back to the next one.
-        if (i.type === "issuance" && status !== "completed") {
-          const c = await issuanceContext(tx, i.id);
-          if (c?.tree_id) await releasePlannedLeaf(tx, c.representation_id);
-        }
-        return 0;
-      }
-      if (last && last.state !== "expired") return 0;
-      const network = await intentNetwork(tx, i.type, i.id);
-      if (!network) return 0;
-      await createOperation(tx, i.type, i.id, (last?.attempt ?? 0) + 1, network);
-      await setIntentStatus(tx, i.type, i.id, "in_progress");
-      return 1;
-    });
+    try {
+      n += await driveIntent(d, i.tenant_id, i.type, i.id);
+    } catch (err) {
+      d.log.warn({ intentId: i.id, err: (err as Error).message }, "RWA intent step failed");
+    }
   }
   return n;
+}
+
+const SETTLED = { business_completed: "completed", failed: "failed", policy_rejected: "policy_rejected" } as const;
+
+async function driveIntent(d: EngineDeps, tenantId: string, type: "issuance" | "settlement", id: string): Promise<number> {
+  const seen = await withTenant(d.pool, tenantId, async (tx) => ({
+    last: await latestOperation(tx, type, id),
+    leaf: type === "issuance" ? await plannedLeafOfIntent(tx, id) : undefined,
+  }));
+  const { last, leaf } = seen;
+
+  // A compressed mint that did not succeed: has its leaf position been used on chain?
+  let taken: { numMinted: bigint } | false = false;
+  if (last && leaf && UNSUCCESSFUL.has(last.state)) {
+    const fate = await leafFate(d, leaf, last);
+    if (fate === undefined) return 0; // not definitive yet: hold the position (and so the tree)
+    taken = fate;
+  }
+
+  return withTenant(d.pool, tenantId, async (tx) => {
+    const table = type === "issuance" ? "issuance_intents" : "settlement_intents";
+    const live = await tx.query(`SELECT 1 FROM ${table} WHERE tenant_id = $1 AND id = $2 AND status IN ('approved', 'in_progress') FOR UPDATE`, [tx.tenantId, id]);
+    if (!live.rowCount) return 0;
+    const now = await latestOperation(tx, type, id);
+    if (now?.id !== last?.id || now?.state !== last?.state) return 0;
+
+    if (taken && last && leaf) {
+      await setIntentStatus(tx, type, id, "failed");
+      await noteOperation(tx, last.id, `leaf ${leaf.leaf_index} of tree ${leaf.merkle_tree} is in use on chain although this attempt was recorded as ${last.state}`);
+      // The leaf exists on chain, so it counts toward the tree's capacity whatever a person decides.
+      await recordLeafMinted(tx, leaf.tree_id);
+      await openReconciliationCases(tx, leaf.reconciliation_id, [
+        {
+          kind: "orphan_chain_tx",
+          expected: { outcome: `not minted (attempt ${last.attempt} ${last.state})`, tree: leaf.merkle_tree, leafIndex: leaf.leaf_index, assetId: leaf.das_asset_id, txRef: last.tx_ref },
+          observed: { treeNumMinted: taken.numMinted.toString(), note: "the leaf position was used on chain; check the asset through DAS before releasing or retrying" },
+        },
+      ]);
+      d.log.warn({ intentId: id, operationId: last.id, tree: leaf.merkle_tree, leafIndex: leaf.leaf_index }, "compressed mint landed although it was not observed to; reconciliation case opened");
+      return 0;
+    }
+    if (last && last.state in SETTLED) {
+      const status = SETTLED[last.state as keyof typeof SETTLED];
+      await setIntentStatus(tx, type, id, status);
+      // Definitively unused on chain: the position goes back to the next mint into this tree.
+      if (status !== "completed" && leaf) await releasePlannedLeaf(tx, leaf.representation_id);
+      return 0;
+    }
+    if (last && last.state !== "expired") return 0;
+    const network = await intentNetwork(tx, type, id);
+    if (!network) return 0;
+    await createOperation(tx, type, id, (last?.attempt ?? 0) + 1, network);
+    await setIntentStatus(tx, type, id, "in_progress");
+    return 1;
+  });
+}
+
+/**
+ * Whether a compressed mint's leaf position was used on chain: the tree's finalized mint count is
+ * past the planned index (one mint in flight per tree, and only the platform signer may mint, so
+ * that is this mint), `false` once the position is definitively unused, undefined while unknown.
+ */
+async function leafFate(d: EngineDeps, leaf: { network: Network; merkle_tree: string; leaf_index: string }, op: OperationRow): Promise<{ numMinted: bigint } | false | undefined> {
+  const solana = d.rails.solana;
+  const c = solana?.compressed;
+  if (!c || solana.network !== leaf.network) return undefined;
+  let s;
+  try {
+    s = await c.issuance.readTree(leaf.network, leaf.merkle_tree);
+  } catch (err) {
+    d.log.warn({ tree: leaf.merkle_tree, err: (err as Error).message }, "could not read the tree from the chain; trying again later");
+    return undefined;
+  }
+  if (!s.tree) {
+    d.log.warn({ tree: leaf.merkle_tree }, "the tree of a planned leaf is not on chain; leaving it for a person");
+    return undefined;
+  }
+  if (s.tree.numMinted > BigInt(leaf.leaf_index)) return { numMinted: s.tree.numMinted };
+  return stillCouldLand(op, s.finalizedBlockHeight) ? undefined : false;
 }
 
 async function intentNetwork(tx: TenantTx, type: "issuance" | "settlement", id: string): Promise<Network | undefined> {

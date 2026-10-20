@@ -80,6 +80,18 @@ export async function createOperation(tx: TenantTx, type: OperationIntentType, i
   ).rows[0]!.id;
 }
 
+/**
+ * Adds a note to an attempt's error text without changing its state: what the engine learnt about
+ * it afterwards from the chain (for example, that it landed although it was observed as expired).
+ */
+export async function noteOperation(tx: TenantTx, id: string, note: string): Promise<void> {
+  await tx.query(
+    `UPDATE chain_operations SET error = CASE WHEN error IS NULL OR error = '' THEN $3 ELSE error || '; ' || $3 END
+      WHERE tenant_id = $1 AND id = $2 AND (error IS NULL OR position($3 in error) = 0)`,
+    [tx.tenantId, id, note],
+  );
+}
+
 /** Operations not yet finished, across workspaces. */
 export async function operationsToDrive(tx: SystemTx, limit = 500): Promise<{ tenant_id: string; id: string }[]> {
   return (

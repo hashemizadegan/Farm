@@ -131,8 +131,24 @@ export interface CompressedMintRequest {
   metadata: { name: string; symbol: string; uri: string };
 }
 
+/**
+ * A tree as the chain has it, read at finalized commitment. `finalizedBlockHeight` is read first: any
+ * transaction whose blockhash stopped being valid at or below it is reflected in `tree` if it landed,
+ * so `finalizedBlockHeight > lastValidBlockHeight` makes the answer definitive for that transaction.
+ */
+export interface CompressedTreeState {
+  finalizedBlockHeight: bigint;
+  /** Null when the tree has no Bubblegum config: its creation never landed. */
+  tree: { creator: string; numMinted: bigint; capacity: bigint } | null;
+}
+
 /** Writes Bubblegum compressed NFTs: allocates trees and appends leaves. */
 export interface CompressedIssuancePort {
+  /**
+   * Reads a tree's on-chain state. Used before treating any unsuccessful creation or mint as having
+   * never landed: an expired or unconfirmed transaction is not proof of that.
+   */
+  readTree(network: Network, merkleTree: string): Promise<CompressedTreeState>;
   prepareCreateTree(request: CreateTreeRequest): Promise<PreparedTransaction & { treeAddress: string; capacity: bigint }>;
   /**
    * The leaf index (and so the asset id) is read from the tree as it is now, so the caller must have

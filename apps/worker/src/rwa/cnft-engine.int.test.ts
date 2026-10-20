@@ -30,6 +30,7 @@ import type {
   PreparedTransaction,
 } from "@metafarm/domain";
 import { rwaReconciliationSweepHandler } from "../handlers/rwa";
+import { ENGINE_TEST_LOCK_WAIT_MS, takeEngineTestLock } from "../test/engine-lock";
 import { runTick, type EngineDeps } from "./engine";
 
 const url = process.env.DATABASE_URL;
@@ -39,59 +40,90 @@ const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const b58 = (n = 40) => Array.from({ length: n }, () => B58[Math.floor(Math.random() * B58.length)]).join("");
 
 /**
- * One scripted Solana devnet: what happens to each transaction, which trees exist with how many
- * leaves, and what DAS has indexed. A mint that lands final advances its tree, as on chain.
+ * One scripted Solana devnet: which trees exist on chain with how many leaves, what each sent
+ * transaction is observed as, and what DAS has indexed. What a transaction does on chain (a tree
+ * created, a leaf appended) happens only if it lands, which is usually when it is observed final;
+ * `leaveSentTransactions(status, { lands: true })` makes a transaction land while it is observed
+ * otherwise: a confirmation that was missed. Only this chain's own transactions are touched.
  */
 function fakeChain() {
   const fate = new Map<string, ChainObservation["status"]>();
-  /** What to do with each transaction when it is sent: land it, or leave it to the test. */
-  let onSend: ChainObservation["status"] | undefined = "final";
-  const minted = new Map<string, bigint>();
-  const mintOf = new Map<string, { tree: string }>();
+  /** What sent transactions are observed as, and whether they land on chain. */
+  let onSend: { status: ChainObservation["status"]; lands: boolean } = { status: "final", lands: true };
+  const own = new Set<string>();
+  const effects = new Map<string, () => void>();
+  const onChain = new Map<string, { creator: string; numMinted: bigint }>();
+  const leaves = new Map<string, { tree: string; leafIndex: bigint; leafHash: string }>();
   const trees: string[] = [];
   const mints: CompressedMintRequest[] = [];
   const indexed = new Map<string, CompressedAssetRecord>();
-  const prepared = (txRef: string, summary: Record<string, unknown>): PreparedTransaction => ({
-    network: "solana-devnet",
-    txRef,
-    wire: Buffer.from(txRef).toString("base64"),
-    validity: { lastValidBlockHeight: 1_000n },
-    fees: { priorityFeeMicroLamports: 1n, computeUnitLimit: 1 },
-    summary,
-  });
+  const creator = b58();
+  const knobs = {
+    /** Finalized block height: past every prepared transaction's validity (1000) unless lowered. */
+    finalizedHeight: 2_000n,
+    rpcDown: false,
+    staleProof: false,
+    /** Makes DAS's proof carry a different leaf hash. */
+    proofLeaf: undefined as string | undefined,
+  };
+  const prepared = (txRef: string, summary: Record<string, unknown>): PreparedTransaction => {
+    own.add(txRef);
+    return {
+      network: "solana-devnet",
+      txRef,
+      wire: Buffer.from(txRef).toString("base64"),
+      validity: { lastValidBlockHeight: 1_000n },
+      fees: { priorityFeeMicroLamports: 1n, computeUnitLimit: 1 },
+      summary,
+    };
+  };
   const compressed: CompressedIssuancePort = {
     prepareCreateTree: async (r) => {
       const treeAddress = b58();
       trees.push(treeAddress);
-      return {
-        ...prepared(`tree-${b58(20)}`, { action: "create_tree", tree: treeAddress }),
-        treeAddress,
-        capacity: 1n << BigInt(r.maxDepth),
-      };
+      const tx = prepared(`tree-${b58(20)}`, { action: "create_tree", tree: treeAddress });
+      effects.set(tx.txRef, () => onChain.set(treeAddress, { creator, numMinted: 0n }));
+      return { ...tx, treeAddress, capacity: 1n << BigInt(r.maxDepth) };
     },
     prepareMint: async (r) => {
+      const tree = onChain.get(r.merkleTree);
+      if (!tree) throw new Error(`tree ${r.merkleTree} has no Bubblegum config`);
       mints.push(r);
-      const leafIndex = minted.get(r.merkleTree) ?? 0n;
-      const txRef = `mint-${b58(20)}`;
-      mintOf.set(txRef, { tree: r.merkleTree });
-      return { ...prepared(txRef, { action: "mint_cnft" }), assetId: b58(), leafIndex, leafHash: b58(44) };
+      const leafIndex = tree.numMinted;
+      const tx = prepared(`mint-${b58(20)}`, { action: "mint_cnft" });
+      effects.set(tx.txRef, () => (tree.numMinted += 1n));
+      const assetId = b58();
+      const leafHash = b58(44);
+      leaves.set(assetId, { tree: r.merkleTree, leafIndex, leafHash });
+      return { ...tx, assetId, leafIndex, leafHash };
+    },
+    readTree: async (_n, merkleTree) => {
+      if (knobs.rpcDown) throw new Error("RPC unavailable");
+      const t = onChain.get(merkleTree);
+      return { finalizedBlockHeight: knobs.finalizedHeight, tree: t ? { creator: t.creator, numMinted: t.numMinted, capacity: 8n } : null };
     },
   };
   const observer: ChainObservationPort = {
     submit: async (p) => {
-      if (!fate.has(p.txRef)) fate.set(p.txRef, onSend ?? "pending");
-      const m = mintOf.get(p.txRef);
-      if (m && fate.get(p.txRef) === "final") {
-        mintOf.delete(p.txRef);
-        minted.set(m.tree, (minted.get(m.tree) ?? 0n) + 1n);
+      if (!own.has(p.txRef)) return; // another chain's transaction (the engine drives every workspace)
+      if (!fate.has(p.txRef)) {
+        fate.set(p.txRef, onSend.status);
+        if (onSend.lands) {
+          effects.get(p.txRef)?.();
+          effects.delete(p.txRef);
+        }
       }
     },
-    observe: async (t) => ({ status: fate.get(t.txRef) ?? "not_found", slotOrBlock: 99n }),
+    observe: async (t) => ({ status: (own.has(t.txRef) && fate.get(t.txRef)) || "not_found", slotOrBlock: 99n }),
   };
   const assets: CompressedAssetPort = {
     getAsset: async (_n, id) => indexed.get(id) ?? null,
-    getAssetProof: async () => {
-      throw new Error("not used");
+    getAssetProof: async (_n, id) => {
+      if (knobs.staleProof) throw new Error("no usable proof: the indexer is behind the chain");
+      const l = leaves.get(id);
+      if (!l) throw new Error("not found");
+      // Depth 3: node index = 2^3 + leaf index.
+      return { root: b58(44), proof: [b58(44), b58(44), b58(44)], leaf: knobs.proofLeaf ?? l.leafHash, nodeIndex: 8 + Number(l.leafIndex), tree: l.tree };
     },
   };
   const unused: AssetIssuancePort = {
@@ -111,7 +143,7 @@ function fakeChain() {
         compressed: {
           issuance: compressed,
           assets,
-          creator: b58(),
+          creator,
           treeShape: { maxDepth: 3, maxBufferSize: 8, canopyDepth: 0, capacity: 8 },
         },
       },
@@ -120,7 +152,10 @@ function fakeChain() {
     trees,
     mints,
     indexed,
-    leaveSentTransactions: (status: ChainObservation["status"] | undefined) => (onSend = status),
+    onChain,
+    knobs,
+    leaveSentTransactions: (status: ChainObservation["status"], o: { lands?: boolean } = {}) =>
+      (onSend = { status, lands: o.lands ?? status === "final" }),
   };
 }
 
@@ -222,7 +257,22 @@ d("compressed NFTs in the execution engine", () => {
         );
         return { rep, order: order.id, recon: order.reconciliationId };
       });
-    return { tenant, custody, q, register };
+    /** This workspace's trees, oldest first. */
+    const trees = () =>
+      q<{ id: string; status: string; address: string | null; minted_count: string }>(
+        `SELECT id, status, address, minted_count::text FROM merkle_trees WHERE tenant_id = $1 ORDER BY created_at`,
+        [],
+      );
+    const leaf = (rep: string) =>
+      q<{ status: string; tree_id: string | null; merkle_tree: string | null; leaf_index: string | null; das_asset_id: string | null; leaf_hash: string | null }>(
+        `SELECT status, tree_id, merkle_tree, leaf_index::text, das_asset_id, leaf_hash FROM asset_representations WHERE tenant_id = $1 AND id = $2`,
+        [rep],
+      ).then((r) => r[0]!);
+    const orderStatus = (order: string) =>
+      q<{ status: string }>(`SELECT status FROM rwa_orders WHERE tenant_id = $1 AND id = $2`, [order]).then((r) => r[0]!.status);
+    const mintCompleted = async (recon: string) =>
+      (await q(`SELECT 1 FROM issuance_intents WHERE tenant_id = $1 AND reconciliation_id = $2 AND status = 'completed'`, [recon])).length === 1;
+    return { tenant, custody, q, register, trees, leaf, orderStatus, mintCompleted };
   }
 
   const engine = (chain: ReturnType<typeof fakeChain>): EngineDeps => ({
@@ -242,8 +292,11 @@ d("compressed NFTs in the execution engine", () => {
     expect(await done()).toBe(true);
   }
 
+  let unlock: (() => Promise<void>) | undefined;
+
   beforeAll(async () => {
     pool = createPool({ connectionString: url!, max: 4 });
+    unlock = await takeEngineTestLock(pool);
     await migrateUp(pool);
     const sfx = randomUUID().slice(0, 8);
     creator = (
@@ -258,9 +311,10 @@ d("compressed NFTs in the execution engine", () => {
         [`cnft-eng-a-${sfx}`],
       )
     )[0]!.id;
-  });
+  }, ENGINE_TEST_LOCK_WAIT_MS);
 
   afterAll(async () => {
+    await unlock?.();
     await pool?.end();
   });
 
@@ -291,8 +345,9 @@ d("compressed NFTs in the execution engine", () => {
       )[0]!;
 
     await tickUntil(chain, async () => (await tree())?.status === "active");
-    expect(chain.trees).toHaveLength(1);
-    expect((await tree())!.address).toBe(chain.trees[0]);
+    expect(await w.trees()).toHaveLength(1);
+    expect(chain.trees).toContain((await tree())!.address);
+    const treeAddress = (await tree())!.address!;
     // The tree's creation passed the network gate only, recorded like any operation.
     const treeOps = await w.q<{ state: string }>(
       `SELECT state FROM chain_operations WHERE tenant_id = $1 AND intent_type = 'tree'`,
@@ -310,14 +365,15 @@ d("compressed NFTs in the execution engine", () => {
           )
         ).length === 1,
     );
-    expect(chain.mints).toHaveLength(1);
-    expect(chain.mints[0]).toMatchObject({
-      merkleTree: chain.trees[0],
+    const mints = chain.mints.filter((m) => m.owner === w.custody);
+    expect(mints).toHaveLength(1);
+    expect(mints[0]).toMatchObject({
+      merkleTree: treeAddress,
       owner: w.custody,
       metadata: { name: "Pistachio A-17", symbol: "TREE" },
     });
     const minted = await rep();
-    expect(minted).toMatchObject({ status: "issuing", merkle_tree: chain.trees[0], leaf_index: "0" });
+    expect(minted).toMatchObject({ status: "issuing", merkle_tree: treeAddress, leaf_index: "0" });
     expect(minted.das_asset_id).not.toBeNull();
     expect(minted.leaf_hash).not.toBeNull();
     expect((await tree())!.minted_count).toBe("1");
@@ -328,7 +384,7 @@ d("compressed NFTs in the execution engine", () => {
     chain.indexed.set(minted.das_asset_id!, {
       id: minted.das_asset_id!,
       owner: w.custody,
-      tree: chain.trees[0]!,
+      tree: treeAddress,
       leafIndex: 0,
       compressed: true,
       burnt: false,
@@ -376,7 +432,7 @@ d("compressed NFTs in the execution engine", () => {
     );
     expect(leaves.map((l) => l.leaf_index)).toEqual(["0", "1"]);
     expect(new Set(leaves.map((l) => l.merkle_tree)).size).toBe(1);
-    expect(chain.trees).toHaveLength(1);
+    expect(await w.trees()).toHaveLength(1);
   });
 
   it("fails a tree whose creation expired and plans a new one with a new address", async () => {
@@ -481,7 +537,7 @@ d("compressed NFTs in the execution engine", () => {
     chain.indexed.set(assetId, {
       id: assetId,
       owner: b58(),
-      tree: chain.trees[0]!,
+      tree: (await w.trees())[0]!.address!,
       leafIndex: 0,
       compressed: true,
       burnt: false,
@@ -517,8 +573,8 @@ d("compressed NFTs in the execution engine", () => {
           ])
         )[0]!.status === "exception",
     );
-    expect(chain.trees).toHaveLength(1);
-    expect(chain.mints).toHaveLength(0);
+    expect(await w.trees()).toHaveLength(1);
+    expect(chain.mints.filter((m) => m.owner === w.custody)).toHaveLength(0);
     const ops = await w.q<{ intent_type: string; state: string; error: string | null }>(
       `SELECT intent_type, state, error FROM chain_operations WHERE tenant_id = $1 ORDER BY created_at`,
       [],
@@ -528,5 +584,189 @@ d("compressed NFTs in the execution engine", () => {
       ["issuance", "policy_rejected"],
     ]);
     expect(ops[1]!.error).toContain("kyc_not_verified");
+  });
+  // ── A transaction that landed although it was not observed to ──────────
+
+  it("activates a tree whose creation landed although it was observed as expired, instead of replacing it", async () => {
+    const chain = fakeChain();
+    const w = await workspace();
+    const r = await w.register("Pecan 8");
+    chain.leaveSentTransactions("expired", { lands: true });
+    await tickUntil(chain, async () => (await w.trees())[0]?.status === "active");
+    const trees = await w.trees();
+    expect(trees.map((t) => t.status)).toEqual(["active"]);
+    expect(chain.onChain.has(trees[0]!.address!)).toBe(true);
+    const ops = await w.q<{ state: string; error: string | null }>(
+      `SELECT state, error FROM chain_operations WHERE tenant_id = $1 AND intent_type = 'tree'`,
+      [],
+    );
+    expect(ops).toHaveLength(1);
+    expect(ops[0]!.state).toBe("expired");
+    expect(ops[0]!.error).toContain("exists on chain");
+    // And the leaf goes into that tree.
+    chain.leaveSentTransactions("final");
+    await tickUntil(chain, () => w.mintCompleted(r.recon));
+    expect(await w.leaf(r.rep)).toMatchObject({ merkle_tree: trees[0]!.address, leaf_index: "0" });
+  });
+
+  it("keeps a tree in creation while the chain cannot say whether it was created", async () => {
+    const chain = fakeChain();
+    const w = await workspace();
+    await w.register("Pecan 9");
+    chain.leaveSentTransactions("expired");
+    chain.knobs.rpcDown = true;
+    for (let i = 0; i < 6; i++) await runTick(engine(chain));
+    expect((await w.trees()).map((t) => t.status)).toEqual(["creating"]);
+    // Readable again, but its blockhash is not yet past finalized height: it could still land.
+    chain.knobs.rpcDown = false;
+    chain.knobs.finalizedHeight = 900n;
+    for (let i = 0; i < 3; i++) await runTick(engine(chain));
+    expect((await w.trees()).map((t) => t.status)).toEqual(["creating"]);
+    // Definitive: past its validity and absent. Only now is it given up and replaced.
+    chain.knobs.finalizedHeight = 2_000n;
+    chain.leaveSentTransactions("final");
+    await tickUntil(chain, async () => (await w.trees()).map((t) => t.status).join() === "failed,active");
+  });
+
+  for (const observed of ["expired", "failed"] as const) {
+    it(`never mints again or reuses the position when a mint landed although it was observed as ${observed}`, async () => {
+      const chain = fakeChain();
+      const w = await workspace();
+      const r = await w.register(`Cherry ${observed}`);
+      await tickUntil(chain, async () => (await w.trees())[0]?.status === "active");
+      const treeAddress = (await w.trees())[0]!.address!;
+      chain.leaveSentTransactions(observed, { lands: true });
+      await tickUntil(chain, async () => (await w.orderStatus(r.order)) === "exception");
+      for (let i = 0; i < 3; i++) await runTick(engine(chain));
+
+      // Exactly one mint was signed and it is on chain; the engine did not sign another.
+      expect(chain.mints.filter((m) => m.owner === w.custody)).toHaveLength(1);
+      expect(chain.onChain.get(treeAddress)!.numMinted).toBe(1n);
+      // The position stays with this asset, and the tree counts the leaf.
+      expect(await w.leaf(r.rep)).toMatchObject({ status: "issuing", merkle_tree: treeAddress, leaf_index: "0" });
+      expect((await w.trees())[0]!.minted_count).toBe("1");
+      const cases = await w.q<{ kind: string; status: string; expected: Record<string, unknown>; observed: Record<string, unknown> }>(
+        `SELECT kind, status, expected, observed FROM reconciliation_cases WHERE tenant_id = $1 AND reconciliation_id = $2`,
+        [r.recon],
+      );
+      expect(cases.map((c) => [c.kind, c.status])).toEqual([["orphan_chain_tx", "open"]]);
+      expect(cases[0]!.expected).toMatchObject({ tree: treeAddress, leafIndex: "0" });
+      expect(cases[0]!.observed).toMatchObject({ treeNumMinted: "1" });
+      const ops = await w.q<{ state: string; error: string | null }>(
+        `SELECT o.state, o.error FROM chain_operations o JOIN issuance_intents i ON i.tenant_id = o.tenant_id AND i.id = o.intent_id
+          WHERE o.tenant_id = $1 AND i.reconciliation_id = $2`,
+        [r.recon],
+      );
+      expect(ops.map((o) => o.state)).toEqual([observed]);
+      expect(ops[0]!.error).toContain("in use on chain");
+
+      // The next registration gets the next position, not the one already used.
+      chain.leaveSentTransactions("final");
+      const next = await w.register(`Cherry ${observed} 2`);
+      await tickUntil(chain, () => w.mintCompleted(next.recon));
+      expect(await w.leaf(next.rep)).toMatchObject({ merkle_tree: treeAddress, leaf_index: "1" });
+      expect(chain.onChain.get(treeAddress)!.numMinted).toBe(2n);
+    });
+  }
+
+  it("holds a mint's position while the chain cannot say whether it landed, then tries again", async () => {
+    const chain = fakeChain();
+    const w = await workspace();
+    const r = await w.register("Apricot 10");
+    await tickUntil(chain, async () => (await w.trees())[0]?.status === "active");
+    const treeAddress = (await w.trees())[0]!.address!;
+    chain.leaveSentTransactions("expired");
+    chain.knobs.rpcDown = true;
+    const attempts = () =>
+      w.q<{ attempt: number; state: string }>(
+        `SELECT o.attempt, o.state FROM chain_operations o JOIN issuance_intents i ON i.tenant_id = o.tenant_id AND i.id = o.intent_id
+          WHERE o.tenant_id = $1 AND i.reconciliation_id = $2 ORDER BY o.attempt`,
+        [r.recon],
+      );
+    await tickUntil(chain, async () => (await attempts()).some((a) => a.state === "expired"));
+    for (let i = 0; i < 4; i++) await runTick(engine(chain));
+    expect((await attempts()).map((a) => [a.attempt, a.state])).toEqual([[1, "expired"]]);
+    expect(await w.leaf(r.rep)).toMatchObject({ status: "issuing", leaf_index: "0" });
+    expect(await w.orderStatus(r.order)).toBe("issuing");
+    // Still within its validity at finalized height: still held.
+    chain.knobs.rpcDown = false;
+    chain.knobs.finalizedHeight = 900n;
+    for (let i = 0; i < 3; i++) await runTick(engine(chain));
+    expect((await attempts()).map((a) => a.attempt)).toEqual([1]);
+    // Definitively not landed: a second attempt, at the same position, which lands.
+    chain.knobs.finalizedHeight = 2_000n;
+    chain.leaveSentTransactions("final");
+    await tickUntil(chain, () => w.mintCompleted(r.recon));
+    expect((await attempts()).map((a) => [a.attempt, a.state])).toEqual([
+      [1, "expired"],
+      [2, "business_completed"],
+    ]);
+    expect(await w.leaf(r.rep)).toMatchObject({ leaf_index: "0" });
+    expect(chain.onChain.get(treeAddress)!.numMinted).toBe(1n);
+    expect(
+      (await w.q(`SELECT 1 FROM reconciliation_cases WHERE tenant_id = $1 AND reconciliation_id = $2`, [r.recon])).length,
+    ).toBe(0);
+  });
+
+  // ── Activation checks the leaf itself, through a verified proof ────────
+
+  it("opens a case when the proof carries a different leaf hash, and waits out a stale proof", async () => {
+    const chain = fakeChain();
+    const w = await workspace();
+    const stale = await w.register("Hazel 11");
+    await tickUntil(chain, () => w.mintCompleted(stale.recon));
+    const indexAs = async (rep: string) => {
+      const l = await w.leaf(rep);
+      chain.indexed.set(l.das_asset_id!, {
+        id: l.das_asset_id!,
+        owner: w.custody,
+        tree: l.merkle_tree!,
+        leafIndex: Number(l.leaf_index),
+        compressed: true,
+        burnt: false,
+        frozen: false,
+      });
+    };
+    await indexAs(stale.rep);
+    // The indexer is behind the chain: no usable proof yet. Nothing is decided.
+    chain.knobs.staleProof = true;
+    for (let i = 0; i < 3; i++) await runTick(engine(chain));
+    expect((await w.leaf(stale.rep)).status).toBe("issuing");
+    expect((await w.q(`SELECT 1 FROM reconciliation_cases WHERE tenant_id = $1`, [])).length).toBe(0);
+    chain.knobs.staleProof = false;
+    await tickUntil(chain, async () => (await w.leaf(stale.rep)).status === "active");
+
+    // Same asset id, tree, index and owner, but the proven leaf is not the one that was minted.
+    const forged = await w.register("Hazel 12");
+    await tickUntil(chain, () => w.mintCompleted(forged.recon));
+    await indexAs(forged.rep);
+    chain.knobs.proofLeaf = b58(44);
+    for (let i = 0; i < 2; i++) await runTick(engine(chain));
+    const cases = await w.q<{ kind: string; expected: Record<string, unknown>; observed: Record<string, unknown> }>(
+      `SELECT kind, expected, observed FROM reconciliation_cases WHERE tenant_id = $1 AND reconciliation_id = $2`,
+      [forged.recon],
+    );
+    expect(cases.map((c) => c.kind)).toEqual(["asset_mismatch"]);
+    expect(cases[0]!.expected.leafHash).toBe((await w.leaf(forged.rep)).leaf_hash);
+    expect(cases[0]!.observed.leafHash).toBe(chain.knobs.proofLeaf);
+    expect((await w.leaf(forged.rep)).status).toBe("issuing");
+  });
+
+  // ── Off unless configured ───────────────────────────────────────────────
+
+  it("leaves registrations untouched when compressed NFTs are not configured", async () => {
+    const chain = fakeChain();
+    const w = await workspace();
+    const r = await w.register("Quince 13");
+    const { compressed: _off, ...solana } = chain.rails.solana;
+    const without: EngineDeps = { ...engine(chain), rails: { solana } };
+    for (let i = 0; i < 5; i++) await runTick(without);
+    expect(await w.trees()).toHaveLength(0);
+    expect((await w.q(`SELECT 1 FROM issuance_intents WHERE tenant_id = $1`, [])).length).toBe(0);
+    expect(await w.orderStatus(r.order)).toBe("issuing");
+    expect(await w.leaf(r.rep)).toMatchObject({ status: "planned", tree_id: null });
+    // No Solana rail at all: the same.
+    for (let i = 0; i < 2; i++) await runTick({ ...engine(chain), rails: {} });
+    expect(await w.trees()).toHaveLength(0);
   });
 });

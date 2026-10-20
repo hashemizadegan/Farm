@@ -4,11 +4,12 @@ import {
   railOf,
   type CompressedIssuancePort,
   type CompressedMintRequest,
+  type CompressedTreeState,
   type CreateTreeRequest,
   type Ed25519Signer,
   type Network,
 } from "@metafarm/domain";
-import { createTreeConfig, hashLeafV1, leafAssetId, mintV1, parseTreeConfig, treeConfigAddress, type CompressedMetadata } from "./bubblegum";
+import { BUBBLEGUM_PROGRAM, createTreeConfig, hashLeafV1, leafAssetId, mintV1, parseTreeConfig, treeConfigAddress, type CompressedMetadata } from "./bubblegum";
 import { ACCOUNT_COMPRESSION_PROGRAM, treeAccountSize } from "./compression";
 import { createAccount } from "./instructions";
 import { ephemeralKeypair, isSolanaAddress } from "./keys";
@@ -97,6 +98,18 @@ export class BubblegumAdapter implements CompressedIssuancePort {
       assetId: leafAssetId(r.merkleTree, leafIndex),
       leafHash: hashLeafV1({ merkleTree: r.merkleTree, leafIndex, owner: r.owner, metadata }),
     };
+  }
+
+  async readTree(network: Network, merkleTree: string): Promise<CompressedTreeState> {
+    this.checkNetwork(network);
+    if (!isSolanaAddress(merkleTree)) throw new Error("not a Solana address");
+    // Height first, so the account state read afterwards is at least as recent.
+    const finalizedBlockHeight = await this.cfg.rpc.getBlockHeight();
+    const account = await this.cfg.rpc.getAccountInfo(treeConfigAddress(merkleTree));
+    if (!account) return { finalizedBlockHeight, tree: null };
+    if (account.owner !== BUBBLEGUM_PROGRAM) throw new Error(`${treeConfigAddress(merkleTree)} is not a Bubblegum tree config`);
+    const c = parseTreeConfig(account.data);
+    return { finalizedBlockHeight, tree: { creator: c.treeCreator, numMinted: c.numMinted, capacity: c.totalMintCapacity } };
   }
 
   private checkNetwork(network: Network) {

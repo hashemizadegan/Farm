@@ -229,4 +229,25 @@ d("RWA registrations API", () => {
         .statusCode,
     ).toBe(404);
   });
+  it("refuses registrations, without touching anything, when no metadata base URL is configured", async () => {
+    const tree = await treeAsset("Fig D-4");
+    const { app: unconfigured } = await buildTestApp({ pool });
+    try {
+      const res = await unconfigured.inject({
+        method: "POST",
+        url: `/v1/tenants/${tenantId}/rwa/assets/${tree}/registrations`,
+        headers: { authorization: `Bearer ${await tokenFor(subjects.owner)}` },
+        payload: { network: "solana-devnet", partyId, solanaWallet: CUSTODY },
+      });
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toMatchObject({ error: "registrations_not_configured" });
+    } finally {
+      await unconfigured.close();
+    }
+    const after = await pool.query(
+      `SELECT count(*)::int AS n FROM asset_representations WHERE asset_id = $1 AND rail = 'SOLANA_BUBBLEGUM_CNFT'`,
+      [tree],
+    );
+    expect(after.rows[0].n).toBe(0);
+  });
 });
