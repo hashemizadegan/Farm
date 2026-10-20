@@ -32,6 +32,16 @@ namespace Metafarm.Twin.Core.Api
         public Task<DataCommitmentProof> GetCommitmentProofAsync(string commitmentId, CancellationToken cancellationToken = default) =>
             GetAsync<DataCommitmentProof>($"/data-commitments/{RequireId(commitmentId, nameof(commitmentId))}/proof", cancellationToken);
 
+        public Task<SnapshotList> ListSnapshotsAsync(string farmId, string cursor = null, int limit = 10, CancellationToken cancellationToken = default)
+        {
+            if (limit < 1 || limit > 100) throw new ArgumentOutOfRangeException(nameof(limit), "limit must be 1-100");
+            var query = $"?limit={limit}" + (cursor == null ? "" : $"&cursor={RequireId(cursor, nameof(cursor))}");
+            return GetAsync<SnapshotList>($"/farms/{RequireId(farmId, nameof(farmId))}/snapshots{query}", cancellationToken);
+        }
+
+        public Task<FarmSnapshotDocument> GetSnapshotAsync(string commitmentId, CancellationToken cancellationToken = default) =>
+            GetAsync<FarmSnapshotDocument>($"/snapshots/{RequireId(commitmentId, nameof(commitmentId))}", cancellationToken);
+
         private async Task<T> GetAsync<T>(string twinPath, CancellationToken cancellationToken)
         {
             var response = await _transport.GetAsync($"/v1/tenants/{_tenantId}/twin{twinPath}", cancellationToken).ConfigureAwait(false);

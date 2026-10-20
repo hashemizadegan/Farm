@@ -1,0 +1,99 @@
+{
+  "commitment": {
+    "id": "99999999-9999-4999-8999-999999999999",
+    "farmId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "subjectType": "farm",
+    "subjectId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "schema": "metafarm.farm-snapshot",
+    "schemaVersion": 1,
+    "contentSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "byteSize": 2048,
+    "storageRef": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "sourceTime": "2026-10-20T12:00:00.000Z",
+    "attestationRef": null,
+    "batch": null,
+    "createdAt": "2026-10-20T12:00:01.000Z"
+  },
+  "check": {
+    "ok": true,
+    "problems": []
+  },
+  "snapshot": {
+    "entities": [
+      {
+        "data": {
+          "species": "sheep",
+          "tag": "LV-7"
+        },
+        "id": "77777777-7777-4777-8777-777777777777",
+        "sha256": "588493de4790cb351c37664cc5118a9fe4248433e194f1bf270bc93d3eeaf24d",
+        "type": "animal"
+      },
+      {
+        "data": {
+          "parcelLabel": "A",
+          "season": "2026",
+          "stage": "harvest"
+        },
+        "id": "66666666-6666-4666-8666-666666666666",
+        "sha256": "b5b464a2961ab3e869279a84e3341b7750f81023879d9ef696ced08a4e248deb",
+        "type": "crop"
+      },
+      {
+        "data": {
+          "item": "Urea 46%",
+          "lot": null,
+          "quantityKg": 800
+        },
+        "id": "44444444-4444-4444-8444-444444444444",
+        "sha256": "289f53a8ebacd65b4086c6639f5ba0d4b8ec8da5c0c8673db3548142c4781f50",
+        "type": "inventory"
+      },
+      {
+        "data": {
+          "hourMeter": 4310,
+          "name": "Tractor 2 (mock)"
+        },
+        "id": "22222222-2222-4222-8222-222222222222",
+        "sha256": "657b3129cbf4bc30f4ab52e8bfdd614245b9ef5ed72b27996ad71c1a1f879557",
+        "type": "machine"
+      },
+      {
+        "data": {
+          "areaM2": 1234.5,
+          "crop": "pistachio",
+          "name": "Block A (mock)"
+        },
+        "id": "11111111-1111-4111-8111-111111111111",
+        "sha256": "56582559c2a2de2978e6217c08854dda3e1c3615e6cd004e97db973119af321b",
+        "type": "plot"
+      },
+      {
+        "data": {
+          "kind": "building",
+          "name": "Packing shed (mock)"
+        },
+        "id": "33333333-3333-4333-8333-333333333333",
+        "sha256": "61064f1cbf33615f075fe38fe2e156afe3823a2c19d4ad6ff31a68bed937b81c",
+        "type": "structure"
+      },
+      {
+        "data": {
+          "capacityT": 40,
+          "kind": "storage_unit",
+          "name": "Cold store 1 (mock)"
+        },
+        "id": "55555555-5555-4555-8555-555555555555",
+        "sha256": "57eb4c2c75c52e5d2c348a2dc41057dab7729f4638553bbb7d8d9047c3db45f4",
+        "type": "structure"
+      }
+    ],
+    "entityCount": 7,
+    "entitySchemaVersion": 1,
+    "farmId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "root": "609fb30445a023b7e4a83ec941b50e7f230c4d0db811218957185aa4f774bf89",
+    "scheme": "metafarm-farm-snapshot/1",
+    "snapshotId": "54a9b85ea4cd2f5f292d66deef768018055eadfb7f8fd17a1b3d87fc87005eac",
+    "takenAt": "2026-10-20T12:00:00.000Z"
+  }
+}

@@ -36,4 +36,11 @@ describe("client starter samples", () => {
     expect(check).toEqual({ ok: true, problems: [] });
     expect(snapshot.entityCount).toBe(7);
   });
+
+  it("snapshot-document.sample.json carries a snapshot that verifies", async () => {
+    const doc = load("snapshot-document.sample.json") as { check: { ok: boolean }; snapshot: unknown };
+    expect(doc.check.ok).toBe(true);
+    const { check } = await reconstructFarmSnapshot(JSON.stringify(doc.snapshot));
+    expect(check.ok).toBe(true);
+  });
 });

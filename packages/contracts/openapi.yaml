@@ -2759,6 +2759,78 @@ paths:
               schema: { $ref: "#/components/schemas/TwinSyncStatus" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /v1/tenants/{tenantId}/twin/farms/{farmId}/snapshots:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+    get:
+      tags: [twin]
+      summary: A farm's recorded state snapshots, newest first
+      description: For sync, a client compares the newest item with the snapshot it holds and fetches only when it changed.
+      operationId: listFarmSnapshots
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+        - { name: cursor, in: query, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/DataCommitment" } }
+                  nextCursor: { type: [string, "null"], format: uuid }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [twin]
+      summary: Record a snapshot of the farm's current state
+      description: |
+        Serialises the farm's assets, machines, crop seasons and stock as a canonical snapshot
+        (metafarm-farm-snapshot/1), stores the bytes content-addressed, and records a data commitment
+        to them. Nothing is written on-chain. Takes no body.
+      operationId: createFarmSnapshot
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FarmSnapshotRecord" }
+        "200":
+          description: A resend with the same Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FarmSnapshotRecord" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/twin/snapshots/{commitmentId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: commitmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [twin]
+      summary: A stored snapshot, re-verified on read
+      description: The bytes are checked against their SHA-256 and the snapshot is verified end to end (`check`). The ETag is the snapshotId.
+      operationId: getFarmSnapshot
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FarmSnapshotDocument" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3069,6 +3141,49 @@ components:
             batched: { type: integer }
             batches: { type: integer }
             anchoredBatches: { type: integer }
+    FarmSnapshotRecord:
+      allOf:
+        - { $ref: "#/components/schemas/DataCommitment" }
+        - type: object
+          required: [snapshotId, root, entityCount, takenAt]
+          properties:
+            snapshotId: { type: [string, "null"], description: SHA-256 of the canonical snapshot header }
+            root: { type: [string, "null"] }
+            entityCount: { type: [integer, "null"] }
+            takenAt: { type: [string, "null"], format: date-time }
+    FarmSnapshot:
+      type: object
+      required: [scheme, snapshotId, farmId, takenAt, entitySchemaVersion, entityCount, root, entities]
+      properties:
+        scheme: { type: string, enum: [metafarm-farm-snapshot/1] }
+        snapshotId: { type: string }
+        farmId: { type: string }
+        takenAt: { type: string, format: date-time }
+        entitySchemaVersion: { type: integer }
+        entityCount: { type: integer }
+        root: { type: string }
+        entities:
+          type: array
+          items:
+            type: object
+            required: [type, id, data, sha256]
+            properties:
+              type: { type: string, enum: [plot, crop, structure, inventory, machine, animal, asset] }
+              id: { type: string }
+              data: { type: object, additionalProperties: true }
+              sha256: { type: string }
+    FarmSnapshotDocument:
+      type: object
+      required: [commitment, check, snapshot]
+      properties:
+        commitment: { $ref: "#/components/schemas/DataCommitment" }
+        check:
+          type: object
+          required: [ok, problems]
+          properties:
+            ok: { type: boolean }
+            problems: { type: array, items: { type: string } }
+        snapshot: { $ref: "#/components/schemas/FarmSnapshot" }
     RwaAsset:
       type: object
       required: [id, farmId, farmName, kind, name, externalRef, parcelLabel, geometry, geomProvenance, status, verifiedAt, createdAt, representations]

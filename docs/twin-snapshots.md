@@ -1,7 +1,23 @@
 # Farm-state snapshots, content-addressed storage, anchors and unsigned intents
 
-Status: domain modules with tests (`packages/domain/src/twin/`). Nothing here is wired into the API
-or the worker yet, nothing is written on-chain, and nothing can be signed or submitted.
+Status: domain modules with tests (`packages/domain/src/twin/`). Snapshots and the content store are
+wired into the API (`apps/api/src/routes/twin-snapshots.ts`, `apps/api/src/storage/content-store.ts`);
+anchors and intents are not. Nothing is written on-chain, and nothing can be signed or submitted.
+
+## Snapshot API and client sync
+
+- `POST /v1/tenants/{t}/twin/farms/{farmId}/snapshots` (`rwa:operate`, `Idempotency-Key`): reads the
+  farm's business assets, equipment (with the latest hour-meter reading), crop seasons and on-farm stock
+  (`packages/db/src/repositories/twin-snapshot.ts`, values built as plain JSON in SQL), builds the
+  snapshot, stores its canonical bytes at `tenants/{t}/content/{sha256}` and records a data commitment
+  (`schema: metafarm.farm-snapshot`, reserved: the generic commitment endpoint refuses it). Audited.
+- `GET …/farms/{farmId}/snapshots` (`rwa:read`): commitments, newest first.
+- `GET …/snapshots/{commitmentId}` (`rwa:read`): the bytes re-hashed (409 `content_integrity_failed`
+  if they changed, 404 `snapshot_content_missing` if gone) and the snapshot verified end to end;
+  ETag = snapshotId.
+- Unchanged state gives the same `root`; the `snapshotId` differs because it covers `takenAt`.
+- The C# client's `SnapshotSync` fetches only when the newest commitment changed and keeps the new
+  snapshot only if both the server's check and its own structure check pass.
 
 ## Snapshots (`snapshot.ts`, scheme `metafarm-farm-snapshot/1`)
 
@@ -22,7 +38,7 @@ How the hashes are built:
 
 1. Entity hash = `commitToRecord("metafarm.entity.<type>", 1, data)`. This is the SHA-256 of the canonical JSON of `{scheme, schema, schemaVersion, record}`.
 2. Entities are ordered by (type, id). Their hashes are the leaves of an RFC 9162 Merkle tree (`metafarm-merkle-sha256/1`), giving `root`.
-3. `snapshotId` = SHA-256 of the canonical header `{entityCount, entitySchemaVersion, farmId, root, scheme, takenAt}`. Storing `serializeFarmSnapshot(s)` under that id makes the snapshot content-addressed.
+3. `snapshotId` = SHA-256 of the canonical header `{entityCount, entitySchemaVersion, farmId, root, scheme, takenAt}`; it names the state. The stored bytes (`serializeFarmSnapshot(s)`) are content-addressed by their own SHA-256, which the data commitment records.
 
 Rules and functions:
 
@@ -68,7 +84,6 @@ What each builder checks:
 
 ## Next steps
 
-1. API endpoints that build snapshots from the database and store them through a `ContentStore`.
-2. An S3 adapter for `ContentStore`.
-3. Anchor execution (writing roots on-chain), only behind an explicit flag, a KMS signer and review.
-4. Wallet-signed submission of intents, only after Solana wallet linking and the ownership indexer.
+1. Scheduled snapshots (worker) and batching snapshot commitments for anchoring.
+2. Anchor execution (writing roots on-chain), only behind an explicit flag, a KMS signer and review.
+3. Wallet-signed submission of intents, only after Solana wallet linking and the ownership indexer.
