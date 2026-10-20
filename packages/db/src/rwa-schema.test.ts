@@ -28,7 +28,7 @@ import {
 } from "@metafarm/domain";
 
 const read = (name: string) => readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), `../migrations/${name}`), "utf8");
-const FILES = ["0011_rwa_rails.up.sql", "0012_rwa_orders.up.sql", "0016_cnft_trees.up.sql"];
+const FILES = ["0011_rwa_rails.up.sql", "0012_rwa_orders.up.sql", "0016_cnft_trees.up.sql", "0018_cnft_leaf.up.sql"];
 const sql = FILES.map(read).join("\n");
 
 /**
@@ -81,6 +81,7 @@ describe("RWA schema matches the domain", () => {
   it.each(FILES)("%s puts every new table behind row-level security", (file) => {
     const text = read(file);
     const tables = [...text.matchAll(/^CREATE TABLE (\w+)/gm)].map((m) => m[1]);
+    if (tables.length === 0) return; // nothing new to protect
     const rls = /ARRAY\[([^\]]+)\]/.exec(text.slice(text.indexOf("ENABLE ROW LEVEL SECURITY") - 400))![1]!;
     for (const t of tables) expect(rls).toContain(`'${t}'`);
   });

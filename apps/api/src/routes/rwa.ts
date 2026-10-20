@@ -1,3 +1,4 @@
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { TOKEN_2022_PROGRAM, isSolanaAddress, isTronAddress, parseMintAccount, verifyIncomingTrc20 } from "@metafarm/chain";
 import {
@@ -33,6 +34,13 @@ import {
   type OrderRow,
   type PartyRow,
   type TenantTx,
+  createCompressedRepresentation,
+  createRegistrationOrder,
+  getRegistration,
+  listRegistrations,
+  publicCnftMetadata,
+  withSystem,
+  type RegistrationRow,
 } from "@metafarm/db";
 import {
   complianceDecision,
@@ -50,6 +58,12 @@ import {
   uuid,
   walletSchema,
   type Network,
+  ASSET_COMMITMENT_SCHEME,
+  CNFT_ASSET_KINDS,
+  cnftMetadataFor,
+  commitmentPreimage,
+  createRegistrationSchema,
+  type AssetKind,
 } from "@metafarm/domain";
 import { z } from "zod";
 import { HttpError, notFound, parse } from "../lib/http";
@@ -60,6 +74,28 @@ const orderParams = tenantParams.extend({ orderId: uuid });
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 const assetParams = tenantParams.extend({ assetId: uuid });
 const representationParams = tenantParams.extend({ representationId: uuid });
+const registrationParams = tenantParams.extend({ registrationId: uuid });
+
+const toRegistration = (r: RegistrationRow) => ({
+  id: r.id,
+  reconciliationId: r.reconciliation_id,
+  status: r.status,
+  asset: { id: r.asset_id, name: r.asset_name, kind: r.asset_kind },
+  custodian: { partyId: r.party_id, name: r.party_name, solanaWallet: r.custodian_address },
+  network: r.network,
+  leaf: {
+    representationId: r.representation_id,
+    status: r.representation_status,
+    tree: r.tree_address,
+    leafIndex: r.leaf_index,
+    assetId: r.das_asset_id,
+    leafHash: r.leaf_hash,
+    metadataUri: r.metadata_uri,
+  },
+  approvedAt: iso(r.approved_at),
+  createdAt: r.created_at.toISOString(),
+  updatedAt: r.updated_at.toISOString(),
+});
 
 const toParty = (p: PartyRow) => ({
   id: p.id,
@@ -526,4 +562,121 @@ export async function rwaRoutes(app: FastifyInstance) {
       return assetDetail(tx, (await getBusinessAsset(tx, rep.asset_id))!);
     });
   });
+
+  // ── Registrations: one-of-a-kind assets as compressed NFTs held by a custodian ──
+
+  /**
+   * Records a verified parcel, tree or animal as a compressed NFT to be minted to a custodian's
+   * screened Solana wallet. The leaf's metadata is fixed now: a name, a symbol and a URI pointing at
+   * a public document that commits to the asset record by a salted hash (no coordinates on chain).
+   */
+  app.post("/v1/tenants/:tenantId/rwa/assets/:assetId/registrations", async (req, reply) => {
+    const { assetId } = parse(assetParams, req.params);
+    const body = parse(createRegistrationSchema, req.body);
+    checkNetwork(body.network);
+    if (!isSolanaAddress(body.solanaWallet)) throw new HttpError(400, "invalid_address", "not a Solana address");
+    const base = env.RWA_CNFT_METADATA_BASE_URL;
+    if (!base) throw new HttpError(503, "registrations_not_configured", "compressed NFT registrations are not configured on this platform");
+    const out = await app.inTenant(req, "rwa:operate", async (tx) => {
+      const a = await getBusinessAsset(tx, assetId);
+      if (!a) throw notFound("asset");
+      if (!(CNFT_ASSET_KINDS as readonly string[]).includes(a.kind)) throw new HttpError(409, "not_registrable", "only parcels, trees and livestock are registered as compressed NFTs");
+      if (a.status !== "verified" && a.status !== "active") throw new HttpError(409, "asset_not_verified", "verify the asset before registering it");
+      await gate(tx, body.partyId, [{ network: body.network, address: body.solanaWallet }]);
+      const representationId = randomUUID();
+      let metadata;
+      try {
+        metadata = cnftMetadataFor({ kind: a.kind as AssetKind, name: a.name }, base, representationId);
+      } catch (err) {
+        throw new HttpError(422, "invalid_metadata", (err as Error).message);
+      }
+      const salt = randomBytes(16).toString("hex");
+      const preimage = commitmentPreimage(salt, {
+        assetId: a.id,
+        kind: a.kind as AssetKind,
+        externalRef: a.external_ref,
+        parcelLabel: a.parcel_label,
+        geometry: a.geometry,
+        geomProvenance: a.geom_provenance,
+        verifiedAt: iso(a.verified_at),
+      });
+      const commitment = { algorithm: "sha256" as const, scheme: ASSET_COMMITMENT_SCHEME, hash: createHash("sha256").update(preimage).digest("hex") };
+      let order: { id: string };
+      try {
+        await tx.query("SAVEPOINT registration");
+        await createCompressedRepresentation(tx, { id: representationId, assetId, network: body.network, metadata: { ...metadata, commitment, commitmentSalt: salt } });
+        order = await createRegistrationOrder(tx, { partyId: body.partyId, representationId, custodianSolanaAddress: body.solanaWallet, createdBy: req.user!.id });
+      } catch (err) {
+        if ((err as { code?: string }).code === "23505") throw new HttpError(409, "already_registered", "this asset is already registered on that network");
+        throw err;
+      }
+      await app.audit(req, tx, { action: "rwa.registration_created", targetType: "rwa_order", targetId: order.id, metadata: { assetId, network: body.network } });
+      return toRegistration((await getRegistration(tx, order.id))!);
+    });
+    return reply.status(201).send(out);
+  });
+
+  app.get("/v1/tenants/:tenantId/rwa/registrations", async (req) => {
+    parse(tenantParams, req.params);
+    return app.inTenant(req, "rwa:read", async (tx) => ({ items: (await listRegistrations(tx)).map(toRegistration) }));
+  });
+
+  app.get("/v1/tenants/:tenantId/rwa/registrations/:registrationId", async (req) => {
+    const { registrationId } = parse(registrationParams, req.params);
+    return app.inTenant(req, "rwa:read", async (tx) => {
+      const r = await getRegistration(tx, registrationId);
+      if (!r) throw notFound("registration");
+      return {
+        ...toRegistration(r),
+        cases: (await listCases(tx, r.reconciliation_id)).map((c) => ({
+          id: c.id,
+          kind: c.kind,
+          status: c.status,
+          expected: c.expected,
+          observed: c.observed,
+          openedAt: c.opened_at.toISOString(),
+          resolvedAt: iso(c.resolved_at),
+          resolutionNote: c.resolution_note,
+        })),
+      };
+    });
+  });
+
+  /** A second person approves the mint (four eyes); the custodian must still pass compliance. */
+  app.post("/v1/tenants/:tenantId/rwa/registrations/:registrationId/approve", async (req) => {
+    const { registrationId } = parse(registrationParams, req.params);
+    return app.inTenant(req, "rwa:operate", async (tx) => {
+      const r = await getRegistration(tx, registrationId, true);
+      if (!r) throw notFound("registration");
+      if (r.status !== "open") throw new HttpError(409, "registration_not_open", `the registration is ${r.status}`);
+      if (r.created_by === req.user!.id) throw new HttpError(403, "four_eyes", "someone other than the person who registered the asset must approve its mint");
+      checkNetwork(r.network);
+      await gate(tx, r.party_id, [{ network: r.network, address: r.custodian_address }]);
+      await approveOrder(tx, registrationId, req.user!.id, "issuing");
+      await app.audit(req, tx, { action: "rwa.registration_approved", targetType: "rwa_order", targetId: registrationId });
+      return toRegistration((await getRegistration(tx, registrationId))!);
+    });
+  });
+
+  // ── Public metadata of a compressed NFT (no sign-in): what its on-chain URI points at. ──
+  app.get(
+    "/v1/public/rwa/cnft/:representationId",
+    { config: { rateLimit: { max: 120, timeWindow: "1 minute" } } },
+    async (req, reply) => {
+      const { representationId } = parse(z.object({ representationId: uuid }), req.params);
+      const m = await withSystem(app.deps.pool, (tx) => publicCnftMetadata(tx, representationId));
+      if (!m) throw notFound("compressed NFT");
+      reply.header("cache-control", "public, max-age=300");
+      return {
+        name: m.name,
+        symbol: m.symbol,
+        description: "A one-of-a-kind farm asset. The commitment is a salted SHA-256 of the canonical asset record, disclosed by the operator on request.",
+        attributes: [
+          { trait_type: "asset_kind", value: m.kind },
+          { trait_type: "commitment", value: `${m.commitment.algorithm}:${m.commitment.hash}` },
+        ],
+        properties: { network: m.network, status: m.status, assetId: m.das_asset_id, commitment: m.commitment },
+      };
+    },
+  );
 }

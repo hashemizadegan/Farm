@@ -3,6 +3,8 @@ import type { IntentStatus, Network, OperationState } from "@metafarm/domain";
 import type { SystemTx, TenantTx } from "../tenant";
 
 export type IntentType = "issuance" | "settlement";
+/** What a chain operation carries out: an intent, or (`tree`) the creation of a Merkle tree, keyed by the tree's id. */
+export type OperationIntentType = IntentType | "tree";
 
 /** Subscriptions whose payment is verified, waiting for their shares. */
 export async function ordersAwaitingIssuance(tx: SystemTx, limit = 500): Promise<{ tenant_id: string; id: string }[]> {
@@ -43,7 +45,7 @@ export async function setIntentStatus(tx: TenantTx, type: IntentType, id: string
 
 export interface OperationRow {
   id: string;
-  intent_type: IntentType;
+  intent_type: OperationIntentType;
   intent_id: string;
   attempt: number;
   network: Network;
@@ -57,7 +59,7 @@ export interface OperationRow {
 
 const OP_SELECT = `SELECT id, intent_type, intent_id, attempt, network, state, tx_ref, signed_wire, last_valid_block_height::text, expires_at, error FROM chain_operations`;
 
-export async function latestOperation(tx: TenantTx, type: IntentType, intentId: string): Promise<OperationRow | undefined> {
+export async function latestOperation(tx: TenantTx, type: OperationIntentType, intentId: string): Promise<OperationRow | undefined> {
   return (await tx.query<OperationRow>(`${OP_SELECT} WHERE tenant_id = $1 AND intent_type = $2 AND intent_id = $3 ORDER BY attempt DESC LIMIT 1`, [tx.tenantId, type, intentId])).rows[0];
 }
 
@@ -66,7 +68,7 @@ export async function getOperation(tx: TenantTx, id: string, forUpdate = false):
   return (await tx.query<OperationRow>(`${OP_SELECT} WHERE tenant_id = $1 AND id = $2`, [tx.tenantId, id])).rows[0];
 }
 
-export async function createOperation(tx: TenantTx, type: IntentType, intentId: string, attempt: number, network: Network): Promise<string> {
+export async function createOperation(tx: TenantTx, type: OperationIntentType, intentId: string, attempt: number, network: Network): Promise<string> {
   return (
     await tx.query<{ id: string }>(`INSERT INTO chain_operations (tenant_id, intent_type, intent_id, attempt, network) VALUES ($1, $2, $3, $4, $5) RETURNING id`, [
       tx.tenantId,
@@ -152,9 +154,18 @@ export async function issuanceContext(tx: TenantTx, intentId: string) {
       network: Network;
       mint_address: string | null;
       decimals: number | null;
+      representation_id: string;
+      rail: string;
+      /** Compressed NFTs: the tree the leaf goes into, its on-chain address and state, and the leaf's fixed metadata. */
+      tree_id: string | null;
+      tree_address: string | null;
+      tree_status: string | null;
+      cnft_metadata: { name: string; symbol: string; uri: string } | null;
     }>(
-      `SELECT i.id, i.action, i.amount::text, i.holder_address, i.status, i.party_id, r.network, r.mint_address, r.decimals
+      `SELECT i.id, i.action, i.amount::text, i.holder_address, i.status, i.party_id, r.network, r.mint_address, r.decimals,
+              r.id AS representation_id, r.rail, i.tree_id, t.address AS tree_address, t.status AS tree_status, r.cnft_metadata
          FROM issuance_intents i JOIN asset_representations r ON r.tenant_id = i.tenant_id AND r.id = i.representation_id
+         LEFT JOIN merkle_trees t ON t.tenant_id = i.tenant_id AND t.id = i.tree_id
         WHERE i.tenant_id = $1 AND i.id = $2`,
       [tx.tenantId, intentId],
     )

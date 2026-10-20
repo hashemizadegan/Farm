@@ -1035,6 +1035,23 @@ paths:
               schema: { $ref: "#/components/schemas/PublicHarvest" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/public/rwa/cnft/{representationId}:
+    parameters:
+      - { name: representationId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [rwa]
+      security: []
+      summary: Public metadata of a compressed NFT (what its on-chain URI points at)
+      description: Name, symbol, asset kind and the salted commitment to the asset record. Never coordinates or the salt.
+      operationId: getPublicCnftMetadata
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicCnftMetadata" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/tenants/{tenantId}/inventory/items:
     parameters: [{ $ref: "#/components/parameters/TenantId" }]
     get:
@@ -1972,6 +1989,119 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /v1/tenants/{tenantId}/rwa/assets/{assetId}/registrations:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: assetId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Register a verified parcel, tree or animal as a compressed NFT held by a custodian
+      description: |
+        Fixes the leaf's metadata (name, symbol and a URI to its public document, which commits to
+        the asset record by a salted SHA-256; no coordinates go on chain) and opens a registration
+        that a second person must approve before anything is minted. The custodian must pass the
+        compliance gate with the given, screened Solana wallet.
+      operationId: createRwaRegistration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [network, partyId, solanaWallet]
+              properties:
+                network: { type: string, enum: [solana-devnet, solana-mainnet] }
+                partyId: { type: string, format: uuid }
+                solanaWallet: { type: string, minLength: 32, maxLength: 44 }
+      responses:
+        "201":
+          description: Registered; waiting for approval
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaRegistration" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Not a parcel, tree or animal; not verified; or already registered on that network
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Compliance checks failed, or the metadata does not fit the program's limits
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Registrations not configured (RWA_CNFT_METADATA_BASE_URL)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/tenants/{tenantId}/rwa/registrations:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [rwa]
+      summary: Registrations and the state of their compressed NFTs
+      operationId: listRwaRegistrations
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/RwaRegistration" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenantId}/rwa/registrations/{registrationId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: registrationId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [rwa]
+      summary: A registration with its reconciliation cases
+      operationId: getRwaRegistration
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaRegistrationDetail" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/rwa/registrations/{registrationId}/approve:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: registrationId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [rwa]
+      summary: Approve a registration's mint (someone other than who registered it)
+      description: The platform creates the Merkle tree if needed, then mints the leaf to the custodian. Compliance is checked again now and again at signing.
+      operationId: approveRwaRegistration
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RwaRegistration" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Not open
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Compliance checks failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /v1/tenants/{tenantId}/rwa/representations/{representationId}/mint:
     parameters:
       - { $ref: "#/components/parameters/TenantId" }
@@ -2513,6 +2643,91 @@ components:
               mintAddress: { type: [string, "null"] }
               decimals: { type: [integer, "null"] }
               createdAt: { type: string, format: date-time }
+    RwaRegistration:
+      type: object
+      required: [id, reconciliationId, status, asset, custodian, network, leaf, approvedAt, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        reconciliationId: { type: string, format: uuid }
+        status: { type: string, enum: [open, settling, issuing, completed, cancelled, exception] }
+        asset:
+          type: object
+          required: [id, name, kind]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            kind: { type: string, enum: [parcel, tree, livestock] }
+        custodian:
+          type: object
+          required: [partyId, name, solanaWallet]
+          properties:
+            partyId: { type: string, format: uuid }
+            name: { type: string }
+            solanaWallet: { type: string }
+        network: { type: string, enum: [solana-devnet, solana-mainnet] }
+        leaf:
+          type: object
+          required: [representationId, status, tree, leafIndex, assetId, leafHash, metadataUri]
+          properties:
+            representationId: { type: string, format: uuid }
+            status: { type: string, enum: [planned, issuing, active, frozen, retired] }
+            tree: { type: [string, "null"], description: Merkle tree address once the mint is prepared }
+            leafIndex: { type: [string, "null"] }
+            assetId: { type: [string, "null"], description: DAS asset id }
+            leafHash: { type: [string, "null"] }
+            metadataUri: { type: string, format: uri }
+        approvedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    RwaRegistrationDetail:
+      allOf:
+        - { $ref: "#/components/schemas/RwaRegistration" }
+        - type: object
+          required: [cases]
+          properties:
+            cases:
+              type: array
+              items:
+                type: object
+                required: [id, kind, status, expected, observed, openedAt, resolvedAt, resolutionNote]
+                properties:
+                  id: { type: string, format: uuid }
+                  kind: { type: string }
+                  status: { type: string }
+                  expected: { type: object }
+                  observed: { type: object }
+                  openedAt: { type: string, format: date-time }
+                  resolvedAt: { type: [string, "null"], format: date-time }
+                  resolutionNote: { type: [string, "null"] }
+    PublicCnftMetadata:
+      type: object
+      required: [name, symbol, description, attributes, properties]
+      properties:
+        name: { type: string }
+        symbol: { type: string }
+        description: { type: string }
+        attributes:
+          type: array
+          items:
+            type: object
+            required: [trait_type, value]
+            properties:
+              trait_type: { type: string }
+              value: { type: string }
+        properties:
+          type: object
+          required: [network, status, assetId, commitment]
+          properties:
+            network: { type: string }
+            status: { type: string }
+            assetId: { type: [string, "null"] }
+            commitment:
+              type: object
+              required: [algorithm, scheme, hash]
+              properties:
+                algorithm: { type: string, enum: [sha256] }
+                scheme: { type: string }
+                hash: { type: string, pattern: "^[0-9a-f]{64}$" }
     RwaParty:
       type: object
       required: [id, kind, displayName, jurisdiction, kyc, createdAt]

@@ -63,7 +63,8 @@ export type SettlementPurpose = (typeof SETTLEMENT_PURPOSES)[number];
 export const INTENT_STATUSES = ["requested", "policy_rejected", "approved", "in_progress", "completed", "failed", "cancelled"] as const;
 export type IntentStatus = (typeof INTENT_STATUSES)[number];
 
-export const RECONCILIATION_KINDS = ["amount_mismatch", "missing_settlement", "missing_issuance", "duplicate", "orphan_chain_tx", "stale"] as const;
+/** `asset_mismatch`: the indexed compressed NFT is not the leaf the platform minted (tree, index or owner differ). */
+export const RECONCILIATION_KINDS = ["amount_mismatch", "missing_settlement", "missing_issuance", "duplicate", "orphan_chain_tx", "stale", "asset_mismatch"] as const;
 export type ReconciliationKind = (typeof RECONCILIATION_KINDS)[number];
 
 export const RECONCILIATION_STATUSES = ["open", "investigating", "resolved", "written_off"] as const;

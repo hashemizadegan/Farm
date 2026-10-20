@@ -4,8 +4,9 @@ Status: schema, domain model and ports; Solana Token-2022 issuance, TRON TRC-20 
 observation adapters for both rails, and compressed-NFT tree planning and DAS reads (`packages/chain`),
 tested against simulated nodes. Investor orders, compliance gate, payment verification and the
 execution engine for Token-2022 and TRC-20 are wired into the API and worker (devnet/testnets only).
-Compressed NFTs have their schema and repositories (migration 0016) but are not yet driven by the
-engine or exposed by the API. Nothing has been issued on a mainnet.
+Compressed NFTs (Bubblegum V1) are driven by the engine and exposed by the API as registrations
+(migrations 0016 and 0018); they run only when a worker has a Solana signer and a DAS endpoint.
+Nothing has been issued on a mainnet.
 
 ## Decisions (October 2026)
 
@@ -127,6 +128,44 @@ Financial tables block deleting their workspace: those records must be retained.
   reads (`listOrders`, `getOrder`) and the Token-2022/TRC-20 engine sweep exclude them.
   Reconciliation covers them (`orderLegsDone` completes an order once every leg it has is done).
 
+### Registrations in the API and engine (migration `0018_cnft_leaf`)
+
+- **Bubblegum V1** for the devnet stage; V2 (freeze, soulbound, collection-level permanent
+  delegates, MPL-Core collections) is to be evaluated before production. V1 and V2 trees are not
+  interchangeable, so the choice is made before the first tree that matters.
+- `POST …/rwa/assets/{id}/registrations` (`rwa:operate`): a verified parcel, tree or animal, a
+  custodian party and its screened Solana wallet (compliance gate). The leaf's metadata is fixed
+  now and never changes (database trigger): name (≤ 32 bytes), symbol (`PARCEL`, `TREE`,
+  `LIVESTOCK`) and a URI `RWA_CNFT_METADATA_BASE_URL/v1/public/rwa/cnft/{representationId}`
+  (≤ 200 bytes). Nothing is minted yet.
+- **Metadata on chain is public forever**, so it carries no coordinates or personal data. The URI's
+  document (`GET /v1/public/rwa/cnft/{id}`, no sign-in) gives the name, kind and a **salted SHA-256
+  commitment** to the canonical asset record (`metafarm-rwa-asset/1`: id, kind, references,
+  geometry, provenance, verification time). The salt stays in the database, so the commitment
+  cannot be guessed from public facts; the operator discloses record and salt to whoever must
+  verify.
+- `POST …/registrations/{id}/approve`: someone other than its creator (four eyes); compliance runs
+  again. Then the engine, each tick:
+  1. **Tree**: if the workspace has no current tree on the network, it plans one (`planTree` with
+     `RWA_CNFT_TREE_CAPACITY`) and drives its creation as a `tree` chain operation (network gate
+     only: it credits nobody). The tree's address is a key generated for that attempt, recorded
+     with the prepared transaction; if the attempt expires or fails, the tree is marked `failed`
+     and a new tree (new key) is planned rather than reusing the address.
+  2. **Leaf**: once the tree is `active`, the leaf is put in it and its one mint intent (amount 1,
+     to the custodian) is created in the same transaction; the database allows one mint in flight
+     per tree, so other registrations wait. The prepared mint records tree, index, asset id and
+     leaf hash on the representation; the compliance gate runs again at signing.
+  3. **Final**: when the mint is final, the tree's `minted_count` is incremented in the same
+     transaction (the tree becomes `full` with its last leaf). A mint that failed or was refused
+     gives its tree position back and stops the registration (`exception`) for a person.
+  4. **DAS**: the leaf becomes `active` only when DAS reports exactly that asset id in that tree at
+     that index, owned by the custodian. Until the indexer catches up nothing happens; a different
+     asset opens an `asset_mismatch` reconciliation case and the leaf stays `issuing`.
+- The reconciliation sweep completes the registration once its mint is final.
+- **Throughput**: one current tree per workspace and one mint in flight per tree, so roughly one
+  leaf per finalisation cycle (tens of seconds). Enough for devnet; measure before scaling
+  (several active trees per workspace, or several sequential mints per transaction).
+
 ## Telemetry rollups (migration `0017_telemetry_rollups`)
 
 - **`iot_telemetry_hourly`**: hourly count/avg/min/max per tenant, farm, sensor, metric and unit
@@ -210,8 +249,8 @@ requested → policy_approved → prepared → submitted → observed → confir
 
 ## Next
 
-1. Drive trees and registrations in the engine and expose them in the API: plan and create a tree
-   per tenant (`planTree`), mint one leaf per verified tree, parcel or animal, confirm it through DAS.
+1. Devnet acceptance of registrations (signer, DAS endpoint, a funded devnet key), then measure
+   throughput. Decide Bubblegum V1 or V2 before production.
 2. Run CI against a TimescaleDB + PostGIS image so the hypertable, continuous aggregate and
    retention paths are tested; verify and close the chunk-privilege risk above.
 3. A KMS/HSM signer (Ed25519 and secp256k1) and a `CompliancePort` adapter for a KYC/sanctions
