@@ -67,7 +67,10 @@ d("fault injection against the compressed-NFT engine", () => {
       (await q<{ status: string; merkle_tree: string | null; leaf_index: string | null; das_asset_id: string | null }>(`SELECT status, merkle_tree, leaf_index::text, das_asset_id FROM asset_representations WHERE tenant_id = $1 AND id = $2`, [rep]))[0]!;
     const cases = (recon: string) => q<{ kind: string; status: string }>(`SELECT kind, status FROM reconciliation_cases WHERE tenant_id = $1 AND reconciliation_id = $2`, [recon]);
     const intent = async (recon: string) => (await q<{ status: string }>(`SELECT status FROM issuance_intents WHERE tenant_id = $1 AND reconciliation_id = $2`, [recon]))[0]?.status;
-    return { custody, register, leaf, cases, intent, q };
+    /** Signatures of this registration's mint attempts (known once an attempt is prepared). */
+    const mintTxRefs = async (recon: string) =>
+      (await q<{ tx_ref: string }>(`SELECT o.tx_ref FROM chain_operations o JOIN issuance_intents i ON i.tenant_id = o.tenant_id AND i.id = o.intent_id WHERE o.tenant_id = $1 AND i.reconciliation_id = $2 AND o.tx_ref IS NOT NULL`, [recon])).map((r) => r.tx_ref);
+    return { custody, register, leaf, cases, intent, mintTxRefs, q };
   }
 
   const deps = (rails: Rails): EngineDeps => ({ pool, rails, policy: { screeningMaxAgeDays: 30, blockedJurisdictions: [] }, mainnetEnabled: false, now: () => new Date(), log });
@@ -75,8 +78,11 @@ d("fault injection against the compressed-NFT engine", () => {
   const faulty = (chain: FakeChain, o: { observer?: ChainObservationPort; assets?: CompressedAssetPort }): Rails => ({
     solana: { ...chain.rails.solana, observer: o.observer ?? chain.rails.solana.observer, compressed: { ...chain.rails.solana.compressed, assets: o.assets ?? chain.rails.solana.compressed.assets } },
   });
-  async function tickUntil(rails: Rails, done: () => Promise<boolean>, max = 80) {
-    for (let i = 0; i < max && !(await done()); i++) await runTick(deps(rails));
+  async function tickUntil(rails: Rails, done: () => Promise<boolean>, max = 80, beforeTick?: () => Promise<void>) {
+    for (let i = 0; i < max && !(await done()); i++) {
+      await beforeTick?.();
+      await runTick(deps(rails));
+    }
     expect(await done()).toBe(true);
   }
 
@@ -98,9 +104,13 @@ d("fault injection against the compressed-NFT engine", () => {
     const chain = fakeChain(); // honest: every transaction lands and is observed final
     const w = await workspace();
     const r = await w.register("Fault F1");
-    const observer = withExpiredObservations(chain.rails.solana.observer, firstTransactions(1, (tx) => tx.startsWith("mint-")));
+    // Only this registration's first mint attempt: the engine drives every workspace in the database.
+    const ours = new Set<string>();
+    const observer = withExpiredObservations(chain.rails.solana.observer, firstTransactions(1, (tx) => ours.has(tx)));
     const rails = faulty(chain, { observer });
-    await tickUntil(rails, async () => (await w.intent(r.recon)) === "failed");
+    await tickUntil(rails, async () => (await w.intent(r.recon)) === "failed", 80, async () => {
+      for (const t of await w.mintTxRefs(r.recon)) ours.add(t);
+    });
     for (let i = 0; i < 3; i++) await runTick(deps(rails));
 
     expect(observer.misreported.size).toBe(1);
