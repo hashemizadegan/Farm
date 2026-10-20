@@ -67,14 +67,17 @@ Full list with local defaults: `.env.example`. Required when deployed:
 
 | Variable | Services | Notes |
 | --- | --- | --- |
-| `RWA_SOLANA_RPC_URL`, `RWA_SOLANA_NETWORK` | api, worker | Solana JSON-RPC endpoint; `solana-devnet` |
+| `RWA_SOLANA_RPC_URL` | api, worker (**sealed** when the URL holds a provider key) | Solana JSON-RPC endpoint; the worker checks its cluster at startup (below) |
+| `RWA_SOLANA_NETWORK` | api, worker | `solana-devnet`; a label only, never trusted by itself |
 | `RWA_SOLANA_ISSUER` | api, worker | The signer's public address; the worker refuses to start if it does not match the key |
 | `RWA_SOLANA_SIGNER_SECRET` | worker (**sealed**) | Devnet key (base58, Solana CLI format); refused when mainnets are enabled |
-| `RWA_SOLANA_DAS_URL` | worker | A DAS-capable devnet endpoint (the public devnet RPC does not serve DAS); turns on compressed NFTs |
+| `RWA_SOLANA_DAS_URL` | worker (**sealed** when the URL holds a provider key) | A DAS-capable devnet endpoint (the public devnet RPC does not serve DAS); turns on compressed NFTs once its cluster is verified |
 | `RWA_CNFT_TREE_CAPACITY` | worker | Leaves per new tree (default 16 384; rounded up to a power of two) |
 | `RWA_CNFT_METADATA_BASE_URL` | api | The API's public URL; leaf URIs are `<base>/v1/public/rwa/cnft/<id>` and must fit in 200 bytes |
 | `RWA_TRON_API_URL`, `RWA_TRON_API_KEY`, `RWA_TRON_NETWORK`, `RWA_TRON_TREASURY` | api, worker | TRON full node (e.g. Nile) and the treasury address |
 | `RWA_TRON_SIGNER_PRIVATE_KEY` | worker (**sealed**) | Testnet treasury key; must match `RWA_TRON_TREASURY` |
+
+**Solana cluster check.** A Solana key works on every cluster, so the network label is not trusted by itself. At startup, before any Solana rail exists or anything is signed, the worker asks the RPC endpoint (and the DAS endpoint, when set) for `getGenesisHash` and compares it with the published hash of `RWA_SOLANA_NETWORK`. It fails closed: another cluster or a non-Solana answer stops the worker (`refusing to start: …`, so the deploy fails and the previous one keeps running); an endpoint that cannot be reached (error, timeout, HTTP error; three attempts) leaves Solana execution off (RPC) or compressed NFTs off (DAS) until the worker restarts, and logs an error. Logs and errors name endpoints by scheme and host only; never paste a full RPC or DAS URL into logs, tickets or chat.
 
 `NEXT_PUBLIC_*` values are inlined into the browser bundle at build time. Railway exposes service variables to a Docker build only when the Dockerfile declares them with `ARG`; the root `Dockerfile` does this for every `NEXT_PUBLIC_*` value. Changing one requires a rebuild.
 

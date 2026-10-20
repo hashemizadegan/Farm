@@ -164,7 +164,8 @@ const telemetry = env.MQTT_URL
     )
   : undefined;
 
-const rwaEngine = startRwaEngine(env, pool, logger);
+// Awaited: Solana endpoints prove their cluster before any rail exists, and a wrong cluster stops the worker.
+const rwaEngine = await startRwaEngine(env, pool, logger);
 
 shutdown.register({ name: "postgres", close: () => pool.end() });
 shutdown.register({ name: "redis", close: async () => void (await connection.quit()) });

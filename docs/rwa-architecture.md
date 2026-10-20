@@ -71,6 +71,13 @@ Financial tables block deleting their workspace: those records must be retained.
   `RWA_TRON_TREASURY`, amount) with a successful receipt and the token's Transfer event. It is
   verified outside the database transaction, then recorded under a lock after re-running the gate.
   A payment counts for one order only (unique per network).
+- **Solana cluster identity**: `RWA_SOLANA_NETWORK` is a label, not proof. Before the worker builds
+  any Solana rail, the RPC endpoint must return the configured cluster's genesis hash
+  (`getGenesisHash`, checked against `SOLANA_GENESIS_HASHES` in `packages/chain`, from Anza's
+  published cluster list), and the DAS endpoint must too before compressed NFTs are turned on. A
+  wrong cluster or a non-Solana answer stops the worker; an unreachable endpoint leaves that rail off.
+  The engine starts only after the checks, so nothing is signed while they are pending. RPC and DAS
+  URLs that hold provider credentials are sealed secrets; logs name endpoints by scheme and host only.
 - The worker's reconciliation sweep (with the scheduled sweeps) opens cases, stops an order
   (`exception`) on amount mismatches, duplicates, a second leg without the first, or orphan chain
   transactions, and completes an order whose legs are done with nothing wrong.
