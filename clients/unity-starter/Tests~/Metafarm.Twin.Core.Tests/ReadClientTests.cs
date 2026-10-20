@@ -23,6 +23,9 @@ namespace Metafarm.Twin.Core.Tests
             Assert.Null(scene.Objects[3].Geometry);
             Assert.Null(scene.NextCursor);
             Assert.Equal(5, scene.Farm.Outline.Count);
+            // Timestamps come through exactly as sent, not re-formatted by the JSON library.
+            Assert.Equal("2026-10-20T19:00:00.000Z", scene.GeneratedAt);
+            Assert.Equal("2026-10-01T08:00:00.000Z", plot.Physical.VerifiedAt);
         }
 
         [Fact]

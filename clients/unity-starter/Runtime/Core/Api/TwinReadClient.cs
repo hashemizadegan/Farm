@@ -38,11 +38,11 @@ namespace Metafarm.Twin.Core.Api
             if (!response.IsSuccess)
             {
                 ApiError error = null;
-                try { error = JsonConvert.DeserializeObject<ApiError>(response.Body ?? ""); }
+                try { error = TwinJson.Deserialize<ApiError>(response.Body ?? ""); }
                 catch (JsonException) { }
                 throw new TwinApiException(response.Status, error, $"request failed ({response.Status})");
             }
-            return JsonConvert.DeserializeObject<T>(response.Body);
+            return TwinJson.Deserialize<T>(response.Body);
         }
 
         /// <summary>Ids are UUIDs; anything else is refused before it reaches a URL.</summary>
