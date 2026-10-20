@@ -23,6 +23,7 @@ import { exportRoutes } from "./routes/exports";
 import { reportRoutes } from "./routes/reports";
 import { rwaRoutes } from "./routes/rwa";
 import { twinRoutes } from "./routes/twin";
+import { twinSnapshotRoutes } from "./routes/twin-snapshots";
 
 export interface BuildOptions {
   deps: Deps;
@@ -87,6 +88,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(rwaRoutes);
   await app.register(chainRoutes);
   await app.register(twinRoutes);
+  await app.register(twinSnapshotRoutes);
 
   return app;
 }

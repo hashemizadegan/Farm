@@ -40,6 +40,7 @@ import {
   DATA_SUBJECT_TYPES,
   MERKLE_SCHEME,
   RAILS,
+  SNAPSHOT_COMMITMENT_SCHEMA,
   TWIN_LAYERS,
   TWIN_SCENE_SCHEME,
   TransferRefused,
@@ -105,7 +106,7 @@ function toObject(a: BusinessAssetRow, chain: TwinChainRow[]) {
   };
 }
 
-function toCommitment(r: DataCommitmentRow) {
+export function toCommitment(r: DataCommitmentRow) {
   return {
     id: r.id,
     farmId: r.farm_id,
@@ -208,6 +209,7 @@ export async function twinRoutes(app: FastifyInstance) {
   app.post("/v1/tenants/:tenantId/twin/data-commitments", async (req, reply) => {
     parse(tenantParams, req.params);
     const body = parse(createDataCommitmentSchema, req.body);
+    if (body.schema === SNAPSHOT_COMMITMENT_SCHEMA) throw new HttpError(400, "reserved_schema", "snapshot commitments are recorded by the snapshot endpoint");
     if (body.storageRef) {
       const ref = checkStorageRef(body.storageRef, body.contentSha256);
       if ("error" in ref) throw new HttpError(400, "storage_ref_not_content_addressed", ref.error);
