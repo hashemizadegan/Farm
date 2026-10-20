@@ -64,7 +64,7 @@ const app = await buildApp({
       env.CHAIN_RPC_URL && env.HARVEST_REGISTRY_ADDRESS ? createHarvestChainReader(env.CHAIN_RPC_URL, env.HARVEST_REGISTRY_ADDRESS) : undefined,
     tron: env.RWA_TRON_API_URL ? httpTron(env.RWA_TRON_API_URL, { apiKey: env.RWA_TRON_API_KEY }) : undefined,
     solanaRpc: env.RWA_SOLANA_RPC_URL ? httpSolanaRpc(env.RWA_SOLANA_RPC_URL) : undefined,
-    solanaCluster: env.RWA_SOLANA_RPC_URL ? solanaClusterCheck({ url: env.RWA_SOLANA_RPC_URL, network: env.RWA_SOLANA_NETWORK }) : undefined,
+    solanaCluster: env.RWA_SOLANA_RPC_URL ? solanaClusterCheck(() => ({ url: env.RWA_SOLANA_RPC_URL!, network: env.RWA_SOLANA_NETWORK })) : undefined,
   },
   isDraining: () => shutdown.isShuttingDown,
   docs: apiDocsEnabled(env),
