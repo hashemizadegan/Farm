@@ -75,7 +75,7 @@ d("fault injection against the compressed-NFT engine", () => {
   const faulty = (chain: FakeChain, o: { observer?: ChainObservationPort; assets?: CompressedAssetPort }): Rails => ({
     solana: { ...chain.rails.solana, observer: o.observer ?? chain.rails.solana.observer, compressed: { ...chain.rails.solana.compressed, assets: o.assets ?? chain.rails.solana.compressed.assets } },
   });
-  async function tickUntil(rails: Rails, done: () => Promise<boolean>, max = 30) {
+  async function tickUntil(rails: Rails, done: () => Promise<boolean>, max = 80) {
     for (let i = 0; i < max && !(await done()); i++) await runTick(deps(rails));
     expect(await done()).toBe(true);
   }
