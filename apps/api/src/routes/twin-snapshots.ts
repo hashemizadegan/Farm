@@ -33,14 +33,14 @@ export async function twinSnapshotRoutes(app: FastifyInstance) {
         const seen = await findDataCommitmentByRequest(tx, key);
         if (seen) {
           if (seen.subject_type !== "farm" || seen.subject_id !== farmId || seen.data_schema !== SNAPSHOT_COMMITMENT_SCHEMA || seen.recorded_by !== req.user!.id) throw keyReused();
-          return { replay: seen };
+          return { kind: "replay" as const, row: seen };
         }
       }
       const farm = await getFarm(tx, farmId);
       if (!farm) throw notFound("farm");
-      return { entities: await farmSnapshotEntities(tx, farmId) };
+      return { kind: "build" as const, entities: await farmSnapshotEntities(tx, farmId) };
     });
-    if ("replay" in read) return reply.status(200).send(await summary(tenantId, read.replay));
+    if (read.kind === "replay") return reply.status(200).send(await summary(tenantId, read.row));
     if (read.entities.length === 0) throw new HttpError(409, "nothing_to_snapshot", "the farm has no assets, machines, seasons or stock yet");
 
     const takenAt = app.deps.now();
