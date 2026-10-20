@@ -2109,7 +2109,7 @@ paths:
     post:
       tags: [rwa]
       summary: Link an existing Token-2022 mint, checked on chain
-      description: The account must be an initialised Token-2022 mint whose mint authority is the platform's issuer (RWA_SOLANA_ISSUER).
+      description: The platform's Solana RPC must first prove (getGenesisHash) that it serves RWA_SOLANA_NETWORK. The account must then be an initialised Token-2022 mint whose mint authority is the platform's issuer (RWA_SOLANA_ISSUER).
       operationId: linkRwaMint
       requestBody:
         required: true
@@ -2135,12 +2135,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "422":
-          description: Not a Token-2022 mint controlled by the platform's issuer
+          description: Not a Token-2022 mint controlled by the platform's issuer, or the platform's RPC serves another cluster (solana_cluster_mismatch)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "503":
-          description: Issuance not configured
+          description: Issuance not configured, or the platform's RPC could not be verified (solana_rpc_unavailable)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
