@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assetTone, explorerUrl, isTestnet, leafTone, registrationTone, shortAddress } from "./rwa";
+import { allPages, assetTone, explorerUrl, isTestnet, leafTone, registrationTone, shortAddress } from "./rwa";
 
 const ADDR = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
 
@@ -34,5 +34,22 @@ describe("RWA display helpers", () => {
     expect(isTestnet("solana-devnet")).toBe(true);
     expect(isTestnet("tron-nile")).toBe(true);
     expect(isTestnet("solana-mainnet")).toBe(false);
+  });
+});
+
+describe("allPages", () => {
+  const pages: Record<string, { items: number[]; nextCursor: string | null }> = {
+    start: { items: [1, 2], nextCursor: "a" },
+    a: { items: [3, 4], nextCursor: "b" },
+    b: { items: [5], nextCursor: null },
+  };
+  const fetchPage = async (cursor: string | undefined) => pages[cursor ?? "start"]!;
+
+  it("follows the cursor to the last page", async () => {
+    expect(await allPages(fetchPage)).toEqual({ items: [1, 2, 3, 4, 5], truncated: false });
+  });
+
+  it("stops at the page limit and says the list is incomplete", async () => {
+    expect(await allPages(fetchPage, 2)).toEqual({ items: [1, 2, 3, 4], truncated: true });
   });
 });

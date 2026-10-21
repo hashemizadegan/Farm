@@ -67,8 +67,25 @@ import {
 } from "@metafarm/domain";
 import { z } from "zod";
 import { HttpError, notFound, parse } from "../lib/http";
+import { InvalidCursorError, toPage, type PageRequest } from "@metafarm/db";
 
 const tenantParams = z.object({ tenantId: uuid });
+/** List pages: `cursor` is the `nextCursor` of the previous page (the id of its last item). */
+const listQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).default(100), cursor: uuid.optional() }).strict();
+
+/** One page of a list, newest-first or by name as the repository orders it. An unknown cursor is a 400. */
+async function pageOf<T extends { id: string }, R>(query: unknown, load: (page: PageRequest) => Promise<T[]>, map: (rows: T[]) => R[] | Promise<R[]>): Promise<{ items: R[]; nextCursor: string | null }> {
+  const q = parse(listQuery, query);
+  let rows: T[];
+  try {
+    rows = await load({ limit: q.limit, after: q.cursor });
+  } catch (e) {
+    if (e instanceof InvalidCursorError) throw new HttpError(400, "invalid_cursor", "the cursor does not name an item of this list");
+    throw e;
+  }
+  const page = toPage(rows, q.limit);
+  return { items: await map(page.rows), nextCursor: page.nextCursor };
+}
 const partyParams = tenantParams.extend({ partyId: uuid });
 const orderParams = tenantParams.extend({ orderId: uuid });
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
@@ -179,7 +196,7 @@ export async function rwaRoutes(app: FastifyInstance) {
 
   app.get("/v1/tenants/:tenantId/rwa/parties", async (req) => {
     parse(tenantParams, req.params);
-    return app.inTenant(req, "rwa:read", async (tx) => ({ items: (await listParties(tx)).map(toParty) }));
+    return app.inTenant(req, "rwa:read", (tx) => pageOf(req.query, (p) => listParties(tx, p), (rows) => rows.map(toParty)));
   });
 
   app.post("/v1/tenants/:tenantId/rwa/parties", async (req, reply) => {
@@ -300,7 +317,7 @@ export async function rwaRoutes(app: FastifyInstance) {
 
   app.get("/v1/tenants/:tenantId/rwa/orders", async (req) => {
     parse(tenantParams, req.params);
-    return app.inTenant(req, "rwa:read", async (tx) => ({ items: (await listOrders(tx)).map(toOrder) }));
+    return app.inTenant(req, "rwa:read", (tx) => pageOf(req.query, (p) => listOrders(tx, p), (rows) => rows.map(toOrder)));
   });
 
   app.get("/v1/tenants/:tenantId/rwa/orders/:orderId", async (req) => {
@@ -459,7 +476,7 @@ export async function rwaRoutes(app: FastifyInstance) {
 
   app.get("/v1/tenants/:tenantId/rwa/assets", async (req) => {
     parse(tenantParams, req.params);
-    return app.inTenant(req, "rwa:read", async (tx) => ({ items: await Promise.all((await listBusinessAssets(tx)).map((a) => assetDetail(tx, a))) }));
+    return app.inTenant(req, "rwa:read", (tx) => pageOf(req.query, (p) => listBusinessAssets(tx, p), (rows) => Promise.all(rows.map((a) => assetDetail(tx, a)))));
   });
 
   app.post("/v1/tenants/:tenantId/rwa/assets", async (req, reply) => {
@@ -629,7 +646,7 @@ export async function rwaRoutes(app: FastifyInstance) {
 
   app.get("/v1/tenants/:tenantId/rwa/registrations", async (req) => {
     parse(tenantParams, req.params);
-    return app.inTenant(req, "rwa:read", async (tx) => ({ items: (await listRegistrations(tx)).map(toRegistration) }));
+    return app.inTenant(req, "rwa:read", (tx) => pageOf(req.query, (p) => listRegistrations(tx, p), (rows) => rows.map(toRegistration)));
   });
 
   app.get("/v1/tenants/:tenantId/rwa/registrations/:registrationId", async (req) => {

@@ -1751,6 +1751,9 @@ paths:
       tags: [rwa]
       summary: Investors (parties)
       operationId: listRwaParties
+      parameters:
+        - { $ref: "#/components/parameters/RwaListLimit" }
+        - { $ref: "#/components/parameters/RwaListCursor" }
       responses:
         "200":
           description: OK
@@ -1758,9 +1761,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, nextCursor]
                 properties:
                   items: { type: array, items: { $ref: "#/components/schemas/RwaParty" } }
+                  nextCursor: { type: [string, "null"], format: uuid, description: "Pass as `cursor` for the next page; null on the last page." }
+        "400": { $ref: "#/components/responses/BadRequest" }
     post:
       tags: [rwa]
       summary: Register an investor
@@ -1905,6 +1910,9 @@ paths:
       tags: [rwa]
       summary: Real-world assets and their share tokens
       operationId: listRwaAssets
+      parameters:
+        - { $ref: "#/components/parameters/RwaListLimit" }
+        - { $ref: "#/components/parameters/RwaListCursor" }
       responses:
         "200":
           description: OK
@@ -1912,9 +1920,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, nextCursor]
                 properties:
                   items: { type: array, items: { $ref: "#/components/schemas/RwaAsset" } }
+                  nextCursor: { type: [string, "null"], format: uuid, description: "Pass as `cursor` for the next page; null on the last page." }
+        "400": { $ref: "#/components/responses/BadRequest" }
     post:
       tags: [rwa]
       summary: Register a real-world asset (draft until a second person verifies it)
@@ -2057,6 +2067,9 @@ paths:
       tags: [rwa]
       summary: Registrations and the state of their compressed NFTs
       operationId: listRwaRegistrations
+      parameters:
+        - { $ref: "#/components/parameters/RwaListLimit" }
+        - { $ref: "#/components/parameters/RwaListCursor" }
       responses:
         "200":
           description: OK
@@ -2064,9 +2077,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, nextCursor]
                 properties:
                   items: { type: array, items: { $ref: "#/components/schemas/RwaRegistration" } }
+                  nextCursor: { type: [string, "null"], format: uuid, description: "Pass as `cursor` for the next page; null on the last page." }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
   /v1/tenants/{tenantId}/rwa/registrations/{registrationId}:
@@ -2163,6 +2178,9 @@ paths:
       tags: [rwa]
       summary: Orders
       operationId: listRwaOrders
+      parameters:
+        - { $ref: "#/components/parameters/RwaListLimit" }
+        - { $ref: "#/components/parameters/RwaListCursor" }
       responses:
         "200":
           description: OK
@@ -2170,9 +2188,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, nextCursor]
                 properties:
                   items: { type: array, items: { $ref: "#/components/schemas/RwaOrder" } }
+                  nextCursor: { type: [string, "null"], format: uuid, description: "Pass as `cursor` for the next page; null on the last page." }
+        "400": { $ref: "#/components/responses/BadRequest" }
     post:
       tags: [rwa]
       summary: Place an order (passes the compliance gate)
@@ -2965,6 +2985,16 @@ components:
       name: limit
       in: query
       schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    RwaListLimit:
+      name: limit
+      in: query
+      description: Items per page.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+    RwaListCursor:
+      name: cursor
+      in: query
+      description: The `nextCursor` of the previous page. An id that is not an item of this list is refused (400 invalid_cursor).
+      schema: { type: string, format: uuid }
     Cursor:
       name: cursor
       in: query

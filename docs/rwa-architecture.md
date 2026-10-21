@@ -64,6 +64,13 @@ Financial tables block deleting their workspace: those records must be retained.
   screenings; owners and admins).
 - `POST /v1/tenants/{id}/rwa/parties`, `…/{partyId}/kyc`, `…/wallets` (address checked for its
   rail), `…/screenings`; `GET` returns wallets, the screening log and the current compliance decision.
+- **Lists are paged**: `GET …/rwa/parties`, `…/assets`, `…/registrations` and `…/orders` return
+  `{ items, nextCursor }`, at most `limit` items (1–100, default 100). Pass `nextCursor` back as
+  `cursor` for the next page; it is null on the last page. Pages are keyset pages (parties by name
+  then id; the others newest first, then id), so they never repeat or skip an item, including equal
+  names or times. A cursor that is not an item of that list in this tenant is refused (400
+  `invalid_cursor`) rather than answered with an empty page. The web `/rwa` page reads up to 20 pages
+  per list and says so if a list is longer. Tests: `apps/api/src/rwa-pagination.int.test.ts`.
 - `POST /v1/tenants/{id}/rwa/orders` runs the gate on the investor and both wallets (422
   `compliance_blocked` with reasons) and refuses mainnets unless `RWA_MAINNET_ENABLED`.
 - `POST …/orders/{orderId}/payments {txId}`: the investor's subscription payment is accepted only

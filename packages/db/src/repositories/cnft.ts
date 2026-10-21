@@ -6,6 +6,7 @@
  */
 import type { Network, OrderStatus, TreeStatus } from "@metafarm/domain";
 import type { SystemTx, TenantTx } from "../tenant";
+import { assertCursor, type PageRequest } from "./page";
 
 export interface TreeRow {
   id: string;
@@ -293,8 +294,17 @@ const REGISTRATION_SELECT = `
     LEFT JOIN merkle_trees t ON t.tenant_id = r.tenant_id AND t.id = r.tree_id
    WHERE o.kind = 'registration'`;
 
-export async function listRegistrations(tx: TenantTx, limit = 200): Promise<RegistrationRow[]> {
-  return (await tx.query<RegistrationRow>(`${REGISTRATION_SELECT} AND o.tenant_id = $1 ORDER BY o.created_at DESC LIMIT $2`, [tx.tenantId, limit])).rows;
+/** Registrations, newest first. With `page`, up to `limit + 1` rows after the cursor (see listParties). */
+export async function listRegistrations(tx: TenantTx, page: PageRequest = { limit: 199 }): Promise<RegistrationRow[]> {
+  await assertCursor(tx, `SELECT 1 FROM rwa_orders WHERE tenant_id = $1 AND id = $2 AND kind = 'registration'`, page.after);
+  return (
+    await tx.query<RegistrationRow>(
+      `${REGISTRATION_SELECT} AND o.tenant_id = $1
+         AND ($3::uuid IS NULL OR (o.created_at, o.id) < (SELECT c.created_at, c.id FROM rwa_orders c WHERE c.tenant_id = $1 AND c.id = $3))
+       ORDER BY o.created_at DESC, o.id DESC LIMIT $2`,
+      [tx.tenantId, page.limit + 1, page.after ?? null],
+    )
+  ).rows;
 }
 
 export async function getRegistration(tx: TenantTx, orderId: string, forUpdate = false): Promise<RegistrationRow | undefined> {

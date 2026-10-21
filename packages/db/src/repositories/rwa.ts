@@ -1,5 +1,6 @@
 import type { Discrepancy, IntentView, KycStatus, Network, OrderKind, OrderStatus, OrderView, PartyCompliance, PartyKind, ScreeningOutcome, WalletCompliance } from "@metafarm/domain";
 import type { SystemTx, TenantTx } from "../tenant";
+import { assertCursor, type PageRequest } from "./page";
 
 // ── Parties and wallets ────────────────────────────────────────────────
 
@@ -191,8 +192,21 @@ export interface PartyRow {
 
 const PARTY_SELECT = `SELECT id, kind, display_name, jurisdiction, kyc_status, kyc_reference, kyc_verified_at, kyc_expires_at, created_at FROM parties`;
 
-export async function listParties(tx: TenantTx): Promise<PartyRow[]> {
-  return (await tx.query<PartyRow>(`${PARTY_SELECT} WHERE tenant_id = $1 ORDER BY lower(display_name)`, [tx.tenantId])).rows;
+/**
+ * Investors by name. With `page`, returns up to `limit + 1` rows after the cursor (the id of the last
+ * row of the previous page), ordered by name then id so that pages never overlap or skip.
+ */
+export async function listParties(tx: TenantTx, page?: PageRequest): Promise<PartyRow[]> {
+  if (!page) return (await tx.query<PartyRow>(`${PARTY_SELECT} WHERE tenant_id = $1 ORDER BY lower(display_name), id`, [tx.tenantId])).rows;
+  await assertCursor(tx, `SELECT 1 FROM parties WHERE tenant_id = $1 AND id = $2`, page.after);
+  return (
+    await tx.query<PartyRow>(
+      `${PARTY_SELECT} WHERE tenant_id = $1
+         AND ($3::uuid IS NULL OR (lower(display_name), id) > (SELECT lower(c.display_name), c.id FROM parties c WHERE c.tenant_id = $1 AND c.id = $3))
+       ORDER BY lower(display_name), id LIMIT $2`,
+      [tx.tenantId, page.limit + 1, page.after ?? null],
+    )
+  ).rows;
 }
 
 export async function getParty(tx: TenantTx, partyId: string): Promise<PartyRow | undefined> {
@@ -259,8 +273,17 @@ const ORDER_SELECT = `
     FROM rwa_orders o JOIN parties p ON p.tenant_id = o.tenant_id AND p.id = o.party_id
    WHERE o.kind <> 'registration'`;
 
-export async function listOrders(tx: TenantTx, limit = 200): Promise<OrderRow[]> {
-  return (await tx.query<OrderRow>(`${ORDER_SELECT} AND o.tenant_id = $1 ORDER BY o.created_at DESC LIMIT $2`, [tx.tenantId, limit])).rows;
+/** Orders, newest first. With `page`, up to `limit + 1` rows after the cursor (see listParties). */
+export async function listOrders(tx: TenantTx, page: PageRequest = { limit: 199 }): Promise<OrderRow[]> {
+  await assertCursor(tx, `SELECT 1 FROM rwa_orders WHERE tenant_id = $1 AND id = $2 AND kind <> 'registration'`, page.after);
+  return (
+    await tx.query<OrderRow>(
+      `${ORDER_SELECT} AND o.tenant_id = $1
+         AND ($3::uuid IS NULL OR (o.created_at, o.id) < (SELECT c.created_at, c.id FROM rwa_orders c WHERE c.tenant_id = $1 AND c.id = $3))
+       ORDER BY o.created_at DESC, o.id DESC LIMIT $2`,
+      [tx.tenantId, page.limit + 1, page.after ?? null],
+    )
+  ).rows;
 }
 
 export async function getOrder(tx: TenantTx, orderId: string, forUpdate = false): Promise<OrderRow | undefined> {

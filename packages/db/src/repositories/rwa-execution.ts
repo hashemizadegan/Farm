@@ -1,6 +1,7 @@
 /** What the execution engine reads and writes: intents to drive and the chain operations that carry them. */
 import type { IntentStatus, Network, OperationState } from "@metafarm/domain";
 import type { SystemTx, TenantTx } from "../tenant";
+import { assertCursor, type PageRequest } from "./page";
 
 export type IntentType = "issuance" | "settlement";
 /** What a chain operation carries out: an intent, or (`tree`) the creation of a Merkle tree, keyed by the tree's id. */
@@ -229,8 +230,18 @@ const ASSET_SELECT = `
          a.status, a.verified_at, a.created_by, a.created_at
     FROM business_assets a JOIN farms f ON f.tenant_id = a.tenant_id AND f.id = a.farm_id`;
 
-export async function listBusinessAssets(tx: TenantTx): Promise<BusinessAssetRow[]> {
-  return (await tx.query<BusinessAssetRow>(`${ASSET_SELECT} WHERE a.tenant_id = $1 ORDER BY a.created_at DESC`, [tx.tenantId])).rows;
+/** Assets, newest first. With `page`, up to `limit + 1` rows after the cursor (see listParties). */
+export async function listBusinessAssets(tx: TenantTx, page?: PageRequest): Promise<BusinessAssetRow[]> {
+  if (!page) return (await tx.query<BusinessAssetRow>(`${ASSET_SELECT} WHERE a.tenant_id = $1 ORDER BY a.created_at DESC, a.id DESC`, [tx.tenantId])).rows;
+  await assertCursor(tx, `SELECT 1 FROM business_assets WHERE tenant_id = $1 AND id = $2`, page.after);
+  return (
+    await tx.query<BusinessAssetRow>(
+      `${ASSET_SELECT} WHERE a.tenant_id = $1
+         AND ($3::uuid IS NULL OR (a.created_at, a.id) < (SELECT c.created_at, c.id FROM business_assets c WHERE c.tenant_id = $1 AND c.id = $3))
+       ORDER BY a.created_at DESC, a.id DESC LIMIT $2`,
+      [tx.tenantId, page.limit + 1, page.after ?? null],
+    )
+  ).rows;
 }
 
 export async function getBusinessAsset(tx: TenantTx, id: string): Promise<BusinessAssetRow | undefined> {
