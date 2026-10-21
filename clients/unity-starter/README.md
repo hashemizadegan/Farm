@@ -21,6 +21,7 @@ disabled.
 | `Runtime/Core/Anchoring` (`…Core.Anchoring`) | none | `AnchorPlanReview`: checks an anchor plan (`AnchorModels.cs`) against the root the client verified, refuses any plan that claims to be executable, and words it as "planned only, not anchored" |
 | `Runtime/Core/Sync` (`…Core.Sync`) | none | `SnapshotSync` with `FarmSnapshotState`: verified, incremental sync (list + exact bytes per poll). A candidate replaces the held snapshot only if its bytes hash to the record, its structure checks out for the requested farm, and it is newer than the held one (rollback and equal-time conflicts are refused); the result carries a `SnapshotDiff` by entity. `SnapshotContentVerification` is the content-and-structure check it shares with `SnapshotChain`. `SnapshotChain`: verifies one snapshot link by link (exact bytes against the committed hash, structure, batch inclusion, optional anchor plan) and reports each link's state |
 | `Runtime/Core/Scene` (`…Core.Scene`) | none | `SceneUpdatePlan`: turns a verified diff into ordered scene operations (remove, refresh, place) for asset-registry entities (`asset:<id>`, as in the scene endpoint) and state-only changes for the rest. All decisions are here, so they are unit-tested |
+| `Runtime/Core/Yield` (`…Core.Yield`) | none | Real-yield claim leaves and proofs, **verification only and simulation only** (D-26, the hash function, is open): `ClaimLeafCodec` encodes and decodes the 201-byte canonical leaf of plan §6.2 byte for byte as `packages/domain/src/yield/claim-tree.ts` does; `ClaimTreeVerifier` recomputes leaf hashes and roots and verifies RFC 9162 proofs (`sha256-rfc9162-double-leaf/1`). `VerifyClaimLeafProof` checks a leaf against the trusted published root and size and the index inside the leaf, because an RFC 9162 path alone does not bind the tree size. Nothing builds, publishes or anchors a tree |
 | `Runtime/Core/Mocks` (`…Core.Mocks`) | none | `SampleTransport` (serves JSON by path, records requests) and `SampleIds` for running without a backend |
 | `Runtime/Unity` (`Metafarm.Twin.Unity`) | Unity | `UnityWebRequestTransport` (https only, bearer token), `LocalFrame` (metres around the farm origin, as in `packages/map-scene`), and the `FarmSceneLoader` MonoBehaviour (draws the scene; `ApplySnapshotPlan` only executes a `SceneUpdatePlan`) |
 | `Samples/` | none | Mock payloads in the API's shape. The farm, assets and addresses are made up. |
@@ -48,6 +49,9 @@ Nothing else: no Solana SDK, no wallet adapter, no Cesium. Those come with later
   classification, disabled transfer previews, and Merkle verification against vectors produced by
   the platform's TypeScript code. They also check by reflection that nothing in Core can sign,
   submit or hold keys, and that the transport has only `GetAsync`.
+- **Claim-tree parity (`ClaimTreeParityTests`)**: the C# leaf bytes, leaf hashes, roots and proofs must
+  equal `Samples/claim-tree-vectors.json` byte for byte (trees of 1, 3, 5, 7 and 8 leaves, 24 proofs,
+  and an edge leaf with every integer field at its maximum). See "Claim-tree vectors" below.
 - **Vitest (`packages/domain/src/twin/client-samples.test.ts`)**: the sample payloads parse with the
   API's own schemas, and the sample proof verifies with the platform's verifier.
 - **Not checked in CI**: `Runtime/Unity` needs the Unity editor. Open it in Unity 6 and fix anything
@@ -106,6 +110,20 @@ if (r.Accepted) Use(r.Snapshot, r.Diff);     // Initial or Updated; state now ho
 
 A first sync (`Initial`) diffs from nothing, so every entity is added and the scene places every
 asset-registry object. `Unchanged` and `UpToDate` need no scene work.
+
+## Claim-tree vectors
+
+`Samples/claim-tree-vectors.json` is generated from the platform's TypeScript claim tree, not written by
+hand:
+
+- `packages/domain/src/yield/claim-tree.vectors.test-support.ts` builds distribution plans (simulation
+  records only), their claim trees and one edge leaf with `claim-tree.ts`, and writes every leaf's fields,
+  bytes, hash and audit path with each tree's root.
+- `packages/domain/src/yield/claim-tree.vectors.test.ts` (vitest) rebuilds the vectors and requires the
+  committed file to match exactly, so neither side can drift silently. After a deliberate change, regenerate
+  the file by writing `await claimTreeVectorsText()` to it.
+- The vectors were also checked once with an independent Python implementation of plan §6.2 (leaf bytes,
+  leaf hashes, all roots and proofs); that script is not part of the repository.
 
 ## Current limitations
 
