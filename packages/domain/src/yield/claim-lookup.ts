@@ -8,8 +8,9 @@
  *
  * Wire contract (`metafarm-yield-claim/1`), JSON with these exact keys; every 64-bit amount is a decimal
  * string and every byte string lowercase hex:
- *   scheme, cycleId, cycleVersion, simulation, hasherId, root, treeSize, leafIndex, partyId, recipient,
- *   amount, leafBytes, leafHash, path
+ *   scheme, cycleId, cycleVersion, simulation, hasherId, root, treeSize, ownershipSnapshotHash, leafIndex,
+ *   partyId, recipient, amount, leafBytes, leafHash, path
+ * Leaves use layout 2: each carries the ownership snapshot hash, which must equal the published one.
  * `root` and `treeSize` repeat the published tree for convenience only: a client must verify against the
  * root and size it trusts (the published tree, `publishedClaimTree`), never the ones inside a payload.
  */
@@ -27,6 +28,8 @@ export interface ClaimPayloadDto {
   hasherId: string;
   root: string;
   treeSize: number;
+  /** The ownership snapshot every leaf of the tree is bound to (64 hex). */
+  ownershipSnapshotHash: string;
   leafIndex: number;
   partyId: string;
   /** Hex of the 32 recipient bytes (the payout address). */
@@ -46,6 +49,8 @@ export interface PublishedClaimTree {
   hasherId: string;
   root: string;
   treeSize: number;
+  /** The ownership snapshot hash every leaf must carry. */
+  ownershipSnapshotHash: string;
 }
 
 export type ClaimLookupResult =
@@ -83,7 +88,7 @@ export async function createClaimLookup(artifact: CycleDistributionArtifact, art
 
   const tree = artifact.claimTree;
   const published: PublishedClaimTree | null = tree
-    ? { cycleId: artifact.cycle.id, cycleVersion: artifact.cycle.version, simulation: true, hasherId: tree.hasherId, root: tree.root, treeSize: tree.size }
+    ? { cycleId: artifact.cycle.id, cycleVersion: artifact.cycle.version, simulation: true, hasherId: tree.hasherId, root: tree.root, treeSize: tree.size, ownershipSnapshotHash: artifact.ownership.snapshotHash }
     : null;
   const claims: ClaimPayloadDto[] = (tree?.leaves ?? []).map((l) => ({
     scheme: CLAIM_PAYLOAD_SCHEME,
@@ -93,6 +98,7 @@ export async function createClaimLookup(artifact: CycleDistributionArtifact, art
     hasherId: tree!.hasherId,
     root: tree!.root,
     treeSize: tree!.size,
+    ownershipSnapshotHash: artifact.ownership.snapshotHash,
     leafIndex: l.leafIndex,
     partyId: l.partyId,
     recipient: l.recipient,
@@ -157,13 +163,14 @@ export function serializeClaimPayload(dto: ClaimPayloadDto): string {
 /**
  * Verifies a claim payload against a trusted published tree, exactly as the C# client does
  * (`ClaimPayloadVerification`): simulation only, same cycle and hasher, the payload's root and size equal
- * the trusted ones, the leaf decodes to the published cycle id and version and to the payload's index,
- * recipient and amount, and the proof verifies.
+ * the trusted ones, the leaf decodes to the published cycle id and version, the published ownership snapshot
+ * hash, and the payload's index, recipient and amount, and the proof verifies.
  */
 export async function verifyClaimPayload(dto: ClaimPayloadDto, published: PublishedClaimTree, hasher: ClaimTreeHasher): Promise<boolean> {
   if (dto?.scheme !== CLAIM_PAYLOAD_SCHEME || dto.simulation !== true || published?.simulation !== true) return false;
   if (dto.cycleId !== published.cycleId || dto.cycleVersion !== published.cycleVersion || dto.hasherId !== published.hasherId || hasher.id !== published.hasherId) return false;
-  if (typeof dto.leafBytes !== "string" || !/^[0-9a-f]{402}$/.test(dto.leafBytes) || typeof dto.amount !== "string" || !/^(0|[1-9][0-9]{0,19})$/.test(dto.amount)) return false;
+  if (typeof published.ownershipSnapshotHash !== "string" || dto.ownershipSnapshotHash !== published.ownershipSnapshotHash) return false;
+  if (typeof dto.leafBytes !== "string" || !/^[0-9a-f]{466}$/.test(dto.leafBytes) || typeof dto.amount !== "string" || !/^(0|[1-9][0-9]{0,19})$/.test(dto.amount)) return false;
   const bytes = Uint8Array.from(dto.leafBytes.match(/../g)!.map((x) => parseInt(x, 16)));
   let leaf;
   try {
@@ -181,5 +188,7 @@ export async function verifyClaimPayload(dto: ClaimPayloadDto, published: Publis
   // The leaf itself must name this cycle and version, this recipient and this amount.
   if (hex(leaf.cycleId) !== hex(cycleId) || leaf.cycleVersion !== published.cycleVersion) return false;
   if (hex(leaf.recipient) !== dto.recipient || leaf.amount.toString() !== dto.amount) return false;
+  // Layout 2: the leaf itself names the ownership snapshot.
+  if (!leaf.ownershipSnapshotHash || hex(leaf.ownershipSnapshotHash) !== published.ownershipSnapshotHash) return false;
   return verifyClaimLeafProof(hasher, bytes, { leafIndex: dto.leafIndex, treeSize: dto.treeSize, leafHash: dto.leafHash, path: dto.path, root: dto.root }, { root: published.root, treeSize: published.treeSize });
 }

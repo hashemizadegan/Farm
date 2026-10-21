@@ -45,6 +45,9 @@ namespace Metafarm.Twin.Core.Tests
             Assert.True(s.PublishedTree.Simulation);
             Assert.Equal(ClaimTreeVerifier.HasherId, s.PublishedTree.HasherId);
             Assert.Equal(2, s.PublishedTree.TreeSize);
+            // The ownership snapshot the leaves are bound to (TS and an independent Python computation agree on it).
+            Assert.Equal("bb57ff8d4fcf9adbfae0d505004022e73cbd1535848641fde2c493bf884d5ddd", s.PublishedTree.OwnershipSnapshotHash);
+            Assert.All(s.Claims, c => Assert.Equal(s.PublishedTree.OwnershipSnapshotHash, c.OwnershipSnapshotHash));
             Assert.Equal(new[] { "party-a", "party-b" }, s.Claims.Select(c => c.PartyId).ToArray());
             Assert.Equal(new[] { "2677500000", "1606500000" }, s.Claims.Select(c => c.Amount).ToArray());
         }
@@ -72,6 +75,9 @@ namespace Metafarm.Twin.Core.Tests
                 Assert.Equal((uint)c.LeafIndex, leaf.LeafIndex);
                 Assert.Equal(ClaimLeafCodec.UuidBytes(s.PublishedTree.CycleId), leaf.CycleId);
                 Assert.Equal(s.PublishedTree.CycleVersion, leaf.CycleVersion);
+                Assert.Equal(ClaimLeafCodec.LayoutVersionSnapshotBound, leaf.LeafLayoutVersion);
+                Assert.Equal(ClaimLeafCodec.LengthSnapshotBound, Bytes(c.LeafBytes).Length);
+                Assert.Equal(s.PublishedTree.OwnershipSnapshotHash, Hex(leaf.OwnershipSnapshotHash));
                 Assert.Equal(c.LeafHash, ClaimTreeVerifier.LeafHash(Bytes(c.LeafBytes)));
                 Assert.Equal(Bytes(c.LeafBytes), ClaimLeafCodec.Encode(leaf));
             }
@@ -99,6 +105,7 @@ namespace Metafarm.Twin.Core.Tests
                 x => x.HasherId = "other",
                 x => x.Simulation = false,
                 x => x.Scheme = "metafarm-yield-claim/2",
+                x => x.OwnershipSnapshotHash = new string('1', 64),
             };
             foreach (var alter in alterations)
             {
@@ -119,9 +126,38 @@ namespace Metafarm.Twin.Core.Tests
             var moved = Copy(c);
             moved.CycleId = otherCycle.CycleId;
             Assert.False(ClaimPayloadVerification.Verify(moved, otherCycle));
+            // A claim presented against another ownership snapshot (payload and trusted tree agreeing) is refused:
+            // the leaf itself names the snapshot it was built from.
+            var otherSnapshot = JsonConvert.DeserializeObject<PublishedClaimTree>(JsonConvert.SerializeObject(s.PublishedTree));
+            otherSnapshot.OwnershipSnapshotHash = new string('1', 64);
+            var rebound = Copy(c);
+            rebound.OwnershipSnapshotHash = otherSnapshot.OwnershipSnapshotHash;
+            Assert.False(ClaimPayloadVerification.Verify(rebound, otherSnapshot));
             var notSimulation = JsonConvert.DeserializeObject<PublishedClaimTree>(JsonConvert.SerializeObject(s.PublishedTree));
             notSimulation.Simulation = false;
             Assert.False(ClaimPayloadVerification.Verify(c, notSimulation));
+        }
+
+        [Fact]
+        public void TheCodecKeepsLayoutsApart()
+        {
+            var s = Load();
+            var bytes = Bytes(s.Claims[0].LeafBytes);
+            var leaf = ClaimLeafCodec.Decode(bytes);
+            // Layout 2 needs its snapshot hash; layout 1 refuses one.
+            var noHash = ClaimLeafCodec.Decode(bytes);
+            noHash.OwnershipSnapshotHash = null;
+            Assert.Throws<ArgumentException>(() => ClaimLeafCodec.Encode(noHash));
+            var layout1WithHash = ClaimLeafCodec.Decode(bytes);
+            layout1WithHash.LeafLayoutVersion = ClaimLeafCodec.LayoutVersion;
+            Assert.Throws<ArgumentException>(() => ClaimLeafCodec.Encode(layout1WithHash));
+            // Lengths must match the layout byte.
+            var truncated = bytes.Take(ClaimLeafCodec.Length).ToArray();
+            Assert.Throws<ArgumentException>(() => ClaimLeafCodec.Decode(truncated));
+            var relabelled = (byte[])bytes.Clone();
+            relabelled[195] = 1;
+            Assert.Throws<ArgumentException>(() => ClaimLeafCodec.Decode(relabelled));
+            Assert.Equal(bytes, ClaimLeafCodec.Encode(leaf));
         }
     }
 }

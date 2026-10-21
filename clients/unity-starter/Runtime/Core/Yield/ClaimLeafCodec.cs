@@ -18,6 +18,9 @@ namespace Metafarm.Twin.Core.Yield
         public const string Domain = "metafarm-yield-leaf/1";
         public const int Length = 201;
         public const ushort LayoutVersion = 1;
+        /// <summary>Layout 2: the 201 bytes of layout 1 (layout version 2 at offset 195), then the 32-byte ownership snapshot hash.</summary>
+        public const int LengthSnapshotBound = 233;
+        public const ushort LayoutVersionSnapshotBound = 2;
 
         /// <summary>SHA-256 of the domain string: the first 32 bytes of every leaf.</summary>
         public static byte[] DomainTag()
@@ -25,7 +28,10 @@ namespace Metafarm.Twin.Core.Yield
             using (var sha = SHA256.Create()) return sha.ComputeHash(Encoding.UTF8.GetBytes(Domain));
         }
 
-        /// <summary>The 201 leaf bytes. Refuses a zero amount (the platform requires 0 &lt; amount ≤ 2^64 − 1).</summary>
+        /// <summary>
+        /// The leaf bytes: 201 for layout 1, 233 for layout 2 (with OwnershipSnapshotHash). Refuses a zero amount
+        /// (the platform requires 0 &lt; amount ≤ 2^64 − 1).
+        /// </summary>
         public static byte[] Encode(ClaimLeafFields f)
         {
             if (f == null) throw new ArgumentNullException(nameof(f));
@@ -35,8 +41,12 @@ namespace Metafarm.Twin.Core.Yield
             Require(f.EconomicAssetId, 32, nameof(f.EconomicAssetId));
             Require(f.Recipient, 32, nameof(f.Recipient));
             Require(f.PayoutMint, 32, nameof(f.PayoutMint));
+            var bound = f.LeafLayoutVersion == LayoutVersionSnapshotBound;
+            if (!bound && f.LeafLayoutVersion != LayoutVersion) throw new ArgumentException("unknown leaf layout version", nameof(f));
+            if (bound) Require(f.OwnershipSnapshotHash, 32, nameof(f.OwnershipSnapshotHash));
+            else if (f.OwnershipSnapshotHash != null) throw new ArgumentException("a layout 1 leaf has no ownership snapshot hash", nameof(f));
 
-            var b = new byte[Length];
+            var b = new byte[bound ? LengthSnapshotBound : Length];
             var at = 0;
             Put(b, ref at, DomainTag());
             b[at++] = f.NetworkId;
@@ -51,14 +61,15 @@ namespace Metafarm.Twin.Core.Yield
             PutLittleEndian(b, ref at, f.FormulaVersion, 2);
             PutLittleEndian(b, ref at, f.LeafLayoutVersion, 2);
             PutLittleEndian(b, ref at, f.LeafIndex, 4);
-            if (at != Length) throw new InvalidOperationException("leaf length");
+            if (bound) Put(b, ref at, f.OwnershipSnapshotHash);
+            if (at != b.Length) throw new InvalidOperationException("leaf length");
             return b;
         }
 
-        /// <summary>Decodes 201 leaf bytes, checking the domain tag and the layout version.</summary>
+        /// <summary>Decodes leaf bytes (layout 1: 201, layout 2: 233), checking the domain tag, layout and length.</summary>
         public static ClaimLeafFields Decode(byte[] b)
         {
-            if (b == null || b.Length != Length) throw new ArgumentException("a claim leaf is 201 bytes", nameof(b));
+            if (b == null || (b.Length != Length && b.Length != LengthSnapshotBound)) throw new ArgumentException("a claim leaf is 201 or 233 bytes", nameof(b));
             var tag = DomainTag();
             for (var i = 0; i < 32; i++)
                 if (b[i] != tag[i]) throw new ArgumentException("the leaf's domain tag is not metafarm-yield-leaf/1", nameof(b));
@@ -77,8 +88,13 @@ namespace Metafarm.Twin.Core.Yield
                 LeafLayoutVersion = (ushort)ReadLittleEndian(b, 195, 2),
                 LeafIndex = (uint)ReadLittleEndian(b, 197, 4),
             };
-            if (f.LeafLayoutVersion != LayoutVersion) throw new ArgumentException("unknown leaf layout version", nameof(b));
-            return f;
+            if (f.LeafLayoutVersion == LayoutVersion && b.Length == Length) return f;
+            if (f.LeafLayoutVersion == LayoutVersionSnapshotBound && b.Length == LengthSnapshotBound)
+            {
+                f.OwnershipSnapshotHash = Slice(b, 201, 32);
+                return f;
+            }
+            throw new ArgumentException("unknown leaf layout version, or a length that does not match it", nameof(b));
         }
 
         /// <summary>The 16 bytes of a lowercase UUID in RFC 4122 written order (System.Guid.ToByteArray differs).</summary>

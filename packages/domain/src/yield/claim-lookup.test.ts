@@ -32,6 +32,7 @@ describe("claim lookup over the pipeline's frozen artifact", () => {
       hasherId: "sha256-rfc9162-double-leaf/1",
       root: artifact.claimTree!.root,
       treeSize: 2,
+      ownershipSnapshotHash: artifact.ownership.snapshotHash,
       leafIndex: 0,
       partyId: "party-a",
       recipient: "01".repeat(32),
@@ -70,10 +71,12 @@ describe("claim lookup over the pipeline's frozen artifact", () => {
     const { lookup } = await live();
     const c = lookup.all()[1]!;
     const p = lookup.published!;
-    const bad: Partial<ClaimPayloadDto>[] = [{ amount: "1" }, { recipient: "02".repeat(32) }, { leafIndex: 0 }, { treeSize: 3 }, { root: "0".repeat(64) }, { cycleVersion: 2 }, { hasherId: "other" }, { path: [] }, { leafBytes: c.leafBytes.slice(2) }, { simulation: false as never }];
+    const bad: Partial<ClaimPayloadDto>[] = [{ amount: "1" }, { recipient: "02".repeat(32) }, { leafIndex: 0 }, { treeSize: 3 }, { root: "0".repeat(64) }, { cycleVersion: 2 }, { hasherId: "other" }, { ownershipSnapshotHash: "0".repeat(64) }, { path: [] }, { leafBytes: c.leafBytes.slice(2) }, { simulation: false as never }];
     for (const patch of bad) expect(await verifyClaimPayload({ ...c, ...patch }, p, SHA256_RFC9162_HASHER), JSON.stringify(Object.keys(patch))).toBe(false);
     expect(await verifyClaimPayload(c, { ...p, root: "0".repeat(64) }, SHA256_RFC9162_HASHER)).toBe(false);
     expect(await verifyClaimPayload(c, { ...p, treeSize: 3 }, SHA256_RFC9162_HASHER)).toBe(false);
+    // A claim presented against another snapshot (payload and trusted tree agreeing) is refused: the leaf names its snapshot.
+    expect(await verifyClaimPayload({ ...c, ownershipSnapshotHash: "1".repeat(64) }, { ...p, ownershipSnapshotHash: "1".repeat(64) }, SHA256_RFC9162_HASHER)).toBe(false);
     // A real leaf of this cycle presented as another cycle's (same root, other cycle id or version) is refused.
     expect(await verifyClaimPayload({ ...c, cycleId: "00000000-0000-4000-8000-0000000000c2" }, { ...p, cycleId: "00000000-0000-4000-8000-0000000000c2" }, SHA256_RFC9162_HASHER)).toBe(false);
     expect(await verifyClaimPayload({ ...c, cycleVersion: 2 }, { ...p, cycleVersion: 2 }, SHA256_RFC9162_HASHER)).toBe(false);

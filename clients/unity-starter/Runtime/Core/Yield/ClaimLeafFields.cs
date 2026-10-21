@@ -15,5 +15,7 @@ namespace Metafarm.Twin.Core.Yield
         public ushort FormulaVersion { get; set; }
         public ushort LeafLayoutVersion { get; set; }
         public uint LeafIndex { get; set; }
+        /// <summary>Layout 2 only: the 32-byte ownership snapshot hash. Null for layout 1.</summary>
+        public byte[] OwnershipSnapshotHash { get; set; }
     }
 }

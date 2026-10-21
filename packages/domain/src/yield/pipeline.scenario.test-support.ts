@@ -4,11 +4,12 @@
  * Simulation records only.
  */
 import type { EvidenceLine } from "./aggregation";
-import { SHA256_RFC9162_HASHER, SIMULATION_CLAIM_TREE_POLICY } from "./claim-tree";
-import { type DistributionShare, SIMULATION_DISTRIBUTION_POLICY, emptyDistributionLedger } from "./distribution";
+import { SHA256_RFC9162_HASHER, SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND } from "./claim-tree";
+import { SIMULATION_DISTRIBUTION_POLICY, emptyDistributionLedger } from "./distribution";
 import type { EvidenceItem } from "./evidence";
 import { SIMULATION_EVIDENCE_STORAGE_POLICY, commitEvidence, emptyEvidenceLedger, registerEvidence, type EvidenceLedger } from "./evidence-store";
 import { F3_ILLUSTRATION, simulationPolicy } from "./fixtures.test-support";
+import { type OwnershipSnapshotInput, verifyAndNormalizeSnapshot } from "./ownership-snapshot";
 import type { SimulationCycleInput } from "./pipeline";
 
 export const CYCLE = { id: "00000000-0000-4000-8000-0000000000c1", version: 1, simulation: true, assetClass: "crop" };
@@ -45,14 +46,22 @@ export const LINES = [
   line("cost-storage", 5, "operating_expense", 200_000n),
 ];
 
-// Weights: A 50, B 30, C 15 (no payout wallet), unattributed 4, D 1 (below the dust threshold).
-export const SHARES: DistributionShare[] = [
-  { kind: "party", partyId: "party-a", payoutWallet: "01".repeat(32), weight: 50n },
-  { kind: "party", partyId: "party-b", payoutWallet: "So11111111111111111111111111111111111111112", weight: 30n },
-  { kind: "party", partyId: "party-c", payoutWallet: null, weight: 15n },
-  { kind: "unattributed", holderKey: "token-account-x", weight: 4n },
-  { kind: "party", partyId: "party-d", payoutWallet: "03".repeat(32), weight: 1n },
-];
+// Raw shares: A 50, B 30, C 15 (no payout address), unattributed 4, D 1 (below the dust threshold).
+export const SNAPSHOT_INPUT: OwnershipSnapshotInput = {
+  snapshotId: "00000000-0000-4000-8000-0000000000e1",
+  assetId: "bb".repeat(32),
+  networkId: "simulation",
+  reference: { kind: "slot", value: 123_456_789n, observedAt: "2026-09-30T23:59:59Z" },
+  entries: [
+    { partyId: "party-a", payoutAddress: "01".repeat(32), rawShares: 50n },
+    { partyId: "party-b", payoutAddress: "So11111111111111111111111111111111111111112", rawShares: 30n },
+    { partyId: "party-c", payoutAddress: null, rawShares: 15n },
+    { partyId: "party-d", payoutAddress: "03".repeat(32), rawShares: 1n, metadata: { note: "simulation holder" } },
+  ],
+  unattributed: [{ holderKey: "token-account-x", rawShares: 4n }],
+};
+export const VERIFIED_AT = "2026-10-01T09:00:00Z";
+export const scenarioSnapshot = (patch: Partial<OwnershipSnapshotInput> = {}) => verifyAndNormalizeSnapshot({ ...SNAPSHOT_INPUT, ...patch }, { verifiedAt: VERIFIED_AT });
 
 export const ledgerCycle = (c: typeof CYCLE) => ({ id: c.id, version: c.version, simulation: c.simulation });
 
@@ -72,10 +81,10 @@ export async function input(patch: Partial<SimulationCycleInput> = {}): Promise<
     approvedReserveReleases: 0n,
     calculationPolicy: simulationPolicy(F3_ILLUSTRATION),
     settlement: { mint: "So11111111111111111111111111111111111111112", network: "simulation", decimals: 6, rate: { num: 1n, den: 1n, source: "simulation-peg", observedAt: "2026-09-30T16:00:00Z" } },
-    ownership: { snapshotId: "simulation-snapshot-1", shares: SHARES },
+    ownership: await scenarioSnapshot(),
     distributionPolicy: { ...SIMULATION_DISTRIBUTION_POLICY, dustThreshold: 60_000_000n, missingPayoutWallet: "withhold" },
     distributionLedger: emptyDistributionLedger(),
-    claimTreePolicy: SIMULATION_CLAIM_TREE_POLICY,
+    claimTreePolicy: SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND,
     hasher: SHA256_RFC9162_HASHER,
     leafContext: { networkId: 7, clusterIdentity: "aa".repeat(32), epoch: 0, economicAssetId: "bb".repeat(32), formulaVersion: 1 },
     ...patch,

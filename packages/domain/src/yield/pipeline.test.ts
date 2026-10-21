@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { yieldArtifactHash } from "./artifact";
-import { type ClaimTreeHasher, SHA256_RFC9162_HASHER, SIMULATION_CLAIM_TREE_POLICY, verifyClaimLeafProof } from "./claim-tree";
+import { type ClaimTreeHasher, SHA256_RFC9162_HASHER, SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND, decodeClaimLeaf, verifyClaimLeafProof } from "./claim-tree";
 import type { YieldTransitionError } from "./cycle";
 import { type DistributionLedger, SIMULATION_DISTRIBUTION_POLICY } from "./distribution";
 import { SIMULATION_EVIDENCE_STORAGE_POLICY, emptyEvidenceLedger, registerEvidence } from "./evidence-store";
 import { F3_ILLUSTRATION, simulationPolicy } from "./fixtures.test-support";
 import { type CycleDistributionArtifact, type CyclePipelineError, calculateSimulationCycle, cycleArtifactProblems, submitSimulationCycleForReview } from "./pipeline";
-import { CYCLE, ITEMS, LINES, SHARES, committedLedger, input, ledgerCycle, line, unhex } from "./pipeline.scenario.test-support";
+import { CYCLE, ITEMS, LINES, SNAPSHOT_INPUT, committedLedger, input, ledgerCycle, line, scenarioSnapshot, unhex } from "./pipeline.scenario.test-support";
 import { YieldRecordError } from "./records";
 
 const code = async (fn: () => unknown) => {
@@ -71,7 +71,8 @@ describe("simulation cycle pipeline: multi-party scenario", () => {
     expect(() => {
       (r1.artifact.totals as { leaves: bigint }).leaves = 0n;
     }).toThrow(TypeError);
-    const r2 = await calculateSimulationCycle(await input({ ownership: { snapshotId: "simulation-snapshot-1", shares: [...SHARES].reverse() }, evidenceLines: [...LINES].reverse() }));
+    // Same inputs in another order (lines), and the same snapshot verified again, give the same artifact.
+    const r2 = await calculateSimulationCycle(await input({ ownership: await scenarioSnapshot(), evidenceLines: [...LINES].reverse() }));
     expect(r2.artifactSha256).toBe(r1.artifactSha256);
     expect(await yieldArtifactHash(r1.artifact)).toBe(r1.artifactSha256);
   });
@@ -153,7 +154,7 @@ describe("review gate: calculated → under_review only if every proof verifies"
       },
       node: SHA256_RFC9162_HASHER.node,
     };
-    expect(await code(async () => calculateSimulationCycle(await input({ hasher: faulty, claimTreePolicy: { ...SIMULATION_CLAIM_TREE_POLICY, hasherId: "test-faulty" } })))).toBe("proof_failed");
+    expect(await code(async () => calculateSimulationCycle(await input({ hasher: faulty, claimTreePolicy: { ...SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND, hasherId: "test-faulty" } })))).toBe("proof_failed");
   });
 });
 
@@ -170,7 +171,7 @@ describe("fail-closed", () => {
     for (const patch of [
       { calculationPolicy: { ...simulationPolicy(F3_ILLUSTRATION), status: "approved" as const } },
       { distributionPolicy: { ...SIMULATION_DISTRIBUTION_POLICY, status: "approved" as const } },
-      { claimTreePolicy: { ...SIMULATION_CLAIM_TREE_POLICY, status: "draft" as const } },
+      { claimTreePolicy: { ...SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND, status: "draft" as const } },
     ])
       await expect(calculateSimulationCycle(await input(patch))).rejects.toBeInstanceOf(YieldRecordError);
   });
@@ -193,5 +194,82 @@ describe("fail-closed", () => {
 
   it("refuses unsupported input keys", async () => {
     expect(await code(async () => calculateSimulationCycle({ ...(await input()), mainnet: true } as never))).toBe("invalid_parameter");
+  });
+});
+
+describe("ownership snapshot binding", () => {
+  const hexOf = (b: Uint8Array) => [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+
+  it("binds every claim leaf, and so the root, to the snapshot hash (leaf layout 2)", async () => {
+    const { artifact: a } = await calculateSimulationCycle(await input());
+    expect(a.ownership.snapshotHash).toBe((await scenarioSnapshot()).snapshotHash);
+    for (const l of a.claimTree!.leaves) {
+      expect(l.leafBytes.length).toBe(466); // 233 bytes
+      const leaf = await decodeClaimLeaf(unhex(l.leafBytes));
+      expect(leaf.leafLayoutVersion).toBe(2);
+      expect(hexOf(leaf.ownershipSnapshotHash!)).toBe(a.ownership.snapshotHash);
+    }
+    // Same shares and addresses under another snapshot id: another snapshot hash, so every leaf and the root differ.
+    const other = await calculateSimulationCycle(await input({ ownership: await scenarioSnapshot({ snapshotId: "00000000-0000-4000-8000-0000000000e2" }) }));
+    expect(other.artifact.claimTree!.root).not.toBe(a.claimTree!.root);
+    other.artifact.claimTree!.leaves.forEach((l, i) => expect(l.leafHash).not.toBe(a.claimTree!.leaves[i]!.leafHash));
+  });
+
+  it("fails verification when one raw share unit changes, even if every hash an attacker can recompute is recomputed", async () => {
+    const r = await calculateSimulationCycle(await input());
+    const t = structuredClone(r.artifact);
+    t.ownership.entries[0]!.rawShares += 1n;
+    expect(await code(() => submitSimulationCycleForReview({ state: "calculated", artifact: t, artifactSha256: r.artifactSha256, hasher: SHA256_RFC9162_HASHER }))).toBe("artifact_mismatch");
+    // Recompute the snapshot (as an attacker could) and the artifact hash: the leaves still name the original snapshot.
+    const forged = await scenarioSnapshot({ entries: [{ partyId: "party-a", payoutAddress: "01".repeat(32), rawShares: 51n }, ...SNAPSHOT_INPUT.entries.slice(1)] });
+    const t2 = structuredClone(r.artifact);
+    t2.ownership = structuredClone(forged);
+    const problems = await cycleArtifactProblems(t2, await yieldArtifactHash(t2), SHA256_RFC9162_HASHER);
+    expect(problems.some((p) => p.includes("not bound to the ownership snapshot"))).toBe(true);
+    expect(problems).toContain("the distribution plan's shares are not the ownership snapshot's");
+  });
+
+  it("fails verification when a party's address or the plan's weights no longer match the snapshot", async () => {
+    const r = await calculateSimulationCycle(await input());
+    const address = structuredClone(r.artifact);
+    address.ownership.entries[1]!.payoutAddress = "04".repeat(32);
+    expect((await cycleArtifactProblems(address, await yieldArtifactHash(address), SHA256_RFC9162_HASHER)).some((p) => p.startsWith("ownership snapshot:"))).toBe(true);
+    const weight = structuredClone(r.artifact);
+    weight.distribution.plan.entries[0]!.weight += 1n;
+    expect(await cycleArtifactProblems(weight, await yieldArtifactHash(weight), SHA256_RFC9162_HASHER)).toContain("the distribution plan's shares are not the ownership snapshot's");
+  });
+
+  it("refuses a tampered snapshot, another asset's snapshot, a real network and unbound (layout 1) leaves", async () => {
+    const tampered = structuredClone(await scenarioSnapshot());
+    tampered.entries[0]!.rawShares = 49n;
+    expect(await code(async () => calculateSimulationCycle(await input({ ownership: tampered })))).toBe("ownership_invalid");
+    const real = structuredClone(await scenarioSnapshot()) as unknown as { networkId: string };
+    real.networkId = "solana-mainnet";
+    expect(await code(async () => calculateSimulationCycle(await input({ ownership: real as never })))).toBe("ownership_invalid");
+    expect(await code(async () => calculateSimulationCycle(await input({ ownership: await scenarioSnapshot({ assetId: "bc".repeat(32) }) })))).toBe("ownership_mismatch");
+    expect(await code(async () => calculateSimulationCycle(await input({ claimTreePolicy: { ...SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND, leafLayoutVersion: 1 } })))).toBe("ownership_unbound");
+  });
+
+  it("divides by raw shares exactly, preserving the remainder under the conservation invariant", async () => {
+    // Three equal holders of an amount that does not divide by three: the carry rule keeps the remainder.
+    const snap = await scenarioSnapshot({
+      entries: [
+        { partyId: "p1", payoutAddress: "11".repeat(32), rawShares: 7n },
+        { partyId: "p2", payoutAddress: "12".repeat(32), rawShares: 7n },
+        { partyId: "p3", payoutAddress: "13".repeat(32), rawShares: 7n },
+      ],
+      unattributed: [],
+    });
+    const carry = await calculateSimulationCycle(await input({ ownership: snap, distributionPolicy: { ...SIMULATION_DISTRIBUTION_POLICY, remainder: "carry", missingPayoutWallet: "withhold" } }));
+    const t = carry.artifact.totals;
+    expect(t.inflow).toBe(5_355_000_000n);
+    expect(carry.artifact.claimTree!.leaves.map((l) => l.amount)).toEqual([1_785_000_000n, 1_785_000_000n, 1_785_000_000n]);
+    expect(t.remainderCarried).toBe(0n); // 5,355,000,000 = 3 × 1,785,000,000 exactly
+    const odd = await calculateSimulationCycle(await input({ ownership: await scenarioSnapshot({ unattributed: [{ holderKey: "token-account-x", rawShares: 3n }] }), distributionPolicy: { ...SIMULATION_DISTRIBUTION_POLICY, dustThreshold: 60_000_000n, remainder: "carry", missingPayoutWallet: "withhold" } }));
+    const o = odd.artifact.totals;
+    // Total raw shares 99: the yield does not divide evenly, and the carried remainder closes the sum exactly.
+    expect(odd.artifact.ownership.totalRawShares).toBe(99n);
+    expect(o.remainderCarried > 0n).toBe(true);
+    expect(o.leaves + o.dustCarriedForward + o.withheld + o.unattributed + o.remainderCarried).toBe(o.inflow);
   });
 });
