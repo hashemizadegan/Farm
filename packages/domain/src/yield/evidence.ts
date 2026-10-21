@@ -77,14 +77,17 @@ const MEDIA_TYPE = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]
 /**
  * RFC 3339 date-time with an explicit offset, naming a real calendar date and time. `Date.parse` alone is
  * not enough: it rolls impossible values forward (2026-02-30 becomes 2026-03-02, 24:00 the next day).
- * Leap seconds (second 60) are refused.
+ * Leap seconds (second 60) are refused, and so are the lowercase `t` and `z` that RFC 3339 §5.6 permits:
+ * only the uppercase form is accepted, so each instant has fewer spellings.
  */
 export function isRfc3339WithOffset(v: unknown): v is string {
   if (typeof v !== "string") return false;
   const m = RFC3339.exec(v);
   if (!m) return false;
   const [y, mo, d, h, mi, sec] = m.slice(1, 7).map(Number) as [number, number, number, number, number, number];
-  const daysInMonth = mo >= 1 && mo <= 12 ? new Date(Date.UTC(y, mo, 0)).getUTCDate() : 0;
+  // Proleptic Gregorian, computed directly: Date.UTC maps years 0–99 to 1900–1999.
+  const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+  const daysInMonth = mo >= 1 && mo <= 12 ? ([31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1] as number) : 0;
   if (d < 1 || d > daysInMonth || h > 23 || mi > 59 || sec > 59) return false;
   if (m[8] !== undefined && (Number(m[8]) > 23 || Number(m[9]) > 59)) return false;
   return !Number.isNaN(Date.parse(v));
