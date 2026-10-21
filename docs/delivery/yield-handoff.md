@@ -6,6 +6,35 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-21, late night (simulation cycle pipeline; claim lookup; C# cross-stack check)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #72 | pipeline base (#71 + #68, merge only) | `feature/yield-pipeline-base` | `d337374` | #71 | 39647092532 | 14/14 passed |
+| #73 | simulation cycle pipeline | `feature/yield-cycle-pipeline` | `3abb337` | #72 | 39647564986 | 14/14 passed; C# 77 passed |
+| #74 | claim lookup and C# cross-stack verification | `feature/yield-claim-lookup` | `6c944de` | #73 | 39648432879 | 14/14 passed; C# 81 passed (+4 cross-stack tests) |
+
+- **Pipeline (#73), simulation only:**
+  - `calculate` (`inputs_locked` → `calculated`) goes from committed evidence (Y4), through aggregation with recorded
+    FX and the waterfall, to the distribution plan, the claim tree and a verified, frozen artifact.
+  - `calculate` is refused if any proof fails `verifyClaimLeafProof` or conservation breaks.
+  - `submit` (`calculated` → `under_review`) re-verifies the artifact (hash, every proof, conservation).
+  - The plan's state machine has no "committed" state: the artifact set is frozen at `calculate` (§2.2). No state was
+    added to Y1.
+  - **Conservation:** claim leaves + dust carried + withheld + unattributed + carried remainder = inflow (the net
+    distributable amount plus anything carried in).
+- **Claim lookup (#74):**
+  - A read-only lookup over a verified simulation artifact, by party id or payout address.
+  - It returns the `metafarm-yield-claim/1` payload, or the reason there is no leaf (deferred, withheld,
+    unattributed, not in cycle).
+  - `verifyClaimPayload` binds the trusted published tree and the cycle id and version inside the leaf.
+- **Cross-stack check (#74):**
+  - `clients/unity-starter/Samples/claim-payloads.sample.json` is generated from #73's live multi-party pipeline run;
+    a vitest test fails if the committed file differs.
+  - The C# client deserializes it with its own settings and runs `VerifyClaimLeafProof` and
+    `ClaimPayloadVerification` on every claim.
+- **Still caller-supplied:** ownership snapshots (Y0 and Y5 not built). No signing, chain or network access.
+
 ## 2026-10-21, late night (C# claim-leaf and proof parity)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
