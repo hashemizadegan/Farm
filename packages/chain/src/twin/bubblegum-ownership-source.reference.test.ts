@@ -19,7 +19,6 @@ import { Keypair } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 import { rebuildOwnership, type ChainAssetRef } from "@metafarm/domain";
 import { concatBytes, u32le } from "../bytes";
-import { base58Decode } from "../solana/base58";
 import { BUBBLEGUM_PROGRAM, SPL_NOOP_PROGRAM, leafAssetId } from "../solana/bubblegum";
 import { ACCOUNT_COMPRESSION_PROGRAM } from "../solana/compression";
 import { anchorDiscriminator, bubblegumOwnershipEvents, combineOwnershipSources, createBubblegumOwnershipSource } from "./bubblegum-ownership-source";

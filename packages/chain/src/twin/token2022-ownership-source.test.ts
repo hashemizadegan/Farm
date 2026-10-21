@@ -145,9 +145,10 @@ describe("httpSolanaHistoryRpc", () => {
 describe("executedInstructions", () => {
   it("resolves lookup-table accounts and runs each instruction's inner instructions right after it", () => {
     const [p1, p2, p3, x, y, z] = [key(1), key(2), key(3), key(4), key(5), key(6)] as const;
+    const byte = base58Encode(Uint8Array.of(0x6f));
     const out = executedInstructions({
       slot: 1,
-      meta: { err: null, innerInstructions: [{ index: 0, instructions: [{ programIdIndex: 4, accounts: [5], data: "2g" }] }], loadedAddresses: { writable: [y], readonly: [z] } },
+      meta: { err: null, innerInstructions: [{ index: 0, instructions: [{ programIdIndex: 4, accounts: [5], data: byte }] }], loadedAddresses: { writable: [y], readonly: [z] } },
       transaction: { message: { accountKeys: [p1, p2, p3, x], instructions: [{ programIdIndex: 0, accounts: [3, 4], data: "" }, { programIdIndex: 1, accounts: [], data: "" }] } },
     });
     expect(out.map((i) => [i.programId, i.accounts])).toEqual([
