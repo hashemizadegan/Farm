@@ -1,8 +1,7 @@
 # Metrics and alerts
 
 Status: implemented on a draft branch, with automated tests. **Off by default and not deployed.** No
-metrics backend (Prometheus or similar) is set up anywhere yet; choosing and running one is an
-operations decision.
+collector is set up anywhere. The design stays collector-neutral (see "A future collector").
 
 ## What is measured
 
@@ -60,6 +59,64 @@ scrape jobs named `metafarm-api` and `metafarm-worker`.
 register. PromQL syntax is not checked in CI (no Prometheus there): run `promtool check rules` before
 loading the rules.
 
+## A future collector (documentation only; nothing is provisioned)
+
+Owner decision (2026-10-21): instrumentation and exposition stay Prometheus-compatible and
+collector-neutral, and metrics stay opt-in and off by default. No collector is deployed or provisioned
+yet.
+
+The endpoints speak the Prometheus text format, so any compatible scraper can read them: Prometheus,
+VictoriaMetrics, Grafana Alloy, or the OpenTelemetry Collector's `prometheus` receiver. The examples
+below show the intended shape. They are not deployed, and nothing in the repository applies them.
+Hosts are placeholders for the services' private addresses. The token is read from a file mounted from
+the platform's secret store, never written into the configuration.
+
+Scrape configuration (Prometheus-compatible). The job names are the ones the alert rules expect:
+
+```yaml
+# prometheus.yml (example)
+scrape_configs:
+  - job_name: metafarm-api
+    scheme: http
+    metrics_path: /metrics
+    authorization: { type: Bearer, credentials_file: /run/secrets/metafarm_metrics_token }
+    static_configs: [{ targets: ["api.internal:4000"] }]
+  - job_name: metafarm-worker
+    scheme: http
+    metrics_path: /metrics
+    authorization: { type: Bearer, credentials_file: /run/secrets/metafarm_metrics_token }
+    static_configs: [{ targets: ["worker.internal:4100"] }]
+rule_files: [/etc/prometheus/rules/metafarm.rules.yml]
+```
+
+Alert routing (Alertmanager-compatible). `page` alerts go to whoever is on call, and `ticket` alerts go
+to a queue looked at within a working day:
+
+```yaml
+# alertmanager.yml (example)
+route:
+  receiver: metafarm-ticket
+  group_by: [alertname, queue]
+  routes:
+    - matchers: ['severity="page"']
+      receiver: metafarm-page
+      repeat_interval: 1h
+    - matchers: ['severity="ticket"']
+      receiver: metafarm-ticket
+      repeat_interval: 12h
+receivers:
+  - name: metafarm-page # e.g. a paging integration, configured by operations
+  - name: metafarm-ticket # e.g. a chat channel or ticket queue, configured by operations
+```
+
+Before using them:
+1. Set `METRICS_TOKEN` on the API and the worker.
+2. Keep both endpoints on the private network, not exposed publicly.
+3. Run `promtool check config` and `promtool check rules`, and `amtool check-config` for the routing.
+
+`apps/api/src/alert-rules.test.ts` checks that both examples parse, and that the scrape job names
+match the rules.
+
 ## Tests
 
 - `packages/observability/src/metrics.test.ts`: the text format (escaping, cumulative buckets), the
@@ -71,8 +128,8 @@ loading the rules.
 
 ## Not done
 
-- No metrics backend, scrape configuration or alert routing. That needs an operations decision and a
-  deploy, and deploys are on hold.
+- No collector, scrape or alert routing is provisioned (owner decision): the examples above are
+  documentation only. Running them needs a deploy, which is on hold.
 - No domain gauges (such as ownership index lag or snapshot schedule freshness). They need a per-scrape
   database read; add them when there is a backend to read them.
 - The web app and the scheduler expose no metrics.
