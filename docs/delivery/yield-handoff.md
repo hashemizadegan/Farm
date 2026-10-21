@@ -6,6 +6,26 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 02:00 local (large-holder performance and memory envelopes)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #78 | deterministic envelope tests, large-tree C# sample (tests only) | `feature/yield-large-holder-envelope` | `db3bbe0` | #77 | 39683144164 | 14/14 passed |
+
+- **Deterministic envelopes:** cost is counted in hash calls (a counting hasher), not timed.
+  - Tree build makes exactly L leaf and L − 1 node hashes at 4,096 and 16,384 holders.
+  - The pipeline makes exactly 2L leaf and (L − 1) + Σpath node hashes.
+  - Opening the lookup costs exactly L + Σpath hashes, and each claim verifies with exactly 1 + path-length hashes.
+  - Proof lengths match RFC 9162 exactly.
+  - The artifact is pinned for a seeded 4,096-holder cycle (SHA-256 `3e374c9b…`, 7,487,231 bytes), stable on rerun and
+    after a JSON round trip.
+- **Caps only (stable in CI):** < 120 s and < 1 GiB heap growth per build; 16,384-holder artifact ≤ 2,560 bytes per holder
+  and < 64 MiB; 512 lookups verified in < 60 s. The unit-test job time did not grow (73 s).
+- **Cross-stack:** `claim-payloads.large-tree.sample.json` (43 claims with proofs up to 12 deep, 21 `zero_amount`
+  deferrals), verified in C# (`LargeTreeCrossStackTests`) and by an independent Python RFC 9162 verifier.
+- **Holds unchanged:** no production code changed; simulation only; no chain, network, storage, signing, deployment or
+  merge.
+
 ## 2026-10-22, 01:30 local (zero-allocation policy: option B)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
