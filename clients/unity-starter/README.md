@@ -86,6 +86,19 @@ What an accepted result proves, and what it does not:
   no newer snapshot exists; equal times with different content are a conflict, never ordered by id;
 - batch inclusion and anchor plans are not part of polling: run `SnapshotChain` for those.
 
+Polling skips the content request (`UpToDate`) only when the newest record has the held record's id
+and content hash, both of which were verified when it was accepted. `state.Snapshot`, `r.Snapshot`
+and the diff's entities are copies: changing them never changes the baseline the next sync uses.
+
+Migrating from the earlier `SyncAsync(farmId, heldCommitmentId)`:
+
+```csharp
+// before: var r = await sync.SyncAsync(farmId, heldCommitmentId); if (r.Outcome == Updated) use(r.Snapshot);
+var state = new FarmSnapshotState(farmId);   // replaces heldCommitmentId; keep it between polls
+var r = await sync.SyncAsync(state);
+if (r.Accepted) use(r.Snapshot, r.Diff);     // Initial or Updated; state now holds the snapshot
+```
+
 A first sync (`Initial`) diffs from nothing, so every entity is added and the scene places every
 asset-registry object. `Unchanged` and `UpToDate` need no scene work.
 

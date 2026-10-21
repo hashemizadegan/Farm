@@ -18,8 +18,8 @@ nothing can be signed or submitted.
   if they changed, 404 `snapshot_content_missing` if gone) and the snapshot verified end to end;
   ETag = snapshotId.
 - Unchanged state gives the same `root`; the `snapshotId` differs because it covers `takenAt`.
-- The C# client's `SnapshotSync` fetches only when the newest commitment changed and keeps the new
-  snapshot only if both the server's check and its own structure check pass.
+- The C# client's `SnapshotSync` verifies each new snapshot against its record's content hash and
+  never moves backwards from the snapshot it holds (see "Verified incremental sync" below).
 
 ## Snapshots (`snapshot.ts`, scheme `metafarm-farm-snapshot/1`)
 
@@ -83,7 +83,14 @@ the requested farm (also on the first sync) and it is newer than the held snapsh
 `Updated`, `VerificationFailed` (with the failure kind), `FarmMismatch`, `Rollback` (earlier
 `takenAt`) and `Conflict` (same `takenAt`, different content). Only `Initial` and `Updated` replace
 the held state and carry a `SnapshotDiff` (added, removed, changed, by committed entity hash, in the
-platform's (type, id) order). `SceneUpdatePlan` turns that diff into scene operations. The fixtures
+platform's (type, id) order). `SceneUpdatePlan` turns that diff into scene operations, at most one
+per scene object (an asset whose kind changed is one Refresh, not a Remove and a Place).
+
+The content request is skipped (`UpToDate`) only when the newest record has the held record's id
+**and** content hash; the held bytes were verified against that hash, so fetching them again could not
+change anything. `FarmSnapshotState` keeps the verified bytes and its own parse of them as the
+baseline; `Snapshot`, a result's `Snapshot` and a diff's entities are copies, so changing them never
+changes what the next sync compares against. The fixtures
 `sync-a/b/c` were built with `buildFarmSnapshot` and are re-derived in `client-samples.test.ts`.
 
 ## Scheduled snapshots (worker, off by default)
