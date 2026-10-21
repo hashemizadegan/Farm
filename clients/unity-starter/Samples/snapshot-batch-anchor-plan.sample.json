@@ -1,0 +1,16 @@
+{
+  "batchId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "plan": {
+    "scheme": "metafarm-anchor/1",
+    "carrier": "token2022_metadata",
+    "network": "solana-devnet",
+    "subject": "batch",
+    "root": "94780617aa85fe2c5d6acc45458911164c6bc62658e922738a8eb493cf3ccd99",
+    "executable": false,
+    "reason": "anchoring_not_enabled",
+    "metadataField": {
+      "key": "mf:batch:snapshots/2026102012",
+      "value": "metafarm-merkle-sha256/1:94780617aa85fe2c5d6acc45458911164c6bc62658e922738a8eb493cf3ccd99"
+    }
+  }
+}

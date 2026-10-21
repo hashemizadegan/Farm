@@ -13,6 +13,8 @@ namespace Metafarm.Twin.Core.Api
         /// <summary>A farm's snapshot commitments, newest first.</summary>
         Task<SnapshotList> ListSnapshotsAsync(string farmId, string cursor = null, int limit = 10, CancellationToken cancellationToken = default);
         Task<FarmSnapshotDocument> GetSnapshotAsync(string commitmentId, CancellationToken cancellationToken = default);
+        /// <summary>The snapshot's exact stored bytes (canonical JSON, as UTF-8 text), to hash and compare with its commitment.</summary>
+        Task<string> GetSnapshotContentAsync(string commitmentId, CancellationToken cancellationToken = default);
         /// <summary>What would anchor a snapshot's root on Solana. Data only: never executed.</summary>
         Task<SnapshotAnchorPlan> GetSnapshotAnchorPlanAsync(string commitmentId, string carrier, string network = AnchorCarriers.SolanaDevnet, CancellationToken cancellationToken = default);
         /// <summary>What would anchor a commitment batch's root on Solana. Data only: never executed.</summary>

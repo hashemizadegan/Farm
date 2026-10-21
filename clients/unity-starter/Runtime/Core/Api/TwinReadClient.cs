@@ -42,6 +42,9 @@ namespace Metafarm.Twin.Core.Api
         public Task<FarmSnapshotDocument> GetSnapshotAsync(string commitmentId, CancellationToken cancellationToken = default) =>
             GetAsync<FarmSnapshotDocument>($"/snapshots/{RequireId(commitmentId, nameof(commitmentId))}", cancellationToken);
 
+        public Task<string> GetSnapshotContentAsync(string commitmentId, CancellationToken cancellationToken = default) =>
+            GetBodyAsync($"/snapshots/{RequireId(commitmentId, nameof(commitmentId))}/content", cancellationToken);
+
         public Task<SnapshotAnchorPlan> GetSnapshotAnchorPlanAsync(string commitmentId, string carrier, string network = AnchorCarriers.SolanaDevnet, CancellationToken cancellationToken = default) =>
             GetAsync<SnapshotAnchorPlan>($"/snapshots/{RequireId(commitmentId, nameof(commitmentId))}/anchor-plan{PlanQuery(carrier, network)}", cancellationToken);
 
@@ -56,7 +59,11 @@ namespace Metafarm.Twin.Core.Api
             return $"?carrier={carrier}&network={network}";
         }
 
-        private async Task<T> GetAsync<T>(string twinPath, CancellationToken cancellationToken)
+        private async Task<T> GetAsync<T>(string twinPath, CancellationToken cancellationToken) =>
+            TwinJson.Deserialize<T>(await GetBodyAsync(twinPath, cancellationToken).ConfigureAwait(false));
+
+        /// <summary>The response body exactly as received, or a <see cref="TwinApiException"/>.</summary>
+        private async Task<string> GetBodyAsync(string twinPath, CancellationToken cancellationToken)
         {
             var response = await _transport.GetAsync($"/v1/tenants/{_tenantId}/twin{twinPath}", cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccess)
@@ -66,7 +73,7 @@ namespace Metafarm.Twin.Core.Api
                 catch (JsonException) { }
                 throw new TwinApiException(response.Status, error, $"request failed ({response.Status})");
             }
-            return TwinJson.Deserialize<T>(response.Body);
+            return response.Body;
         }
 
         /// <summary>Ids are UUIDs; anything else is refused before it reaches a URL.</summary>

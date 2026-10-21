@@ -1,0 +1,40 @@
+{
+  "commitment": {
+    "id": "99999999-9999-4999-8999-999999999999",
+    "farmId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "subjectType": "farm",
+    "subjectId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "schema": "metafarm.farm-snapshot",
+    "schemaVersion": 1,
+    "contentSha256": "8a4bcd9b23616a0f8e433b5fed786eae3485bf76bdc3a267702e40fa6b96e814",
+    "byteSize": 1708,
+    "storageRef": "sha256:8a4bcd9b23616a0f8e433b5fed786eae3485bf76bdc3a267702e40fa6b96e814",
+    "sourceTime": "2026-10-20T12:00:00.000Z",
+    "attestationRef": null,
+    "batch": {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "leafIndex": 1
+    },
+    "createdAt": "2026-10-20T12:00:01.000Z"
+  },
+  "state": "included",
+  "proof": {
+    "scheme": "metafarm-merkle-sha256/1",
+    "batchId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "dataset": "snapshots/2026102012",
+    "leaf": "c7ab692ae3adbe3708bbce4711a1680e24068558fbba72edd48e2a0002646680",
+    "leafIndex": 1,
+    "size": 3,
+    "path": [
+      "4635e1fa62a599a7880a8d14a56f720a1d40f6e5448ab5a5e39bedc8bd87fa8e",
+      "bc6f27de60abf5319d16ff4c98fe3c42022c84f6a7a2b207c8df19b0ec3d8d58"
+    ],
+    "root": "94780617aa85fe2c5d6acc45458911164c6bc62658e922738a8eb493cf3ccd99"
+  },
+  "checks": {
+    "leavesMatchCommitments": true,
+    "rootMatches": true,
+    "inclusionVerified": true
+  },
+  "anchor": null
+}
