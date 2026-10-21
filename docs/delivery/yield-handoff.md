@@ -6,6 +6,27 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 02:45 local (shared 16,384-holder cycle across the #78 and #79 suites)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #80 | shared, memoized 16,384-holder cycle; `unit-shared-cycle` vitest project (tests and config only) | `feature/yield-shared-16k-cycle` | `631516e` | #79 | 39690915829 | 14/14 passed |
+
+- **Helper:** `sharedLargeCycle(params)` is memoized on `globalThis`.
+  - The key covers holders, seed, profile and dust threshold. Results are deeply frozen, parameters are checked
+    strictly, and failed builds are not cached.
+  - Simulation-only rules are unchanged.
+  - `SHARED_16K` = 16,384 holders, seed `0xe17e10e5`, extreme profile, dust threshold 1,000.
+- **Config:** vitest isolates modules per file, so sharing needs both files in one non-isolated process. The new
+  `unit-shared-cycle` project (one fork, `isolate: false`) does this; `test:unit` runs it with `unit`.
+- **Invariants:** #79 pins unchanged. #78 has no pins at 16,384 holders (bounds only) and now uses the shared
+  dust-1,000 cycle. #78's 4,096-holder pins are unchanged. The memo test proves the key includes seed and dust
+  threshold.
+- **Finding:** the unit job took 191 s, up from 107 s. Sharing serializes the two heavy files, which previously ran in
+  parallel. Recommendation: keep the helper and memo test, drop the `unit-shared-cycle` project. Awaiting the
+  owner's choice.
+- **Holds unchanged:** no production code; simulation only; no chain, network, storage, signing, deployment or merge.
+
 ## 2026-10-22, 02:30 local (claim read model: low-memory single-holder lookups)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
