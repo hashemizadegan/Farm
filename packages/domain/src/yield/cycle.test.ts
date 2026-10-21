@@ -5,7 +5,7 @@ import {
   YIELD_PRE_PUBLICATION_STATES,
   YIELD_TERMINAL_STATES,
   YIELD_TRANSITIONS,
-  YieldTransitionError,
+  type YieldTransitionError,
   assertYieldFourEyes,
   isTerminalYieldState,
   yieldTransitionTarget,
