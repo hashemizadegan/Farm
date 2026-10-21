@@ -2,7 +2,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createPool, createTenantWithOwner, migrateUp, upsertUserBySubject, withSystem, type Pool } from "@metafarm/db";
-import { verifyFarmSnapshot, type FarmSnapshot } from "@metafarm/domain";
+import { createHash } from "node:crypto";
+import { merkleLeaf, reconstructFarmSnapshot, verifyFarmSnapshot, verifyMerkleInclusion, type FarmSnapshot } from "@metafarm/domain";
 import { contentKey } from "@metafarm/storage";
 import { buildTestApp, tokenFor } from "./test/helpers";
 
@@ -166,17 +167,47 @@ d("farm-state snapshots API", () => {
     }
   });
 
+  it("serves the exact committed bytes, which chain to a batch inclusion proof and an anchor plan", async () => {
+    expect((await call("viewer", "GET", `/snapshots/${first.id}/content`)).statusCode).toBe(403);
+    expect((await call("manager", "GET", `/snapshots/${crypto.randomUUID()}/content`)).statusCode).toBe(404);
+    const r = await call("manager", "GET", `/snapshots/${first.id}/content`);
+    expect(r.statusCode).toBe(200);
+    expect(r.headers["content-type"]).toMatch(/^application\/json/);
+    expect(r.headers.etag).toBe(`"${first.contentSha256}"`);
+    expect(r.headers["x-content-sha256"]).toBe(first.contentSha256);
+    // Link 1: the bytes the client receives hash to the committed contentSha256.
+    expect(createHash("sha256").update(r.rawPayload).digest("hex")).toBe(first.contentSha256);
+    const { snapshot, check } = await reconstructFarmSnapshot(r.rawPayload.toString("utf8"));
+    expect([check.ok, snapshot.snapshotId, snapshot.root]).toEqual([true, first.snapshotId, first.root]);
+
+    // Link 2: that commitment is a leaf of a batch, and the proof verifies against the batch root.
+    const other = (await call("admin", "POST", "/data-commitments", { subjectType: "farm", subjectId: farmId, schema: "metafarm.survey", schemaVersion: 1, contentSha256: "e".repeat(64), sourceTime: "2026-10-21T08:00:00Z" })).json();
+    const batch = (await call("admin", "POST", "/data-commitments/batches", { dataset: "snapshots/chain", commitmentIds: [other.id, first.id] })).json();
+    const p = (await call("manager", "GET", `/data-commitments/${first.id}/proof`)).json();
+    expect(p.state).toBe("included");
+    expect(p.proof).toMatchObject({ batchId: batch.id, leafIndex: 1, size: 2, root: batch.merkleRoot });
+    expect(p.proof.leaf).toBe(await merkleLeaf(createHash("sha256").update(r.rawPayload).digest("hex")));
+    expect(await verifyMerkleInclusion({ leaf: p.proof.leaf, index: p.proof.leafIndex, size: p.proof.size, path: p.proof.path, root: p.proof.root })).toBe(true);
+
+    // Link 3: the batch's anchor plan names that same root, and is plan-only.
+    const plan = (await call("manager", "GET", `/data-commitments/batches/${batch.id}/anchor-plan?carrier=token2022_metadata`)).json().plan;
+    expect(plan).toMatchObject({ subject: "batch", root: p.proof.root, executable: false });
+  });
+
   it("notices stored bytes that changed or went missing", async () => {
     const key = contentKey(tenantId, first.contentSha256);
     await storage.putObject(key, Buffer.from("{}"), "application/json");
     expect((await call("manager", "GET", `/snapshots/${first.id}`)).json().error).toBe("content_integrity_failed");
+    expect((await call("manager", "GET", `/snapshots/${first.id}/content`)).json().error).toBe("content_integrity_failed");
     await storage.delete(key);
     expect((await call("manager", "GET", `/snapshots/${first.id}`)).json().error).toBe("snapshot_content_missing");
+    expect((await call("manager", "GET", `/snapshots/${first.id}/content`)).json().error).toBe("snapshot_content_missing");
   });
 
   it("serves only snapshot commitments of this workspace", async () => {
     const other = (await call("admin", "POST", "/data-commitments", { subjectType: "farm", subjectId: farmId, schema: "metafarm.survey", schemaVersion: 1, contentSha256: "b".repeat(64), sourceTime: "2026-10-21T08:00:00Z" })).json();
     expect((await call("manager", "GET", `/snapshots/${other.id}`)).statusCode).toBe(404);
+    expect((await call("manager", "GET", `/snapshots/${other.id}/content`)).statusCode).toBe(404);
     expect((await call("manager", "GET", `/snapshots/${crypto.randomUUID()}`)).statusCode).toBe(404);
   });
 });
