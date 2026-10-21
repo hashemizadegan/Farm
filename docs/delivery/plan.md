@@ -85,7 +85,8 @@ These holds block J9 and J10 entirely, and block J8 and J7 at deployment.
 ## Next actionable work (in order)
 
 1. **J8 player wallets (#57):** follow CI. Then, with the owner: a manual check with a real browser wallet (needs the web app and the API with both flags on, so a deploy, which is on hold).
-2. **Token-2022 reconciliation, offline (roadmap item 4, within decision 2 below):** a pure state machine deciding what a Token-2022 attempt's chain evidence means before any retry, with fixtures, tests and documentation. No RPC client wiring, credentials, signing, submission or execution. TRON is out of scope.
+2. **Token-2022 reconciliation, offline (roadmap item 4, within decision 2 below):** `decideToken2022Retry`, a pure decision with fixtures, tests and documentation (#58). It is not wired into the engine, and wiring waits for the RWA execution holds to lift. TRON is out of scope.
+   - **Acceptance criteria:** a retry only after `expired`, past the blockhash limit at finalized, with no other unsettled attempt on the mint, and only when the signature and every state reading show the action did not happen. An exact change means `landed` (never retried). Any other change, or missing evidence, holds the intent. No chain reads, signing or submission.
 3. **Metrics (decision 3):** document a future Prometheus-compatible scrape and an Alertmanager-compatible route (#56 follow-up); nothing provisioned.
 4. **J7 live validation:** needs an owner-configured devnet RPC endpoint and a deploy (on hold).
 5. **J1 and J5 Unity validation:** `clients/unity-starter/Validation/README.md` in Unity 6 (Editor, then IL2CPP). **Blocked: no Unity environment is available to this work.**
