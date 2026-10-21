@@ -37,7 +37,7 @@ CI success never counts as Env.
 | J4 | The farm's state is captured as verifiable snapshots, manually or on a schedule (off by default) | snapshot API (#42), worker schedule (#43), scheduled batches (#44) | n/a | yes | yes | not on staging | no |
 | J5 | The client keeps a farm current, verified, never rolling back, updating only what changed | content endpoint (#46) | Core `SnapshotSync`, `SnapshotDiff`, `SceneUpdatePlan` (#47); Unity `ApplySnapshotPlan` (#47) | yes | Core: yes (C# 61/61 on #48) | Unity: **pending** (package in #48) | no |
 | J6 | A client proves a snapshot back to its batch root and a plan-only anchor | anchor plans (#43), chain check (#46) | Core `SnapshotChain`, `AnchorPlanReview` (#44, #46) | yes | yes | pending | no |
-| J7 | **Ownership shown from the chain**: who holds an asset, as of which slot | Ownership index (events, cursors, index-backed reader, worker job, API wiring; all off by default): `feature/ownership-index`. **No chain-reading event source yet** | Core `OwnershipDisplay` treats `chain_index` as known ownership | index: yes. Chain source: no | index: see the PR | no | no |
+| J7 | **Ownership shown from the chain**: who holds an asset, as of which slot | Ownership index (events, cursors, index-backed reader, worker job, API wiring; all off by default): #50. Token-2022 event source from finalized RPC history: `feature/ownership-source-token2022`. **No Bubblegum source yet** | Core `OwnershipDisplay` treats `chain_index` as known ownership | index and Token-2022 source: yes. Bubblegum: no | see #50 and the next PR | not against a live cluster | no |
 | J8 | A player links a Solana wallet and sees "you hold this" | not started | not started | no | no | no | no |
 | J9 | Transfer or trade from the client | previews only (#40), unsigned intents (#41) | `DisabledTransferPreviewer` | previews only | yes | no | no |
 | J10 | Batch roots anchored on-chain | plan-only (#43) | plan review (#44) | plan-only | yes | no | no |
@@ -73,7 +73,7 @@ These holds block J9 and J10 entirely, and block J8 and J7 at deployment.
 
 ## Next actionable work (in order)
 
-1. **J7 ownership index:** implemented on `feature/ownership-index` (docs/ownership-index.md). **Next:** a chain-reading `OwnershipEventSource` (finalized Token-2022 and Bubblegum events, read-only, tested against recorded RPC responses). Enabling it on staging needs an owner decision and a deploy, which is on hold.
+1. **J7 ownership index:** the index is #50; the Token-2022 source is on `feature/ownership-source-token2022` (docs/ownership-index.md). **Next:** a Bubblegum event source. Validating against a live devnet mint, and enabling on staging, need an owner decision and a deploy, which is on hold.
 2. **J5 and J1 Unity validation:** run `clients/unity-starter/Validation/README.md` in Unity 6 (Editor, then IL2CPP) and fix any adapter failures. Blocked on a Unity environment.
 3. **J8 wallet linking:** blocked on the product decisions below.
 4. **J11:** finish the signed-in `/rwa` check once the owner opens the page.
