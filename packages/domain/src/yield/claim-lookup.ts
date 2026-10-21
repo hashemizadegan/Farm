@@ -114,14 +114,27 @@ export async function createClaimLookup(artifact: CycleDistributionArtifact, art
   const byParty = new Map(claims.map((c) => [c.partyId, c]));
   const byRecipient = new Map(claims.map((c) => [c.recipient, c]));
   const entries = artifact.distribution.plan.entries;
+  // Indexed once, so each query is a few map reads (the first matching entry wins, as a linear scan would).
+  const entryByParty = new Map<string, (typeof entries)[number]>();
+  const unattributedKeys = new Set<string>();
+  const partyByRecipient = new Map<string, string>();
+  for (const e of entries) {
+    if (e.kind === "unattributed") unattributedKeys.add(e.holderKey!);
+    else {
+      if (!entryByParty.has(e.partyId!)) entryByParty.set(e.partyId!, e);
+      const hex = e.payoutWallet === null ? null : safeHex(e.payoutWallet);
+      if (hex !== null && !partyByRecipient.has(hex)) partyByRecipient.set(hex, e.partyId!);
+    }
+  }
+  const carriedDeferred = new Set(artifact.distribution.plan.ledgerOut.deferred.map((d) => d.partyId));
 
   const resultFor = (claim: ClaimPayloadDto | undefined, partyId: string | null): ClaimLookupResult => {
     if (claim) return { status: "claim", claim };
-    const e = partyId === null ? undefined : entries.find((x) => x.partyId === partyId);
+    const e = partyId === null ? undefined : entryByParty.get(partyId);
     if (e?.state === "withheld") return { status: "no_leaf", reason: "withheld" };
     if (e?.state === "deferred") return { status: "no_leaf", reason: "deferred", deferredReason: e.deferredReason ?? "below_dust_threshold" };
     // Dust carried from earlier cycles for a party with no share this cycle (positive, so below the threshold then).
-    if (partyId !== null && artifact.distribution.plan.ledgerOut.deferred.some((d) => d.partyId === partyId)) return { status: "no_leaf", reason: "deferred", deferredReason: "below_dust_threshold" };
+    if (partyId !== null && carriedDeferred.has(partyId)) return { status: "no_leaf", reason: "deferred", deferredReason: "below_dust_threshold" };
     return { status: "not_in_cycle" };
   };
 
@@ -130,8 +143,8 @@ export async function createClaimLookup(artifact: CycleDistributionArtifact, art
     byPartyId(partyId: string) {
       if (typeof partyId !== "string" || partyId === "") return { status: "not_in_cycle" as const };
       // An identity that is not a party but matches an unattributed holding's key.
-      const isParty = entries.some((e) => e.partyId === partyId);
-      if (!isParty && entries.some((e) => e.kind === "unattributed" && e.holderKey === partyId)) return { status: "unattributed" as const };
+      const isParty = entryByParty.has(partyId);
+      if (!isParty && unattributedKeys.has(partyId)) return { status: "unattributed" as const };
       return resultFor(byParty.get(partyId), partyId);
     },
     byPayoutAddress(address: string) {
@@ -143,8 +156,7 @@ export async function createClaimLookup(artifact: CycleDistributionArtifact, art
       }
       const claim = byRecipient.get(hex);
       if (claim) return { status: "claim" as const, claim };
-      const e = entries.find((x) => x.payoutWallet !== null && x.kind === "party" && safeHex(x.payoutWallet) === hex);
-      return resultFor(undefined, e?.partyId ?? null);
+      return resultFor(undefined, partyByRecipient.get(hex) ?? null);
     },
     all() {
       return [...claims];

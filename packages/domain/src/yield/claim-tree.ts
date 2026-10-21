@@ -296,6 +296,29 @@ async function levels(hasher: ClaimTreeHasher, leafHashes: Uint8Array[]): Promis
   return out;
 }
 
+/**
+ * Every level of the RFC 9162 tree over the given leaf hashes (hex), leaf level first, root level last. An odd
+ * last node is carried up unchanged, exactly as the claim tree is built; so for any leaf index i the audit
+ * path is, level by level, the node at (level, i XOR 1) when it exists, with i halved each level.
+ */
+export async function claimTreeLevels(hasher: ClaimTreeHasher, leafHashes: readonly string[]): Promise<string[][]> {
+  if (leafHashes.length === 0) throw new ClaimTreeError("empty_tree", "a tree needs at least one leaf");
+  if (!leafHashes.every((h) => typeof h === "string" && /^[0-9a-f]{64}$/.test(h))) throw new ClaimTreeError("invalid_input", "leaf hashes must be 64 lowercase hex");
+  return (await levels(hasher, leafHashes.map(unhex))).map((level) => level.map(hex));
+}
+
+/** The audit path of leaf `index`, given only the size of each level and a way to read one node. */
+export async function auditPathFromLevels(levelSizes: readonly number[], index: number, readNode: (level: number, index: number) => Promise<string>): Promise<string[]> {
+  const path: string[] = [];
+  let i = index;
+  for (let l = 0; l < levelSizes.length - 1; l++) {
+    const sibling = i ^ 1;
+    if (sibling < levelSizes[l]!) path.push(await readNode(l, sibling));
+    i = Math.floor(i / 2);
+  }
+  return path;
+}
+
 function auditPath(lv: Uint8Array[][], index: number): Uint8Array[] {
   const path: Uint8Array[] = [];
   let i = index;
