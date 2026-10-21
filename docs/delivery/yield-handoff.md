@@ -6,6 +6,38 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 02:30 local (claim read model: low-memory single-holder lookups)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #79 | claim read model: indexed records, image round trip, C# sample | `feature/yield-claim-read-model` | `ec01ce8` | #78 | 39687437886 | 14/14 passed |
+
+Commits: `8681fb2` (read model; tree-level helpers; claim-lookup indexing), `bde2016` (tests, C# sample), `ec01ce8` (test
+fix after the first CI run).
+
+- **Interfaces:** `ClaimReadModelStore` (get) and `ClaimReadModelSink` (put; records are immutable). Only an in-memory
+  store exists. A durable store would implement the same two interfaces.
+- **Records:**
+  - a header: published tree, cycle summary, tree level sizes;
+  - holder records: claim with leaf index, withheld, or deferred with its reason;
+  - unattributed holdings and a recipient index;
+  - leaves (layout 2 bytes);
+  - each tree node once, by level and index.
+- **Queries:** opening reads the header only, pinned by the expected artifact hash. A claim costs 2 + path-length reads
+  (at most about 1.5 KB at 16,384 holders), and the proof is rebuilt from stored nodes. Every claim is verified against
+  the pinned tree before it is served; tampered leaves, nodes or index records give `corrupt`.
+- **Persistence:** a deterministic byte image pinned by SHA-256 (4,096 holders: `79f1704f…`, 4,067,466 bytes). It
+  round-trips to identical bytes. There is no file, database or network I/O.
+- **Tests:** at 4,096 and 16,384 holders, every holder's result equals the in-memory lookup's, with exact read counts.
+  Fail-closed checks cover projection, open, queries and images.
+- **C#:** `claim-readmodel.sample.json` claims are identical to the #78 large-tree sample's. `ReadModelCrossStackTests`
+  decodes every layout 2 leaf exactly and verifies every claim.
+- **Also:** `createClaimLookup` now indexes plan entries once. Behaviour is unchanged; lookups had been quadratic.
+- **CI note:** the first run (`bde2016`, run 39686212325) failed in Unit tests. A deep `toEqual` over the ~16 MB image
+  enumerates every index in vitest. Fixed by a byte loop. The unit job now takes 144 s (73 s on #78), mostly the
+  all-holder check at 16,384 holders.
+- **Holds unchanged:** simulation only; no chain, network, storage, signing, deployment or merge.
+
 ## 2026-10-22, 02:00 local (large-holder performance and memory envelopes)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
