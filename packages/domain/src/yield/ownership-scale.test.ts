@@ -60,6 +60,16 @@ async function checkIndependently(a: CycleDistributionArtifact, artifactSha256: 
     sum += entry.allocated;
   });
   expect(sum).toBe(S);
+
+  // The fixed state rule (zero-allocation policy): no payable entry is 0; every deferral carries its reason.
+  const threshold = plan.policy.dustThreshold;
+  for (const e of plan.entries) {
+    if (e.kind === "unattributed") expect([e.state, e.deferredReason]).toEqual(["unattributed", null]);
+    else if (e.payoutWallet === null) expect([e.state, e.deferredReason]).toEqual(["withheld", null]);
+    else if (e.amount === 0n) expect([e.state, e.deferredReason]).toEqual(["deferred", "zero_amount"]);
+    else if (e.amount < threshold) expect([e.state, e.deferredReason]).toEqual(["deferred", "below_dust_threshold"]);
+    else expect([e.state, e.deferredReason]).toEqual(["payable", null]);
+  }
   if (minWithExtra !== null && maxWithout !== null) expect(minWithExtra >= maxWithout).toBe(true);
 
   // Conservation.
@@ -121,8 +131,9 @@ describe("pipeline at scale over synthetic ownership (simulation only)", () => {
     expect(s.diagnostics.maxRawShares).toBe(U64_MAX);
     expect(s.diagnostics.minRawShares).toBe(1n);
     // A settlement amount near 5.4 × 10^15 base units, so products reach ~10^38 before division.
-    // Holders of 1 unit are allocated 0; a dust threshold of 1 defers them (see the zero-allocation test).
-    const { artifact, artifactSha256 } = await run(s, { rateNum: 1_000_000n, dustThreshold: 1n });
+    // Holders of 1 unit are allocated 0: deferred as zero_amount, never a 0 claim (zero-allocation policy).
+    const { artifact, artifactSha256 } = await run(s, { rateNum: 1_000_000n });
+    expect(artifact.distribution.plan.entries.some((e) => e.deferredReason === "zero_amount")).toBe(true);
     expect(artifact.calculation.settlementAmount).toBe(5_355_000_000_000_000n);
     await checkIndependently(artifact, artifactSha256, s);
   }, 120_000);
@@ -145,11 +156,16 @@ describe("pipeline at scale over synthetic ownership (simulation only)", () => {
     await checkIndependently(artifact, artifactSha256, s);
   }, 120_000);
 
-  it("fails closed on a zero allocation when no dust threshold is set (the simulation default, pending D-9)", async () => {
+  it("zero allocations: dust threshold 0 and 1 give the same leaves and root (zero amounts are deferred either way)", async () => {
     const s = await snapshotOf({ holders: 1_200, seed: 0xfeedn, profile: "extreme" });
-    // A 1-unit holder's floor allocation is 0: with dustThreshold 0 it is a payable entry, and the claim tree
-    // refuses zero-amount leaves, so the whole calculation is refused rather than publishing a 0 claim.
-    await expect(run(s, { rateNum: 1_000_000n })).rejects.toThrow(/0 < amount/);
+    const zero = await run(s, { rateNum: 1_000_000n });
+    const one = await run(s, { rateNum: 1_000_000n, dustThreshold: 1n });
+    expect(zero.artifact.claimTree!.root).toBe(one.artifact.claimTree!.root);
+    expect(zero.artifact.claimTree!.leaves.map((l) => l.leafHash)).toEqual(one.artifact.claimTree!.leaves.map((l) => l.leafHash));
+    const zeros = zero.artifact.distribution.plan.entries.filter((e) => e.kind === "party" && e.amount === 0n);
+    expect(zeros.length).toBeGreaterThan(100);
+    expect(zeros.every((e) => e.payoutWallet === null ? e.state === "withheld" : e.state === "deferred" && e.deferredReason === "zero_amount")).toBe(true);
+    expect(zero.artifact.distribution.plan.ledgerOut.deferred.every((d) => d.amount > 0n)).toBe(true);
   }, 120_000);
 
   it("a one-unit change to one holder among 1,024 changes the snapshot hash, every leaf and the root", async () => {

@@ -36,7 +36,7 @@ import { assertExactKeys } from "./amounts";
 import { buildCalculationArtifact, yieldArtifactHash } from "./artifact";
 import { CLAIM_LEAF_LAYOUT_VERSION_SNAPSHOT_BOUND, type ClaimLeafContext, type ClaimProof, type ClaimTreeHasher, type ClaimTreePolicy, buildClaimTree, decodeClaimLeaf, decodeKey32, verifyClaimLeafProof } from "./claim-tree";
 import { type YieldCycleState, yieldTransitionTarget } from "./cycle";
-import { type DistributionLedger, type DistributionPlan, type DistributionPolicy, type DistributionShare, distributionPlanHash, planDistribution } from "./distribution";
+import { type DistributionLedger, type DistributionPlan, type DistributionPolicy, type DistributionShare, distributionPlanHash, distributionPlanProblems, planDistribution } from "./distribution";
 import { buildEvidenceManifest, evidenceManifestHash } from "./evidence";
 import { type EvidenceLedger, assertEvidenceLedger, evidenceItemsFor } from "./evidence-store";
 import { type VerifiedOwnershipSnapshot, ownershipSnapshotProblems } from "./ownership-snapshot";
@@ -44,7 +44,7 @@ import type { YieldCalculationPolicy } from "./policy";
 
 export const CYCLE_ARTIFACT_SCHEME = "metafarm-yield-cycle-artifact/1";
 
-export type CyclePipelineErrorCode = "simulation_only" | "evidence_not_committed" | "evidence_mismatch" | "ownership_invalid" | "ownership_mismatch" | "ownership_unbound" | "proof_failed" | "conservation" | "artifact_mismatch";
+export type CyclePipelineErrorCode = "simulation_only" | "evidence_not_committed" | "evidence_mismatch" | "ownership_invalid" | "ownership_mismatch" | "ownership_unbound" | "proof_failed" | "distribution_invalid" | "conservation" | "artifact_mismatch";
 
 export class CyclePipelineError extends Error {
   constructor(
@@ -276,6 +276,8 @@ export async function calculateSimulationCycle(input: SimulationCycleInput): Pro
   if (proof) throw new CyclePipelineError("proof_failed", `calculate refused: ${proof}`);
   const ownership = await ownershipProblem(artifact);
   if (ownership) throw new CyclePipelineError("ownership_mismatch", `calculate refused: ${ownership}`);
+  const rule = distributionPlanProblems(artifact.distribution.plan);
+  if (rule.length) throw new CyclePipelineError("distribution_invalid", `calculate refused: ${rule.join("; ")}`);
   const conservation = conservationProblem(artifact);
   if (conservation) throw new CyclePipelineError("conservation", `calculate refused: ${conservation}`);
 
@@ -292,6 +294,7 @@ export async function cycleArtifactProblems(artifact: CycleDistributionArtifact,
   if (proof) out.push(proof);
   const ownership = await ownershipProblem(artifact);
   if (ownership) out.push(ownership);
+  out.push(...distributionPlanProblems(artifact.distribution.plan));
   const conservation = conservationProblem(artifact);
   if (conservation) out.push(conservation);
   return out;

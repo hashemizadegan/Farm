@@ -50,8 +50,8 @@ describe("claim lookup over the pipeline's frozen artifact", () => {
   it("explains holders without a leaf instead of returning nothing", async () => {
     const { lookup } = await live();
     expect(lookup.byPartyId("party-c")).toEqual({ status: "no_leaf", reason: "withheld" });
-    expect(lookup.byPartyId("party-d")).toEqual({ status: "no_leaf", reason: "deferred" });
-    expect(lookup.byPayoutAddress("03".repeat(32))).toEqual({ status: "no_leaf", reason: "deferred" });
+    expect(lookup.byPartyId("party-d")).toEqual({ status: "no_leaf", reason: "deferred", deferredReason: "below_dust_threshold" });
+    expect(lookup.byPayoutAddress("03".repeat(32))).toEqual({ status: "no_leaf", reason: "deferred", deferredReason: "below_dust_threshold" });
     expect(lookup.byPartyId("token-account-x")).toEqual({ status: "unattributed" });
     expect(lookup.byPartyId("nobody")).toEqual({ status: "not_in_cycle" });
     expect(lookup.byPayoutAddress("not-an-address")).toEqual({ status: "not_in_cycle" });

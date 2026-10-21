@@ -56,6 +56,12 @@ Nothing else: no Solana SDK, no wallet adapter, no Cesium. Those come with later
   `Samples/claim-payloads.sample.json`, the claim payloads served from the frozen artifact of the platform's
   multi-party simulation cycle (PR #73), and verifies every one with `VerifyClaimLeafProof` and
   `ClaimPayloadVerification`, rebuilds the published root, and refuses altered payloads and wrong trusted trees.
+- **Zero-allocation policy (`ZeroAllocationCrossStackTests`)**: from `Samples/claim-payloads.tiny-holders.sample.json`
+  (a seeded cycle with many tiny holders, dust threshold 0) the client recomputes the largest-remainder
+  allocation with `BigInteger` and applies the state rule itself (no wallet: withheld; amount 0: deferred,
+  `zero_amount`; below the threshold: deferred, `below_dust_threshold`; otherwise payable). It requires the
+  platform's entries and claims to match exactly, checks conservation, and checks that a zero-amount leaf is
+  refused on encode, decode and verification.
 - **Vitest (`packages/domain/src/twin/client-samples.test.ts`)**: the sample payloads parse with the
   API's own schemas, and the sample proof verifies with the platform's verifier.
 - **Not checked in CI**: `Runtime/Unity` needs the Unity editor. Open it in Unity 6 and fix anything
@@ -134,6 +140,13 @@ hand:
 cycle end to end (evidence, waterfall with a EUR line at a recorded rate, distribution, claim tree) and serves
 its frozen artifact through the claim lookup. `claim-lookup.sample.test.ts` (vitest) reruns it and requires
 the committed file to match exactly; regenerate by writing `await claimPayloadSampleText()` to the file.
+`Samples/claim-payloads.tiny-holders.sample.json` is generated the same way by
+`packages/domain/src/yield/zero-allocation.sample.test-support.ts` and checked by `zero-allocation.test.ts`
+(regenerate with `await tinyHoldersSampleText()`).
+
+A claim for 0 is never valid: the platform never makes a zero amount payable (it is deferred with
+`deferredReason: "zero_amount"`), and `ClaimLeafCodec` refuses a zero amount when encoding and when decoding,
+so `VerifyClaimLeafProof` and `ClaimPayloadVerification` reject such a leaf.
 
 ## Current limitations
 

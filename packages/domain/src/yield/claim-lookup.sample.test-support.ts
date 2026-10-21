@@ -12,8 +12,9 @@ import { input } from "./pipeline.scenario.test-support";
 export async function claimPayloadSample() {
   const { artifact, artifactSha256 } = await calculateSimulationCycle(await input());
   const lookup = await createClaimLookup(artifact, artifactSha256, SHA256_RFC9162_HASHER);
-  const lookups: { query: { partyId: string } | { payoutAddress: string }; result: ClaimLookupResult["status"]; reason?: string }[] = [];
-  const record = (query: { partyId: string } | { payoutAddress: string }, r: ClaimLookupResult) => lookups.push({ query, result: r.status, ...(r.status === "no_leaf" ? { reason: r.reason } : {}) });
+  const lookups: { query: { partyId: string } | { payoutAddress: string }; result: ClaimLookupResult["status"]; reason?: string; deferredReason?: string }[] = [];
+  const record = (query: { partyId: string } | { payoutAddress: string }, r: ClaimLookupResult) =>
+    lookups.push({ query, result: r.status, ...(r.status === "no_leaf" ? { reason: r.reason, ...(r.reason === "deferred" ? { deferredReason: r.deferredReason } : {}) } : {}) });
   for (const id of ["party-a", "party-b", "party-c", "party-d", "token-account-x", "nobody"]) record({ partyId: id }, lookup.byPartyId(id));
   record({ payoutAddress: "So11111111111111111111111111111111111111112" }, lookup.byPayoutAddress("So11111111111111111111111111111111111111112"));
   return {
