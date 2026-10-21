@@ -2483,6 +2483,105 @@ paths:
                         field: { type: string }
                         message: { type: string }
 
+  /v1/me/player-wallets:
+    get:
+      tags: [wallet]
+      summary: The signed-in user's linked Solana player wallets (J8)
+      description: |
+        Player wallets belong to the platform (game) identity. They are not RWA party wallets and are
+        never used as such. 404 unless PLAYER_WALLETS_ENABLED.
+      operationId: listPlayerWallets
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/PlayerWallet" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [wallet]
+      summary: Link a player wallet by its signature of the current challenge
+      description: |
+        The signature is the wallet's Ed25519 signature (signMessage) over the exact UTF-8 bytes of the
+        message from the challenge. The challenge is single use: it is consumed by this call whatever
+        the outcome. Linking the same wallet to the same user again returns 200 and changes nothing.
+        The platform signs nothing, and no transaction is involved.
+      operationId: linkPlayerWallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [address, signature]
+              properties:
+                address: { type: string, description: Solana address (base58 public key) }
+                signature: { type: string, description: Base64 of the 64-byte Ed25519 signature }
+      responses:
+        "200":
+          description: Already linked to this user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlayerWallet" }
+        "201":
+          description: Linked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlayerWallet" }
+        "400": { description: "invalid_request, player_wallet_challenge_missing (none, expired or used) or player_wallet_verification_failed" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: player_wallet_already_linked (to another account) }
+
+  /v1/me/player-wallets/challenge:
+    post:
+      tags: [wallet]
+      summary: Issue the one-time message a player signs to prove control of a wallet
+      operationId: createPlayerWalletChallenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [address]
+              properties:
+                address: { type: string }
+      responses:
+        "200":
+          description: The exact message to sign, valid until expiresAt
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [address, message, expiresAt]
+                properties:
+                  address: { type: string }
+                  message: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/me/player-wallets/{address}:
+    parameters:
+      - { name: address, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [wallet]
+      summary: Unlink one of the signed-in user's player wallets
+      operationId: unlinkPlayerWallet
+      responses:
+        "204": { description: Unlinked }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/wallet/nonce:
     post:
       tags: [wallet]
@@ -3132,6 +3231,13 @@ components:
         redacted: { type: array, items: { type: string } }
         objects: { type: array, items: { $ref: "#/components/schemas/TwinObject" } }
         nextCursor: { type: [string, "null"], format: uuid }
+    PlayerWallet:
+      type: object
+      required: [chain, address, linkedAt]
+      properties:
+        chain: { type: string, enum: [solana] }
+        address: { type: string }
+        linkedAt: { type: string, format: date-time }
     TwinOwnership:
       type: object
       required: [representationId, status]
@@ -3142,6 +3248,13 @@ components:
         source: { type: string, enum: [chain_index, das, fixture] }
         assurance: { type: string, enum: [inclusion_verified, indexer_reported, fixture] }
         asOfSlot: { type: [string, "null"] }
+        heldByYou:
+          type: boolean
+          description: |
+            Whether the caller's own linked player wallets (/v1/me/player-wallets) hold this, by the
+            reading above. Present only when status is indexed, the source is not fixture, player
+            wallets are enabled and the caller has linked one; absent means "not stated", never "no".
+            RWA party wallets are not considered.
         holders:
           type: array
           items:

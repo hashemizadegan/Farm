@@ -126,3 +126,22 @@ describe("idempotency schema (0021)", () => {
     expect(text).toContain("status_code BETWEEN 200 AND 299");
   });
 });
+
+describe("player wallets schema (0022)", () => {
+  const text = read("0022_player_wallets.up.sql");
+  const sql = text
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("--"))
+    .join("\n");
+  it("is separate from RWA party wallets: no reference, trigger or shared table", () => {
+    expect(sql).not.toMatch(/party_wallets|parties/);
+    expect(sql).not.toMatch(/CREATE TRIGGER/i);
+  });
+  it("is not granted to the tenant role, and links one address to at most one user", () => {
+    expect(sql).not.toMatch(/GRANT/i);
+    expect(sql).toContain("UNIQUE (chain, address)");
+  });
+  it("stores the exact issued message with each challenge", () => {
+    expect(sql).toMatch(/message\s+text NOT NULL/);
+  });
+});

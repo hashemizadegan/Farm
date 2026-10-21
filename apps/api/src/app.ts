@@ -14,6 +14,7 @@ import { mediaRoutes } from "./routes/media";
 import { teamRoutes } from "./routes/team";
 import { observationRoutes } from "./routes/observations";
 import { planningRoutes } from "./routes/planning";
+import { playerWalletRoutes } from "./routes/player-wallets";
 import { taskRoutes } from "./routes/tasks";
 import { harvestRoutes } from "./routes/harvests";
 import { inventoryRoutes } from "./routes/inventory";
@@ -93,6 +94,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(reportRoutes);
   await app.register(rwaRoutes);
   await app.register(chainRoutes);
+  await app.register(playerWalletRoutes);
   await app.register(twinRoutes);
   await app.register(twinSnapshotRoutes);
   await app.register(twinAnchorRoutes);

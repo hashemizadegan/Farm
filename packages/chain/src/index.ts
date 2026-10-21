@@ -21,4 +21,5 @@ export * from "./solana/prepare";
 export * from "./solana/bubblegum";
 export * from "./solana/bubblegum-adapter";
 export * from "./solana/cluster";
+export * from "./solana/player-wallet";
 export * from "./twin";

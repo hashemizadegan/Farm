@@ -1249,6 +1249,26 @@ export const en = {
     createAnother: "Create another workspace",
   },
 
+  playerWallets: {
+    heading: "Player wallets",
+    intro: "Link a Solana wallet to your player identity, so the 3D farm can show what you hold.",
+    notInvestor: "A player wallet is not an investor wallet. Linking it does not register it with any real-world asset (investor) account, and investor wallets are never linked here automatically.",
+    none: "No wallet linked yet.",
+    unlink: "Unlink",
+    unlinkLabel: (address: string) => `Unlink wallet ${address}`,
+    linkHeading: "Link a wallet",
+    howItWorks: "Your wallet will ask you to sign a short message that proves the wallet is yours. It is not a transaction: it moves nothing, costs nothing and authorises nothing.",
+    noWallet: "No Solana wallet found in this browser. Install or unlock one, then reload the page.",
+    linkWith: (name: string) => `Link with ${name}`,
+    linked: (short: string) => `Wallet ${short} linked.`,
+    errors: {
+      no_account: "The wallet did not share an account.",
+      not_supported: "This wallet cannot sign messages for Solana.",
+      rejected: "The wallet did not confirm. Nothing was linked.",
+      message_changed: "The wallet signed a different message. Nothing was linked.",
+    },
+  },
+
   invite: {
     title: "Join a workspace",
     reading: "Reading invitation…",

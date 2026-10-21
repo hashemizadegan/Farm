@@ -5,6 +5,8 @@ import { api, unwrap } from "@/lib/api";
 import { useTenant } from "@/lib/tenant";
 import Link from "next/link";
 import { useI18n } from "@/i18n/provider";
+import { PlayerWallets } from "@/components/PlayerWallets";
+import { playerWalletsEnabled } from "@/lib/player-wallets";
 
 export default function AccountPage() {
   const { me, signedIn, reloadMe } = useTenant();
@@ -81,6 +83,7 @@ export default function AccountPage() {
           <Link href="/workspaces/new">{t.createAnother}</Link>
         </p>
       </section>
+      {playerWalletsEnabled() && <PlayerWallets />}
     </>
   );
 }

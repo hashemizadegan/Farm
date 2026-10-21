@@ -33,6 +33,7 @@ import {
   type CommitmentBatchRow,
   type DataCommitmentRow,
   type TwinChainRow,
+  listPlayerWallets,
 } from "@metafarm/db";
 import { createTransactionSubmitter } from "@metafarm/chain";
 import {
@@ -153,6 +154,22 @@ export async function twinRoutes(app: FastifyInstance) {
     }
   }
 
+  /**
+   * J8, read-only: whether the caller's own linked player wallets hold the asset. Stated only for
+   * ownership read from the chain (never for fixture data or unknown ownership), only when player
+   * wallets are enabled, and only when the caller has linked at least one; otherwise the field is
+   * absent. It looks at player wallets only, never at RWA party wallets.
+   */
+  type Ownership = Awaited<ReturnType<typeof ownershipOf>>;
+  async function withHeldByYou(userId: string, readings: Ownership[]): Promise<Array<Ownership & { heldByYou?: boolean }>> {
+    if (!env.PLAYER_WALLETS_ENABLED || !readings.some((o) => o.status === "indexed" && o.source !== "fixture")) return readings;
+    const mine = new Set((await listPlayerWallets(app.deps.pool, userId)).map((w) => w.address));
+    if (mine.size === 0) return readings;
+    return readings.map((o) =>
+      o.status === "indexed" && o.source !== "fixture" ? { ...o, heldByYou: o.holders.some((h) => mine.has(h.owner) && BigInt(h.amount) > 0n) } : o,
+    );
+  }
+
   // ── Scene ─────────────────────────────────────────────────────────────
 
   app.get("/v1/tenants/:tenantId/twin/farms/:farmId/scene", async (req) => {
@@ -196,7 +213,8 @@ export async function twinRoutes(app: FastifyInstance) {
       };
     });
     // Chain reads happen outside the database transaction.
-    const ownership = await Promise.all(chain.map(ownershipOf));
+    const read = await Promise.all(chain.map(ownershipOf));
+    const ownership = await withHeldByYou(req.user!.id, read);
     const lifecycle = [
       { event: "registered", at: iso(asset.created_at)! },
       ...(asset.verified_at ? [{ event: "verified", at: iso(asset.verified_at)! }] : []),

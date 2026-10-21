@@ -25,3 +25,4 @@ export * from "./repositories/twin-snapshot";
 export * from "./repositories/ownership-index";
 export * from "./repositories/idempotency";
 export * from "./repositories/page";
+export * from "./repositories/player-wallets";

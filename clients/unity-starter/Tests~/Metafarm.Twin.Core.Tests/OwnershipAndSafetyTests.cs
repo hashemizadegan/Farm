@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -47,6 +48,35 @@ namespace Metafarm.Twin.Core.Tests
             Assert.Equal("On-chain holders (proof checked)", OwnershipDisplay.Label(verified));
 
             Assert.Equal("Ownership unknown (not indexed)", OwnershipDisplay.Label(new OwnershipReading { Status = "not_indexed", Reason = "reader_unavailable" }));
+        }
+
+        [Fact]
+        public void SaysYouHoldThisOnlyWhenTheApiSaysSoForChainData()
+        {
+            var holders = new List<Holder> { new Holder { Owner = "Owner1111111111111111111111111111111111111", Amount = "1" } };
+            var mine = new OwnershipReading { Status = "indexed", Source = "chain_index", Assurance = "indexer_reported", AsOfSlot = "900", Holders = holders, HeldByYou = true };
+            Assert.Equal("You hold this (as indexed, slot 900)", OwnershipDisplay.Label(mine));
+
+            var notMine = new OwnershipReading { Status = "indexed", Source = "chain_index", Assurance = "indexer_reported", AsOfSlot = "900", Holders = holders, HeldByYou = false };
+            Assert.Equal("On-chain holders (as indexed, slot 900)", OwnershipDisplay.Label(notMine));
+
+            var unstated = new OwnershipReading { Status = "indexed", Source = "chain_index", Assurance = "indexer_reported", AsOfSlot = "900", Holders = holders };
+            Assert.Null(unstated.HeldByYou);
+            Assert.Equal("On-chain holders (as indexed, slot 900)", OwnershipDisplay.Label(unstated));
+
+            // Never for test data or unknown ownership, whatever the field says.
+            var fixture = new OwnershipReading { Status = "indexed", Source = "fixture", Assurance = "fixture", Holders = holders, HeldByYou = true };
+            Assert.Equal("Test data, not chain state", OwnershipDisplay.Label(fixture));
+            Assert.Equal("Ownership unknown (not indexed)", OwnershipDisplay.Label(new OwnershipReading { Status = "not_indexed", HeldByYou = true }));
+        }
+
+        [Fact]
+        public void ParsesHeldByYouAndLeavesItNullWhenAbsent()
+        {
+            var withField = Newtonsoft.Json.JsonConvert.DeserializeObject<OwnershipReading>("{\"status\":\"indexed\",\"source\":\"chain_index\",\"assurance\":\"indexer_reported\",\"asOfSlot\":\"9\",\"holders\":[],\"heldByYou\":false}");
+            Assert.False(withField.HeldByYou);
+            var without = Newtonsoft.Json.JsonConvert.DeserializeObject<OwnershipReading>("{\"status\":\"indexed\",\"source\":\"chain_index\",\"assurance\":\"indexer_reported\",\"asOfSlot\":\"9\",\"holders\":[]}");
+            Assert.Null(without.HeldByYou);
         }
 
         [Fact]

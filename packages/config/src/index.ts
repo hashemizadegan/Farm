@@ -136,6 +136,12 @@ export const apiEnvSchema = z
      * nothing is exposed. A platform secret; never commit it or put it in a URL.
      */
     METRICS_TOKEN: z.string().min(32).optional(),
+    /**
+     * J8: let signed-in users link Solana player wallets (GET/POST/DELETE /v1/me/player-wallets) by
+     * signing a one-time message in their own wallet. Off (default): those routes answer 404. The
+     * platform never signs; this is unrelated to RWA party wallets.
+     */
+    PLAYER_WALLETS_ENABLED: bool.default("false"),
     TRUST_PROXY: bool.default("true"),
     WEBHOOK_SIGNING_SECRETS: csv.default(""),
     /** Let a signed-in user with no workspace create one and become its owner. */
@@ -307,5 +313,7 @@ export const webPublicEnvSchema = z.object({
   NEXT_PUBLIC_MAP_ATTRIBUTION: z.string().optional(),
   NEXT_PUBLIC_CESIUM_ENABLED: bool.default("false"),
   NEXT_PUBLIC_WALLET_CHAIN_ID: z.coerce.number().int().positive().default(31337),
+  /** J8: show player-wallet linking on the account page (needs PLAYER_WALLETS_ENABLED on the API). */
+  NEXT_PUBLIC_PLAYER_WALLETS_ENABLED: bool.default("false"),
 });
 export type WebPublicEnv = z.infer<typeof webPublicEnvSchema>;
