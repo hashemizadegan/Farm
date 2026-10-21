@@ -95,6 +95,36 @@ describe("keys and leaf encoding (plan §6.2)", () => {
     expect(await code(() => decodeClaimLeaf(badLayout))).toBe("invalid_input");
     expect(await code(() => decodeClaimLeaf(bytes.slice(1)))).toBe("invalid_input");
   });
+
+  it("keeps layouts 1 and 2 apart (owner-approved layout 2: layout 1's 201 bytes + 32-byte snapshot hash)", async () => {
+    const v1 = unhex((await build()).leaves[0]!.leafBytes);
+    const snapshotHash = "5a".repeat(32);
+    const t2 = await build(exampleF(), { policy: { ...SIMULATION_CLAIM_TREE_POLICY, leafLayoutVersion: 2 }, context: { ...context, ownershipSnapshotHash: snapshotHash } });
+    const v2 = unhex(t2.leaves[0]!.leafBytes);
+    expect([v1.length, v2.length]).toEqual([CLAIM_LEAF_BYTES, 233]);
+    // Byte-identical to layout 1 except the layout byte (offset 195), then the appended hash.
+    const diff = [...v1].flatMap((b, i) => (b === v2[i] ? [] : [i]));
+    expect(diff).toEqual([195]);
+    expect([v1[195], v2[195]]).toEqual([1, 2]);
+    expect(hex(v2.slice(CLAIM_LEAF_BYTES))).toBe(snapshotHash);
+    const f2 = await decodeClaimLeaf(v2);
+    expect(hex(f2.ownershipSnapshotHash!)).toBe(snapshotHash);
+    expect(hex(await encodeClaimLeaf(f2))).toBe(hex(v2));
+    // Fail closed on layout confusion: wrong length for the layout byte, either way.
+    expect(await code(() => decodeClaimLeaf(v2.slice(0, CLAIM_LEAF_BYTES)))).toBe("invalid_input");
+    const relabelled = new Uint8Array(v2);
+    relabelled[195] = 1;
+    expect(await code(() => decodeClaimLeaf(relabelled))).toBe("invalid_input");
+    expect(await code(() => decodeClaimLeaf(new Uint8Array([...v1, ...new Uint8Array(32)])))).toBe("invalid_input");
+    // Layout 2 needs its hash; layout 1 refuses one; the tree builder enforces the same.
+    expect(await code(() => encodeClaimLeaf({ ...f2, ownershipSnapshotHash: undefined }))).toBe("invalid_input");
+    expect(await code(() => encodeClaimLeaf({ ...f2, leafLayoutVersion: 1 }))).toBe("invalid_input");
+    expect(await code(() => build(exampleF(), { policy: { ...SIMULATION_CLAIM_TREE_POLICY, leafLayoutVersion: 2 } }))).toBe("invalid_input");
+    expect(await code(() => build(exampleF(), { context: { ...context, ownershipSnapshotHash: snapshotHash } }))).toBe("invalid_input");
+    // The snapshot hash is committed: changing it changes the leaf hash and the root.
+    const t2b = await build(exampleF(), { policy: { ...SIMULATION_CLAIM_TREE_POLICY, leafLayoutVersion: 2 }, context: { ...context, ownershipSnapshotHash: "5b".repeat(32) } });
+    expect(t2b.root).not.toBe(t2.root);
+  });
 });
 
 describe("claim tree of a distribution plan", () => {
