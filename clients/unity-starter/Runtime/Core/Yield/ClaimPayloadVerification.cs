@@ -1,7 +1,7 @@
 // Verifies a claim payload against the trusted published tree, exactly as claim-lookup.ts
-// verifyClaimPayload: simulation only; same cycle and hasher; the leaf decodes to the published cycle id
-// and version and to the payload's recipient and amount; and VerifyClaimLeafProof passes against the
-// trusted root and size. Verification only: nothing here builds a tree, holds keys or calls a network.
+// verifyClaimPayload: simulation only; same cycle, hasher and ownership snapshot; the leaf (layout 2)
+// decodes to the published cycle id and version, the published ownership snapshot hash, and the payload's
+// recipient and amount; and VerifyClaimLeafProof passes against the trusted root and size. Verification only: nothing here builds a tree, holds keys or calls a network.
 using System;
 using System.Globalization;
 
@@ -15,7 +15,8 @@ namespace Metafarm.Twin.Core.Yield
             if (claim.Scheme != ClaimPayload.SchemeId || !claim.Simulation || !trusted.Simulation) return false;
             if (claim.CycleId != trusted.CycleId || claim.CycleVersion != trusted.CycleVersion) return false;
             if (claim.HasherId != trusted.HasherId || trusted.HasherId != ClaimTreeVerifier.HasherId) return false;
-            if (!IsHex(claim.LeafBytes, ClaimLeafCodec.Length * 2) || !IsHex(claim.Recipient, 64)) return false;
+            if (!IsHex(trusted.OwnershipSnapshotHash, 64) || claim.OwnershipSnapshotHash != trusted.OwnershipSnapshotHash) return false;
+            if (!IsHex(claim.LeafBytes, ClaimLeafCodec.LengthSnapshotBound * 2) || !IsHex(claim.Recipient, 64)) return false;
             if (claim.Amount == null || claim.Amount.Length == 0 || claim.Amount.Length > 20 || (claim.Amount.Length > 1 && claim.Amount[0] == '0')) return false;
             if (!ulong.TryParse(claim.Amount, NumberStyles.None, CultureInfo.InvariantCulture, out var amount)) return false;
 
@@ -33,6 +34,7 @@ namespace Metafarm.Twin.Core.Yield
             }
             if (!SameBytes(leaf.CycleId, cycleId) || leaf.CycleVersion != trusted.CycleVersion) return false;
             if (!SameBytes(leaf.Recipient, FromHex(claim.Recipient)) || leaf.Amount != amount) return false;
+            if (leaf.LeafLayoutVersion != ClaimLeafCodec.LayoutVersionSnapshotBound || !SameBytes(leaf.OwnershipSnapshotHash, FromHex(trusted.OwnershipSnapshotHash))) return false;
             return ClaimTreeVerifier.VerifyClaimLeafProof(bytes, claim.LeafIndex, claim.TreeSize, claim.Path, claim.Root, trusted.Root, trusted.TreeSize);
         }
 

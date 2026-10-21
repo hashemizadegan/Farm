@@ -18,6 +18,7 @@ namespace Metafarm.Twin.Core.Yield
         [JsonProperty("hasherId")] public string HasherId;
         [JsonProperty("root")] public string Root;
         [JsonProperty("treeSize")] public long TreeSize;
+        [JsonProperty("ownershipSnapshotHash")] public string OwnershipSnapshotHash;
         [JsonProperty("leafIndex")] public long LeafIndex;
         [JsonProperty("partyId")] public string PartyId;
         [JsonProperty("recipient")] public string Recipient;
