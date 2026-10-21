@@ -20,6 +20,7 @@ import { twinSnapshotHandler, twinSnapshotSweepHandler } from "./handlers/twin-s
 import { twinSnapshotBatchHandler, twinSnapshotBatchSweepHandler } from "./handlers/twin-snapshot-batches";
 import { ownershipIndexHandler, ownershipIndexSweepHandler } from "./handlers/ownership-index";
 import type { OwnershipEventSource } from "@metafarm/domain";
+import { createToken2022OwnershipSource, httpSolanaHistoryRpc } from "@metafarm/chain";
 import { createObjectContentStore, createStorageFromEnv } from "@metafarm/storage";
 
 // On Railway the platform assigns PORT; the health server uses it unless HEALTH_PORT is set.
@@ -60,9 +61,13 @@ async function enqueue<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloa
 }
 
 const deps = { store, deadLetter, logger };
-// Where the ownership index reads finalized events from. No chain reader exists yet (a separate slice),
-// so deployed workers have none and ownership-index jobs are skipped; tests pass a fixture source.
-const ownershipEventSource: OwnershipEventSource | undefined = undefined;
+// Where the ownership index reads finalized events from: Token-2022 transactions through the Solana RPC,
+// read-only (the history client has no send method). Only when the index is enabled and an RPC URL is
+// set, and on mainnet only with RWA_MAINNET_ENABLED; otherwise ownership-index jobs are skipped.
+const ownershipEventSource: OwnershipEventSource | undefined =
+  env.TWIN_OWNERSHIP_INDEX_ENABLED && env.RWA_SOLANA_RPC_URL && (env.RWA_SOLANA_NETWORK === "solana-devnet" || env.RWA_MAINNET_ENABLED)
+    ? createToken2022OwnershipSource(httpSolanaHistoryRpc(env.RWA_SOLANA_RPC_URL), env.RWA_SOLANA_NETWORK)
+    : undefined;
 
 // Object storage for twin snapshots, created only when they are enabled.
 const twinObjectStorage = env.TWIN_SNAPSHOTS_ENABLED ? createStorageFromEnv(env) : undefined;
