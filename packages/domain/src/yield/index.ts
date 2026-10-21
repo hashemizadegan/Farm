@@ -12,3 +12,4 @@ export * from "./policy";
 export * from "./waterfall";
 export * from "./allocation";
 export * from "./artifact";
+export * from "./distribution";
