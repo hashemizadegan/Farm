@@ -3,6 +3,7 @@
  * Two API instances stand in for two replicas.
  */
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { Redis } from "ioredis";
@@ -31,13 +32,23 @@ function client(url = REDIS_URL) {
   return c;
 }
 
+/**
+ * A connected client. The rate-limit connection has no offline queue, so a command sent before the
+ * connection is ready fails and, with `skipOnError`, the request is served unlimited (as in an outage).
+ */
+async function connected(url = REDIS_URL) {
+  const c = client(url);
+  if (c.status !== "ready") await once(c, "ready");
+  return c;
+}
+
 const hit = async (app: FastifyInstance) => (await app.inject({ method: "GET", url: "/v1/me" })).statusCode;
 
 describe("rate limits shared through Redis", () => {
   it("counts requests to every replica against one budget", async () => {
     const env = { RATE_LIMIT_STORE: "redis", RATE_LIMIT_MAX: "4", QUEUE_PREFIX: `rl-${randomUUID()}` };
-    const a = await replica(env, client());
-    const b = await replica(env, client());
+    const a = await replica(env, await connected());
+    const b = await replica(env, await connected());
     expect([await hit(a), await hit(b), await hit(a), await hit(b)]).toEqual([401, 401, 401, 401]);
     expect(await hit(a)).toBe(429);
     expect(await hit(b)).toBe(429);
@@ -52,8 +63,8 @@ describe("rate limits shared through Redis", () => {
   });
 
   it("separates environments that share a Redis by QUEUE_PREFIX", async () => {
-    const a = await replica({ RATE_LIMIT_STORE: "redis", RATE_LIMIT_MAX: "1", QUEUE_PREFIX: `rl-${randomUUID()}` }, client());
-    const b = await replica({ RATE_LIMIT_STORE: "redis", RATE_LIMIT_MAX: "1", QUEUE_PREFIX: `rl-${randomUUID()}` }, client());
+    const a = await replica({ RATE_LIMIT_STORE: "redis", RATE_LIMIT_MAX: "1", QUEUE_PREFIX: `rl-${randomUUID()}` }, await connected());
+    const b = await replica({ RATE_LIMIT_STORE: "redis", RATE_LIMIT_MAX: "1", QUEUE_PREFIX: `rl-${randomUUID()}` }, await connected());
     expect([await hit(a), await hit(a)]).toEqual([401, 429]);
     expect(await hit(b)).toBe(401);
   });
