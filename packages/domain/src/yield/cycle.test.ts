@@ -6,6 +6,7 @@ import {
   YIELD_TERMINAL_STATES,
   YIELD_TRANSITIONS,
   type YieldTransitionError,
+  findYieldTransition,
   assertYieldFourEyes,
   isTerminalYieldState,
   yieldTransitionTarget,
@@ -145,5 +146,25 @@ describe("four-eyes", () => {
     expect(code(() => assertYieldFourEyes("u1", "u1"))).toBe("four_eyes");
     expect(code(() => assertYieldFourEyes("", "u2"))).toBe("four_eyes");
     expect(code(() => assertYieldFourEyes("u1", ""))).toBe("four_eyes");
+  });
+
+  it("cannot be bypassed with whitespace variants or non-string identities", () => {
+    expect(code(() => assertYieldFourEyes("u1", "u1 "))).toBe("four_eyes");
+    expect(code(() => assertYieldFourEyes(" u1", "u1"))).toBe("four_eyes");
+    expect(code(() => assertYieldFourEyes("   ", "u1"))).toBe("four_eyes");
+    expect(code(() => assertYieldFourEyes(undefined as never, "u1"))).toBe("four_eyes");
+    expect(code(() => assertYieldFourEyes(1 as never, 2 as never))).toBe("four_eyes");
+  });
+});
+
+describe("actors (plan §2.1 table)", () => {
+  it("approve is a reviewer's command; publish, cancel and close are an approver's", () => {
+    expect(findYieldTransition("under_review", "approve")?.actor).toBe("reviewer");
+    expect(findYieldTransition("under_review", "reject")?.actor).toBe("reviewer");
+    expect(findYieldTransition("approved", "publish")?.actor).toBe("approver");
+    expect(findYieldTransition("draft", "cancel")?.actor).toBe("approver");
+    expect(findYieldTransition("published", "close")?.actor).toBe("approver");
+    expect(findYieldTransition("draft", "expire")?.actor).toBe("system");
+    expect(findYieldTransition("disputed", "dismiss")?.actor).toBe("dispute_authority");
   });
 });
