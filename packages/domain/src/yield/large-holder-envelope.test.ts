@@ -19,7 +19,7 @@ import { canonicalYieldArtifact, yieldArtifactHash } from "./artifact";
 import { SHA256_RFC9162_HASHER, SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND, buildClaimTree } from "./claim-tree";
 import { type ClaimPayloadDto, type ClaimLookupError, type PublishedClaimTree, createClaimLookup, verifyClaimPayload } from "./claim-lookup";
 import { type CyclePipelineError, calculateSimulationCycle, cycleArtifactProblems } from "./pipeline";
-import { LARGE_REQUEST, countingHasher, largeHolderCycle, largeTreeSampleText, pickParties, rfc9162PathLength } from "./large-holder.test-support";
+import { LARGE_REQUEST, countingHasher, largeHolderCycle, largeTreeSampleText, pickParties, rfc9162PathLength, sharedCycle16k } from "./large-holder.test-support";
 import { MockOwnershipAdapter, type OwnershipSourceError, loadVerifiedOwnershipSnapshot } from "./ownership-source";
 
 const SAMPLE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../clients/unity-starter/Samples/claim-payloads.large-tree.sample.json");
@@ -43,9 +43,9 @@ const code = async (fn: () => unknown) => {
 const SEED = 0xe17e10e5n;
 const hasher4k = countingHasher();
 let run4k: ReturnType<typeof largeHolderCycle> | undefined;
-let run16k: ReturnType<typeof largeHolderCycle> | undefined;
 const cycle4k = () => (run4k ??= largeHolderCycle(4_096, SEED, hasher4k));
-const cycle16k = () => (run16k ??= largeHolderCycle(16_384, SEED));
+// The 16,384-holder cycle is the one shared with the read-model tests (memoized in-process, deeply frozen).
+const cycle16k = sharedCycle16k;
 
 // Pinned for the seeded 4,096-holder cycle: any change to the artifact's content or serialization shows here.
 const PINNED_4K = { artifactSha256: "3e374c9bf283f1d829430ab9fc3c6ae1356f5c76930872dbb5f4cf7645664a0c", canonicalBytes: 7_487_231, payable: 3_015 };
