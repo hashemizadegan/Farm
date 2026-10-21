@@ -16,3 +16,4 @@ export * from "./evidence";
 export * from "./attestation";
 export * from "./quorum";
 export * from "./aggregation";
+export * from "./evidence-store";
