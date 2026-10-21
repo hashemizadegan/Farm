@@ -144,3 +144,17 @@ export async function ownershipIndexTargets(tx: SystemTx, limit = 5_000): Promis
   );
   return r.rows.map((x) => ({ network: x.network, rail: x.rail, id: x.id }));
 }
+
+/**
+ * The Merkle tree the platform recorded for a compressed asset (system read). Null when none is
+ * recorded, or when representations disagree, so a source never reads the wrong tree's history.
+ */
+export async function bubblegumTreeOf(tx: SystemTx, network: Network, assetId: string): Promise<string | null> {
+  const r = await tx.query<{ address: string }>(
+    `SELECT DISTINCT t.address
+       FROM asset_representations r JOIN merkle_trees t ON t.id = r.tree_id
+      WHERE r.rail = 'SOLANA_BUBBLEGUM_CNFT' AND r.network = $1 AND r.das_asset_id = $2 AND t.address IS NOT NULL`,
+    [network, assetId],
+  );
+  return r.rows.length === 1 ? r.rows[0]!.address : null;
+}
