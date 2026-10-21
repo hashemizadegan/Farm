@@ -11,7 +11,8 @@
     "./geometry": "./src/geometry.ts",
     "./provenance": "./src/provenance.ts",
     "./nft": "./src/nft.ts",
-    "./scenarios": "./src/scenarios.ts"
+    "./scenarios": "./src/scenarios.ts",
+    "./yield": "./src/yield/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
