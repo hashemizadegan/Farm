@@ -15,3 +15,4 @@ export * from "./artifact";
 export * from "./evidence";
 export * from "./attestation";
 export * from "./quorum";
+export * from "./aggregation";
