@@ -1,11 +1,14 @@
 // First client milestone: load a farm's twin scene and draw placeholders (boundary, plot outlines,
 // point markers). Offline it reads the sample JSON through SampleTransport; online, call Load with a
 // TwinReadClient over UnityWebRequestTransport. Read-only: no wallet, no signing, no writes.
+// ApplySnapshotPlan executes a SceneUpdatePlan (decided and tested in the engine-free core) after a
+// verified SnapshotSync; this class only draws and removes objects.
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Metafarm.Twin.Core.Api;
 using Metafarm.Twin.Core.Mocks;
 using Metafarm.Twin.Core.Models;
+using Metafarm.Twin.Core.Scene;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
@@ -19,6 +22,8 @@ namespace Metafarm.Twin.Unity
         public GameObject pointMarkerPrefab;
 
         private readonly Dictionary<string, TwinObject> _objects = new Dictionary<string, TwinObject>();
+        // What is drawn, by twin object id (asset:<id>), so a snapshot update can redraw or remove it.
+        private readonly Dictionary<string, GameObject> _drawn = new Dictionary<string, GameObject>();
 
         public IReadOnlyDictionary<string, TwinObject> Objects => _objects;
 
@@ -69,16 +74,60 @@ namespace Metafarm.Twin.Unity
             foreach (var o in scene.Objects)
             {
                 _objects[o.TwinObjectId] = o;
-                var type = (string)o.Geometry?["type"];
-                if (type == "Polygon") DrawRing(o.Name, ToPairs(o.Geometry["coordinates"]?[0]), frame, ColorFor(o.Layer));
-                else if (type == "Point") PlaceMarker(o, frame);
                 // Objects without geometry (e.g. a storage unit not yet placed) are listed in Objects, not drawn.
+                Redraw(o.TwinObjectId, o.Name, o.Geometry, ColorFor(o.Layer), frame);
             }
         }
 
-        private void DrawRing(string objectName, List<double[]> ring, LocalFrame frame, Color color)
+        /// <summary>
+        /// Applies a plan from SceneUpdatePlan.From(result.Diff) after SnapshotSync accepted a snapshot.
+        /// Remove destroys the object; Refresh and Place redraw it from the entity's verified state.
+        /// </summary>
+        public void ApplySnapshotPlan(SceneUpdatePlan plan)
         {
-            if (ring == null || ring.Count < 2) return;
+            if (plan == null) return;
+            if (_frame == null)
+            {
+                Debug.LogWarning("Load the farm scene before applying snapshot updates (no local frame yet)");
+                return;
+            }
+            var frame = _frame.Value;
+            foreach (var op in plan.Operations)
+            {
+                if (op.Kind == SceneOperationKind.Remove)
+                {
+                    Erase(op.SceneObjectId);
+                    _objects.Remove(op.SceneObjectId);
+                    continue;
+                }
+                var label = (string)op.Entity.Data?["name"] ?? op.EntityId;
+                Redraw(op.SceneObjectId, label, op.Entity.Data?["geometry"] as JObject, ColorForEntity(op.EntityType), frame);
+            }
+            foreach (var change in plan.StateChanges) Debug.Log($"Farm state {change.Kind}: {change.EntityType} {change.EntityId}");
+        }
+
+        private void Redraw(string objectId, string objectName, JObject geometry, Color color, LocalFrame frame)
+        {
+            Erase(objectId);
+            var type = (string)geometry?["type"];
+            GameObject drawn = null;
+            if (type == "Polygon") drawn = DrawRing(objectName, ToPairs(geometry["coordinates"]?[0]), frame, color);
+            else if (type == "Point") drawn = PlaceMarker(objectId, objectName, geometry, frame);
+            if (drawn != null) _drawn[objectId] = drawn;
+        }
+
+        private void Erase(string objectId)
+        {
+            if (_drawn.TryGetValue(objectId, out var old))
+            {
+                if (old != null) Destroy(old);
+                _drawn.Remove(objectId);
+            }
+        }
+
+        private GameObject DrawRing(string objectName, List<double[]> ring, LocalFrame frame, Color color)
+        {
+            if (ring == null || ring.Count < 2) return null;
             var go = new GameObject(objectName);
             go.transform.SetParent(transform, false);
             var line = go.AddComponent<LineRenderer>();
@@ -89,15 +138,18 @@ namespace Metafarm.Twin.Unity
             line.startColor = color;
             line.endColor = color;
             if (lineMaterial != null) line.material = lineMaterial;
+            return go;
         }
 
-        private void PlaceMarker(TwinObject o, LocalFrame frame)
+        private GameObject PlaceMarker(string objectId, string objectName, JObject geometry, LocalFrame frame)
         {
-            var c = o.Geometry["coordinates"];
+            var c = geometry["coordinates"];
+            if (c == null) return null;
             var marker = pointMarkerPrefab != null ? Instantiate(pointMarkerPrefab) : GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            marker.name = $"{o.Name} [{o.TwinObjectId}]";
+            marker.name = $"{objectName} [{objectId}]";
             marker.transform.SetParent(transform, false);
             marker.transform.localPosition = frame.ToLocal((double)c[0], (double)c[1]);
+            return marker;
         }
 
         private static List<double[]> ToPairs(JToken ring)
@@ -110,6 +162,16 @@ namespace Metafarm.Twin.Unity
 
         private static LonLat FirstPoint(List<double[]> outline) =>
             outline != null && outline.Count > 0 ? new LonLat { Lon = outline[0][0], Lat = outline[0][1] } : null;
+
+        private static Color ColorForEntity(string entityType)
+        {
+            switch (entityType)
+            {
+                case "plot": return ColorFor("plots");
+                case "structure": return ColorFor("buildings");
+                default: return Color.gray;
+            }
+        }
 
         private static Color ColorFor(string layer)
         {

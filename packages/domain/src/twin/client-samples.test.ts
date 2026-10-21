@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { checkStorageRef, merkleLeaf, verifyMerkleInclusion } from "./commitments";
 import { twinAssetDetailSchema, twinLayerOf, twinSceneSchema } from "./model";
-import { reconstructFarmSnapshot, serializeFarmSnapshot } from "./snapshot";
+import { buildFarmSnapshot, reconstructFarmSnapshot, serializeFarmSnapshot, type FarmSnapshot } from "./snapshot";
 import { planAnchor } from "./anchor";
 
 const samples = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../clients/unity-starter/Samples");
@@ -82,5 +82,32 @@ describe("client starter samples", () => {
     const plan = load("snapshot-batch-anchor-plan.sample.json") as { batchId: string; plan: unknown };
     expect(plan.batchId).toBe(doc.proof.batchId);
     expect(plan.plan).toEqual(planAnchor({ carrier: "token2022_metadata", network: "solana-devnet", subject: "batch", root: doc.proof.root, label: doc.proof.dataset, mainnetEnabled: false }));
+  });
+
+  it("the sync fixtures are platform-built snapshots with the documented ordering and diff", async () => {
+    const records = load("sync-commitments.sample.json") as Record<string, { id: string; subjectId: string; schema: string; contentSha256: string; byteSize: number; storageRef: string; sourceTime: string }>;
+    const snaps: Record<string, FarmSnapshot> = {};
+    for (const name of ["a", "b", "c"]) {
+      const bytes = readFileSync(path.join(samples, `sync-${name}.content.sample.json`));
+      const { snapshot, check } = await reconstructFarmSnapshot(bytes.toString("utf8"));
+      expect(check).toEqual({ ok: true, problems: [] });
+      // Rebuilding from the same entities and time with the platform's builder gives exactly these bytes.
+      const rebuilt = await buildFarmSnapshot({ farmId: snapshot.farmId, takenAt: new Date(snapshot.takenAt), entities: snapshot.entities.map(({ type, id, data }) => ({ type, id, data })) });
+      expect(serializeFarmSnapshot(rebuilt)).toBe(bytes.toString("utf8"));
+      const sha = createHash("sha256").update(bytes).digest("hex");
+      expect(records[name]).toMatchObject({ subjectId: snapshot.farmId, schema: "metafarm.farm-snapshot", contentSha256: sha, byteSize: bytes.length, storageRef: `sha256:${sha}`, sourceTime: snapshot.takenAt });
+      snaps[name] = snapshot;
+    }
+    expect(snaps.a!.takenAt < snaps.b!.takenAt).toBe(true);
+    expect(snaps.b!.takenAt).toBe(snaps.c!.takenAt);
+    expect(snaps.b!.snapshotId).not.toBe(snaps.c!.snapshotId);
+
+    const key = (e: { type: string; id: string }) => `${e.type}/${e.id.slice(0, 4)}`;
+    const byKey = (s: FarmSnapshot) => new Map(s.entities.map((e) => [key(e), e.sha256]));
+    const [a, b] = [byKey(snaps.a!), byKey(snaps.b!)];
+    expect([...b.keys()].filter((k) => !a.has(k))).toEqual(["structure/5555"]);
+    expect([...a.keys()].filter((k) => !b.has(k))).toEqual(["structure/3333"]);
+    expect([...b.keys()].filter((k) => a.has(k) && a.get(k) !== b.get(k))).toEqual(["machine/2222", "plot/1111"]);
+    expect([...b.keys()].filter((k) => a.get(k) === b.get(k))).toHaveLength(3);
   });
 });

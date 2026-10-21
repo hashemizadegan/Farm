@@ -1,2 +1,3 @@
 # Exact canonical bytes (hashed in tests): no line-ending or text conversion.
 clients/unity-starter/Samples/snapshot-content.sample.json -text
+clients/unity-starter/Samples/*.content.sample.json -text

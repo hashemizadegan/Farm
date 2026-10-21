@@ -7,20 +7,18 @@
 //   4. anchor plan (optional): the batch's plan is plan-only and names that root
 // Read-only: GET requests through ITwinReadApi only.
 using System;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Metafarm.Twin.Core.Anchoring;
 using Metafarm.Twin.Core.Api;
 using Metafarm.Twin.Core.Models;
 using Metafarm.Twin.Core.Verification;
-using Newtonsoft.Json;
 
 namespace Metafarm.Twin.Core.Sync
 {
     public sealed class SnapshotChain
     {
-        public const string SnapshotSchema = "metafarm.farm-snapshot";
+        public const string SnapshotSchema = SnapshotContentVerification.SnapshotSchema;
         private readonly ITwinReadApi _api;
         private readonly Rfc9162CommitmentVerifier _verifier = new Rfc9162CommitmentVerifier();
 
@@ -38,27 +36,20 @@ namespace Metafarm.Twin.Core.Sync
             catch (TwinApiException e) { return Fail(report, "commitment", e); }
             var commitment = proofDoc?.Commitment;
             if (commitment == null || commitment.Id != commitmentId) return Fail(report, "the commitment in the response is not the one asked for");
-            if (commitment.Schema != SnapshotSchema) return Fail(report, $"commitment {commitmentId} is not a farm snapshot");
+            var refused = SnapshotContentVerification.CheckRecord(commitment, null);
+            if (refused != null) return Fail(report, refused.Problems[0]);
             report.ContentSha256 = commitment.ContentSha256;
 
-            // 1. Content.
+            // 1 and 2. Content and structure of exactly those bytes (shared with SnapshotSync).
             string body;
             try { body = await _api.GetSnapshotContentAsync(commitmentId, cancellationToken).ConfigureAwait(false); }
             catch (TwinApiException e) { return Fail(report, "snapshot content", e); }
-            if (body == null || !_verifier.ContentMatches(Encoding.UTF8.GetBytes(body), commitment.ContentSha256))
-                return Fail(report, "the snapshot's bytes do not match the committed hash");
-            report.Content = ChainLinkState.Verified;
-
-            // 2. Structure, of exactly those bytes.
-            FarmSnapshot snapshot = null;
-            try { snapshot = TwinJson.Deserialize<FarmSnapshot>(body); }
-            catch (JsonException) { }
-            var problems = snapshot == null ? new[] { "the snapshot's bytes are not a snapshot" } : SnapshotVerifier.CheckStructure(snapshot);
-            report._problems.AddRange(problems);
-            if (snapshot != null && snapshot.FarmId != commitment.SubjectId) report._problems.Add("the snapshot is for another farm than its commitment");
-            if (report._problems.Count > 0) { report.Structure = ChainLinkState.Failed; return report; }
-            report.Structure = ChainLinkState.Verified;
-            report.Snapshot = snapshot;
+            var verified = SnapshotContentVerification.Check(commitment, body, null);
+            report.Content = verified.Content;
+            report.Structure = verified.Structure;
+            report._problems.AddRange(verified.Problems);
+            if (!verified.Ok) return report;
+            report.Snapshot = verified.Snapshot;
 
             // 3. Inclusion: the proof must start from the leaf of the hash just verified (VerifyProof checks it).
             var p = proofDoc.Proof;

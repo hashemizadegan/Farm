@@ -1,6 +1,16 @@
-// Keeps a client's copy of a farm's state current: compare the newest snapshot commitment with the
-// one held, fetch only when it changed, and accept the new snapshot only if the server's check and
-// the client's own structure check (order, Merkle root, snapshot id) both pass. Read-only.
+// Keeps a client's copy of a farm's state current, verified and never moving backwards.
+// Normal polling is two GET requests: the newest snapshot record (list, limit 1) and that record's
+// exact bytes (…/snapshots/{id}/content). The content request is skipped (UpToDate) only when the
+// newest record has the held record's id AND content hash: the held bytes were already verified
+// against that hash, so fetching them again could not change the result. A matching id alone is not
+// enough. A candidate is held only if
+//   1. the record is a farm snapshot for the requested farm (also on the first sync),
+//   2. SHA-256 of the exact bytes is the record's content hash, and those same bytes parse to a
+//      snapshot whose structure checks out for the same farm (SnapshotContentVerification), and
+//   3. it is newer than the held snapshot (rollback protection relative to held state; see
+//      SnapshotOrdering for what that does and does not guarantee).
+// Batch inclusion and anchor plans are deeper, optional checks: use SnapshotChain for those.
+// Read-only.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +18,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Metafarm.Twin.Core.Api;
 using Metafarm.Twin.Core.Models;
-using Metafarm.Twin.Core.Verification;
 
 namespace Metafarm.Twin.Core.Sync
 {
@@ -18,25 +27,58 @@ namespace Metafarm.Twin.Core.Sync
 
         public SnapshotSync(ITwinReadApi api) => _api = api ?? throw new ArgumentNullException(nameof(api));
 
-        /// <param name="heldCommitmentId">The commitment of the snapshot the client holds, or null.</param>
-        public async Task<SnapshotSyncResult> SyncAsync(string farmId, string heldCommitmentId, CancellationToken cancellationToken = default)
+        /// <summary>Checks for a newer snapshot and, only when it verifies and is newer, replaces <paramref name="state"/>.</summary>
+        public async Task<SnapshotSyncResult> SyncAsync(FarmSnapshotState state, CancellationToken cancellationToken = default)
         {
-            var newest = (await _api.ListSnapshotsAsync(farmId, null, 1, cancellationToken).ConfigureAwait(false)).Items.FirstOrDefault();
-            if (newest == null) return new SnapshotSyncResult(SnapshotSyncOutcome.NoSnapshot, null, null, null);
-            if (newest.Id == heldCommitmentId) return new SnapshotSyncResult(SnapshotSyncOutcome.UpToDate, newest.Id, null, null);
+            if (state == null) throw new ArgumentNullException(nameof(state));
+            var newest = (await _api.ListSnapshotsAsync(state.FarmId, null, 1, cancellationToken).ConfigureAwait(false)).Items.FirstOrDefault();
+            if (newest == null) return Result(SnapshotSyncOutcome.NoSnapshot, null);
+            if (state.HasSnapshot && newest.Id == state.CommitmentId && newest.ContentSha256 == state.ContentSha256)
+                return Result(SnapshotSyncOutcome.UpToDate, newest.Id);
 
-            var doc = await _api.GetSnapshotAsync(newest.Id, cancellationToken).ConfigureAwait(false);
-            var problems = new List<string>();
-            if (doc?.Check == null || !doc.Check.Ok) problems.Add("the server's check did not pass");
-            if (doc?.Snapshot == null) problems.Add("no snapshot in the response");
-            else
+            var refused = SnapshotContentVerification.CheckRecord(newest, state.FarmId);
+            if (refused != null) return Rejected(newest.Id, refused);
+
+            string body;
+            try { body = await _api.GetSnapshotContentAsync(newest.Id, cancellationToken).ConfigureAwait(false); }
+            catch (TwinApiException e)
             {
-                problems.AddRange(SnapshotVerifier.CheckStructure(doc.Snapshot));
-                if (doc.Snapshot.FarmId != farmId) problems.Add("the snapshot is for another farm");
+                var problem = $"snapshot content: HTTP {e.Status} {e.Error?.Error ?? "error"}" + (e.Error?.RequestId != null ? $" (request {e.Error.RequestId})" : "");
+                return new SnapshotSyncResult(SnapshotSyncOutcome.VerificationFailed, newest.Id, null, null, SnapshotFailure.ContentUnavailable, new List<string> { problem });
             }
-            return problems.Count == 0
-                ? new SnapshotSyncResult(SnapshotSyncOutcome.Updated, newest.Id, doc.Snapshot, null)
-                : new SnapshotSyncResult(SnapshotSyncOutcome.VerificationFailed, newest.Id, null, problems);
+            var verified = SnapshotContentVerification.Check(newest, body, state.FarmId);
+            if (!verified.Ok) return Rejected(newest.Id, verified);
+
+            var candidate = verified.Snapshot;
+            switch (SnapshotOrdering.Compare(state.Baseline, candidate))
+            {
+                case SnapshotOrder.Identical:
+                    return Result(SnapshotSyncOutcome.Unchanged, newest.Id);
+                case SnapshotOrder.Older:
+                    return Result(SnapshotSyncOutcome.Rollback, newest.Id, $"the snapshot was taken at {candidate.TakenAt}, before the held one ({state.Baseline.TakenAt})");
+                case SnapshotOrder.Conflict:
+                    return Result(SnapshotSyncOutcome.Conflict, newest.Id, $"the snapshot has the held one's time ({candidate.TakenAt}) but different content");
+                case SnapshotOrder.NothingHeld:
+                    return Accept(state, SnapshotSyncOutcome.Initial, newest, body, candidate);
+                default:
+                    return Accept(state, SnapshotSyncOutcome.Updated, newest, body, candidate);
+            }
         }
+
+        private static SnapshotSyncResult Accept(FarmSnapshotState state, SnapshotSyncOutcome outcome, DataCommitment record, string body, FarmSnapshot candidate)
+        {
+            // The diff's "before" side is a fresh copy, never the baseline; it is computed before
+            // replacing, so a failure here leaves the held state as it was. The state then keeps the
+            // verified bytes and parses its own baseline, separate from the candidate handed back.
+            var diff = SnapshotDiff.Between(state.Snapshot, candidate);
+            state.Replace(record.Id, record.ContentSha256, body);
+            return new SnapshotSyncResult(outcome, record.Id, candidate, diff, SnapshotFailure.None, null);
+        }
+
+        private static SnapshotSyncResult Rejected(string commitmentId, SnapshotContentVerification v) =>
+            new SnapshotSyncResult(v.Failure == SnapshotFailure.FarmMismatch ? SnapshotSyncOutcome.FarmMismatch : SnapshotSyncOutcome.VerificationFailed, commitmentId, null, null, v.Failure, v.Problems);
+
+        private static SnapshotSyncResult Result(SnapshotSyncOutcome outcome, string commitmentId, string problem = null) =>
+            new SnapshotSyncResult(outcome, commitmentId, null, null, SnapshotFailure.None, problem == null ? null : new List<string> { problem });
     }
 }
