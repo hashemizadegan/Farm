@@ -6,6 +6,62 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-21, late evening (test hardening; two defects fixed)
+
+### Current heads (all drafts, none merged)
+
+| PR | Branch | Head | CI run | Checks |
+| --- | --- | --- | --- | --- |
+| #60 Y1 | `feature/yield-y1-cycle-model` | `2bbc68e` | 39610916939 | 13/13 passed |
+| #61 Y2 | `feature/yield-y2-calculation` | `e90142b` | 39625909640 | 13/13 passed |
+| #62 yield stack base | `feature/yield-stack-base` | `e709cf8` | 39619248296 | 14/14 passed |
+| #63 Y3 | `feature/yield-y3-evidence` | `4d08b9a` | 39625783828 | 14/14 passed |
+
+- **#61:** `e90142b` supersedes `04e7cc6`, which superseded `6f3dd20`.
+- **#62:** for a while the API reported the Dependency audit job as `in_progress` after the run had
+  completed. Its final record shows success (14:43:27Z → 14:43:56Z), so the earlier status was stale
+  and #62 is 14/14.
+- Y1 did not change, so no stack merges were needed.
+
+### Defects found by the hardening
+
+- **Security (Y3, `821b507`).** Web Crypto (OpenSSL) accepts Ed25519 signatures under small-order public
+  keys. With the identity point as the key, `R = identity, S = 0` verifies for every message, so a
+  key-signature attestation could be made without any secret. Small-order keys (libsodium's list, either
+  sign bit) and non-canonical keys (y ≥ p) are now refused. The regression tests fail without the fix.
+- **Calendar (Y3 `81ff91a`, Y2 `e90142b`).** `Date.UTC` maps years 0–99 to 1900–1999, so `0000-02-29` was
+  refused. Days per month are now computed directly. Mutation-checked on Y2.
+
+### Tests added
+
+- **Y3:**
+  - quorum: all 4,368 graphs of up to 3 roles × 3 attesters, checked against a brute-force oracle in
+    both modes, with independence from input and rule order; a 40-role augmenting chain; a Hall
+    violation; a 60 × 60 assignment;
+  - evidence: a Unicode manifest vector computed in Python; lone surrogates; NFC/NFD; type/hash
+    collisions; byte order over 200 items × 25 permutations; RFC 3339 boundaries;
+  - attestation: Ed25519 and P-256 negative vectors, and domain-separation injectivity.
+  - Counts: evidence 19, attestation 28, quorum 6, quorum properties 6.
+- **Y2:** about 3,000 seeded conversion cases up to `U64_MAX` and exponent 30, plus timestamp boundaries.
+  fx now has 10 tests; Y2 has 48 in total.
+
+### Recorded behaviour (pinned by tests, not decided)
+
+- Identifiers are compared by code units, with no Unicode normalisation.
+- Lowercase `t` and `z` in timestamps are refused.
+- Both ECDSA S forms are accepted.
+- Conversion results are not bounded to u64 (allocations are).
+
+### Open (D-23)
+
+A valid key signature proves only that the key holder signed. It does not bind the attester's identity
+to an approved key, so one party could create several keys under different attester names. This is
+part of the attester identity requirements.
+
+### Blockers and holds
+
+Unchanged from the entry below.
+
 ## 2026-10-21, evening (Y1–Y3 implemented; batch complete)
 
 ### Stack (all drafts, none merged)
