@@ -6,6 +6,25 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-21, evening (three parallel tracks; provisional defaults are simulation-only)
+
+| PR | Track | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #64 | 1: distribution plan engine | `feature/yield-distribution-engine` | `e508e3c` | #61 | 39632610018 | 13/13 passed |
+| #65 | 3: attester authorization (Option B, provisional) | `feature/yield-attester-registry` | `853689e` | #63 | 39632995539 | 14/14 passed |
+| #66 | Y2 + Y3 integration (merge only) | `feature/yield-y2y3-base` | `977bbb0` | #63 | 39633087016 | 14/14 passed |
+| #67 | 2: evidence aggregation, reserve-offset ceiling | `feature/yield-evidence-aggregation` | `cfa667d` | #66 | 39633473853 | 14/14 passed |
+
+- **Owner direction:** pending decisions become parameters with temporary defaults.
+- **How the defaults are held:**
+  - Every pending parameter is a required field, marked with its decision: D-7, D-9, D-14, D-23.
+  - Defaults ship as `simulation`-status records.
+  - Real cycles still need `approved` records and fail closed.
+- **Track 1 naming:** it is not the plan's Y4, which is evidence-storage wiring. It is the pre-Merkle distribution engine; D-26 is open.
+- **Track 2's offset:** the reserve offset of a loss (D-7), as an estimate only.
+- **Track 3:** Option B is implemented behind a swappable `AttesterAuthorizer` interface. D-23 stays open.
+- **Holds unchanged:** no merges, deployments, signing or chain access.
+
 ## 2026-10-21, 19:29 local (D-23 decision brief; no approvals)
 
 - **Added** [`decision-brief-d23-attester-identity.md`](decision-brief-d23-attester-identity.md), marked
