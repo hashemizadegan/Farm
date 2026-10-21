@@ -52,11 +52,13 @@ d("twin API with the ownership index", () => {
     ({ app } = await buildTestApp({ pool, deps: { ownershipReader: new IndexOwnershipReader((a) => readOwnershipIndex(pool, a)) } }));
     const owner = { authorization: `Bearer ${await tokenFor(subjects.owner)}` };
     const farmId = (await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/farms`, headers: owner, payload: { name: "Grove" } })).json().id;
-    [shed, store] = await Promise.all(
+    const created = await Promise.all(
       (["Packing shed", "Cold store"] as const).map(async (name, i) =>
         (await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/rwa/assets`, headers: owner, payload: { farmId, kind: i === 0 ? "building" : "storage_unit", name } })).json().id as string,
       ),
     );
+    shed = created[0]!;
+    store = created[1]!;
     shareRep = (
       await pool.query<{ id: string }>(
         `INSERT INTO asset_representations (tenant_id, asset_id, rail, network, status, mint_address, decimals) VALUES ($1, $2, 'SOLANA_TOKEN_2022', 'solana-devnet', 'active', $3, 6) RETURNING id`,
