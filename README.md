@@ -67,6 +67,7 @@ pnpm lint && pnpm typecheck
 | API authorization (404 cross-tenant, role 403s, uploads, wallet replay) | `apps/api/src/authz.int.test.ts` |
 | Security baseline (headers, CORS, body limit, rate limit, webhooks) | `apps/api/src/app.test.ts` |
 | Rate limits shared across replicas through Redis | `apps/api/src/rate-limit.int.test.ts` |
+| Idempotency-Key on every tenant-scoped write | `apps/api/src/idempotency.int.test.ts` |
 | Job idempotency, retries, dead-letter | `apps/worker/src/runner.test.ts`, `apps/worker/src/jobs.int.test.ts` |
 | Deterministic 3D fixtures | `packages/map-scene/src/core/scene-builder.test.ts` + `__fixtures__/` |
 | Contracts (roles, fixed supply, pause, no confiscation) | `contracts/nft/test/` |

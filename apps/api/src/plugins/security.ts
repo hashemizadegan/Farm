@@ -36,7 +36,7 @@ export const securityPlugin = fp(async (app: FastifyInstance, opts: { env: ApiEn
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["authorization", "content-type", "x-request-id", "idempotency-key"],
-    exposedHeaders: ["x-request-id", "retry-after", "content-disposition", "x-row-count"],
+    exposedHeaders: ["x-request-id", "retry-after", "content-disposition", "x-row-count", "idempotent-replayed"],
     credentials: false,
     maxAge: 600,
   });

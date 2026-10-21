@@ -206,7 +206,7 @@ export async function twinRoutes(app: FastifyInstance) {
 
   // ── Data commitments ──────────────────────────────────────────────────
 
-  app.post("/v1/tenants/:tenantId/twin/data-commitments", async (req, reply) => {
+  app.post("/v1/tenants/:tenantId/twin/data-commitments", { config: { idempotency: "handler" } }, async (req, reply) => {
     parse(tenantParams, req.params);
     const body = parse(createDataCommitmentSchema, req.body);
     if (body.schema === SNAPSHOT_COMMITMENT_SCHEMA) throw new HttpError(400, "reserved_schema", "snapshot commitments are recorded by the snapshot endpoint");
@@ -266,7 +266,7 @@ export async function twinRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/v1/tenants/:tenantId/twin/data-commitments/batches", async (req, reply) => {
+  app.post("/v1/tenants/:tenantId/twin/data-commitments/batches", { config: { idempotency: "handler" } }, async (req, reply) => {
     parse(tenantParams, req.params);
     const body = parse(createCommitmentBatchSchema, req.body);
     if (new Set(body.commitmentIds).size !== body.commitmentIds.length) throw new HttpError(400, "duplicate_commitments", "each commitment may appear once in a batch");

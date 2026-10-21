@@ -8,6 +8,16 @@ info:
     caller to hold a membership in that tenant. Requests for another tenant's
     resources return `404` (not `403`) so resource existence is not disclosed.
 
+    **Idempotency.** Any write (POST, PUT, PATCH, DELETE) under `/v1/tenants/{tenantId}`
+    accepts an `Idempotency-Key` header (a UUID), scoped to the tenant and the signed-in
+    user and kept for 24 hours. A resend with the same key and the same request returns
+    the stored response with `Idempotent-Replayed: true` and does not write again. A
+    different request under a used key is refused with `409 idempotency_key_reused`, and a
+    resend while the first request has not finished, or whose outcome was not recorded,
+    with `409 idempotency_request_in_progress`. A failed request (non-2xx) frees its key.
+    Routes that document their own idempotent result (for example a `200` "resend") keep
+    that behaviour.
+
     **Provenance.** Every boundary, observation, plan and scene element carries a
     `provenance` label: `illustrative`, `user-entered`, `provider-observation`,
     `sensor-reported`, or `independently-verified` (only with evidence).

@@ -4,6 +4,7 @@ import path from "node:path";
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import type { Deps } from "./deps";
 import { contextPlugin } from "./plugins/context";
+import { idempotencyPlugin } from "./plugins/idempotency";
 import { securityPlugin } from "./plugins/security";
 import { chainRoutes } from "./routes/chain";
 import { farmRoutes } from "./routes/farms";
@@ -54,6 +55,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
 
   await app.register(securityPlugin, { env: deps.env, rateLimitRedis: deps.rateLimitRedis });
   await app.register(contextPlugin, { deps });
+  await app.register(idempotencyPlugin);
   await app.register(healthRoutes, { isDraining });
 
   if (docs ?? deps.env.APP_ENV !== "production") {

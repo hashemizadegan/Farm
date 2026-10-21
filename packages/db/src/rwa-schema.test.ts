@@ -114,3 +114,15 @@ describe("ownership index schema (0020) matches the domain", () => {
     expect(grants).toEqual([["SELECT", "chain_ownership_events, chain_ownership_cursors"]]);
   });
 });
+
+describe("idempotency schema (0021)", () => {
+  const text = read("0021_idempotency.up.sql");
+  it("is tenant-isolated and keyed per tenant, user and key", () => {
+    expect(text).toContain("FORCE ROW LEVEL SECURITY");
+    expect(text).toContain("tenant_id = app_current_tenant()");
+    expect(text).toContain("PRIMARY KEY (tenant_id, user_id, key)");
+  });
+  it("stores only successful responses", () => {
+    expect(text).toContain("status_code BETWEEN 200 AND 299");
+  });
+});

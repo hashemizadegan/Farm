@@ -79,7 +79,7 @@ export async function harvestRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/v1/tenants/:tenantId/farms/:farmId/harvests", async (req, reply) => {
+  app.post("/v1/tenants/:tenantId/farms/:farmId/harvests", { config: { idempotency: "handler" } }, async (req, reply) => {
     const { tenantId, farmId } = parse(farmParams, req.params);
     const body = parse(createHarvestSchema, req.body);
     const status: AnchorStatus = anchoringConfigured() ? "pending" : "not_configured";
