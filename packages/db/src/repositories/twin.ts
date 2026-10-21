@@ -4,7 +4,7 @@
  * application role may insert and select, never update or delete.
  */
 import type { DataSubjectType } from "@metafarm/domain";
-import type { TenantTx } from "../tenant";
+import type { SystemTx, TenantTx } from "../tenant";
 import type { BusinessAssetRow } from "./rwa-execution";
 
 export interface TwinChainRow {
@@ -176,6 +176,34 @@ export async function commitmentsInOrder(tx: TenantTx, ids: string[]): Promise<D
   return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
 }
 
+/** Commitments of one schema that are in no batch yet, oldest first. */
+export async function unbatchedDataCommitments(tx: TenantTx, schema: string, limit: number): Promise<DataCommitmentRow[]> {
+  return (
+    await tx.query<DataCommitmentRow>(
+      `${COMMITMENT_SELECT}
+        WHERE c.tenant_id = $1 AND c.data_schema = $2 AND l.batch_id IS NULL
+        ORDER BY c.created_at, c.id
+        LIMIT $3`,
+      [tx.tenantId, schema, limit],
+    )
+  ).rows;
+}
+
+/** Workspaces that have commitments of one schema in no batch yet (system read, for the scheduled sweep). */
+export async function tenantsWithUnbatchedCommitments(tx: SystemTx, schema: string, limit = 5_000): Promise<string[]> {
+  return (
+    await tx.query<{ tenant_id: string }>(
+      `SELECT DISTINCT c.tenant_id
+         FROM data_commitments c
+        WHERE c.data_schema = $1
+          AND NOT EXISTS (SELECT 1 FROM commitment_batch_leaves l WHERE l.tenant_id = c.tenant_id AND l.commitment_id = c.id)
+        ORDER BY c.tenant_id
+        LIMIT $2`,
+      [schema, limit],
+    )
+  ).rows.map((r) => r.tenant_id);
+}
+
 // ── Merkle batches ─────────────────────────────────────────────────────
 
 export interface CommitmentBatchRow {
@@ -193,7 +221,7 @@ const BATCH_SELECT = `SELECT id, dataset, scheme, merkle_root, leaf_count, creat
 
 export async function insertCommitmentBatch(
   tx: TenantTx,
-  b: { dataset: string; scheme: string; merkleRoot: string; leaves: { commitmentId: string; leafHash: string }[]; createdBy: string; clientRequestId: string | null },
+  b: { dataset: string; scheme: string; merkleRoot: string; leaves: { commitmentId: string; leafHash: string }[]; createdBy: string | null; clientRequestId: string | null },
 ): Promise<CommitmentBatchRow> {
   const id = (
     await tx.query<{ id: string }>(

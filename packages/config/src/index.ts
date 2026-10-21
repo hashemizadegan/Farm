@@ -203,6 +203,8 @@ export const workerEnvSchema = z
     RWA_PREFLIGHT_ENABLED: bool.default("false"),
     /** Digital twin: record scheduled farm-state snapshots (content-addressed storage + a data commitment). Off by default; writes nothing on-chain. */
     TWIN_SNAPSHOTS_ENABLED: bool.default("false"),
+    /** Digital twin: fix recorded snapshot commitments into Merkle batches (one root per workspace and run). Off by default; data only, nothing on-chain. */
+    TWIN_SNAPSHOT_BATCHES_ENABLED: bool.default("false"),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {
@@ -232,6 +234,8 @@ export const schedulerEnvSchema = z
     CHAIN_INDEX_CRON: z.string().default("*/1 * * * *"),
     /** Digital twin: cron for the farm-snapshot sweep. Unset = no schedule (the default). */
     TWIN_SNAPSHOT_CRON: z.string().min(9).max(100).optional(),
+    /** Digital twin: cron for batching snapshot commitments. Unset = no schedule (the default). */
+    TWIN_SNAPSHOT_BATCH_CRON: z.string().min(9).max(100).optional(),
     CHAIN_ID: z.coerce.number().int().positive().default(31337),
     /** Comma-separated "0xaddress@fromBlock" entries. */
     CHAIN_INDEX_CONTRACTS: csv.default(""),

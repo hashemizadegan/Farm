@@ -14,10 +14,11 @@ disabled.
 | `Runtime/Core/Models` (`Metafarm.Twin.Core.Models`) | none | Wire DTOs mirroring `packages/contracts/openapi.yaml` (TwinScene, TwinObject, TwinAssetDetail, OwnershipReading, DataCommitment, DataCommitmentProof). No domain rules: those stay in the platform. |
 | `Runtime/Core/Transport` (`…Core.Transport`) | none | `ITwinTransport`: GET only |
 | `Runtime/Core/Auth` (`…Core.Auth`) | none | `ITokenSource` for the user's OIDC access token; `NoTokenSource` for offline use. No token is stored in the starter. |
-| `Runtime/Core/Api` (`…Core.Api`) | none | `ITwinReadApi` and `TwinReadClient` (scene, asset detail, commitment proof); ids must be UUIDs |
+| `Runtime/Core/Api` (`…Core.Api`) | none | `ITwinReadApi` and `TwinReadClient` (scene, asset detail, commitment proof, snapshots, anchor plans); ids must be UUIDs, and anchor carriers and networks must be known values |
 | `Runtime/Core/Ownership` (`…Core.Ownership`) | none | `IOwnershipReader`, `ApiOwnershipReader`, and `OwnershipDisplay`, which never shows "not indexed" as "no owner" and labels fixture data as test data |
 | `Runtime/Core/Transactions` (`…Core.Transactions`) | none | `ITransferPreviewer` (preparation only) and `DisabledTransferPreviewer`, the default. There is no signing or submission interface. |
 | `Runtime/Core/Verification` (`…Core.Verification`) | none | `ICommitmentVerifier` and `Rfc9162CommitmentVerifier`: checks content hashes and Merkle proofs locally, using the platform's scheme `metafarm-merkle-sha256/1` |
+| `Runtime/Core/Anchoring` (`…Core.Anchoring`) | none | `AnchorPlanReview`: checks an anchor plan (`AnchorModels.cs`) against the root the client verified, refuses any plan that claims to be executable, and words it as "planned only, not anchored" |
 | `Runtime/Core/Sync` (`…Core.Sync`) | none | `SnapshotSync`: compares the newest snapshot commitment with the one held, fetches only when it changed, and accepts it only if the server's check and `SnapshotVerifier` both pass |
 | `Runtime/Core/Mocks` (`…Core.Mocks`) | none | `SampleTransport` (serves JSON by path, records requests) and `SampleIds` for running without a backend |
 | `Runtime/Unity` (`Metafarm.Twin.Unity`) | Unity | `UnityWebRequestTransport` (https only, bearer token), `LocalFrame` (metres around the farm origin, as in `packages/map-scene`), and the `FarmSceneLoader` MonoBehaviour |
@@ -26,7 +27,7 @@ disabled.
 
 Each layer depends only on the ones above it in this table; `Runtime/Core` has no reference to
 UnityEngine (`noEngineReferences` in its assembly definition). DTO files group related wire
-types (`SceneModels.cs`, `AssetModels.cs`, `CommitmentModels.cs`); every other file holds one type
+types (`SceneModels.cs`, `AssetModels.cs`, `CommitmentModels.cs`, `AnchorModels.cs`); every other file holds one type
 named after it.
 
 ## Dependencies

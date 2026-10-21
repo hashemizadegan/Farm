@@ -16,6 +16,8 @@ export interface ScheduleConfig {
   contracts: { address: string; fromBlock: string }[];
   /** Digital-twin snapshot sweep; no schedule when unset. */
   twinSnapshotCron?: string;
+  /** Digital-twin batching of snapshot commitments; no schedule when unset. */
+  twinSnapshotBatchCron?: string;
 }
 
 /**
@@ -41,6 +43,9 @@ export function buildSchedules(cfg: ScheduleConfig): ScheduleDefinition[] {
   }
   if (cfg.twinSnapshotCron) {
     schedules.push({ id: "twin-snapshots-sweep", queue: QUEUES.twinSnapshots, jobName: "sweep", pattern: cfg.twinSnapshotCron, data: {} });
+  }
+  if (cfg.twinSnapshotBatchCron) {
+    schedules.push({ id: "twin-snapshot-batches-sweep", queue: QUEUES.twinSnapshotBatches, jobName: "sweep", pattern: cfg.twinSnapshotBatchCron, data: {} });
   }
   return schedules;
 }

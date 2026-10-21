@@ -1,0 +1,13 @@
+{
+  "batchId": "88888888-8888-4888-8888-888888888888",
+  "plan": {
+    "scheme": "metafarm-anchor/1",
+    "carrier": "bubblegum_v1_leaf",
+    "network": "solana-devnet",
+    "subject": "batch",
+    "root": "5610b47577351888d614cb915e3b0d11fbc5d440a689446c1bd8e87d75194da5",
+    "leafMetadata": { "name": "MF batch 5610b4757735", "symbol": "MFANCHOR", "uri": "https://metadata.example.test/v1/public/anchors/5610b47577351888d614cb915e3b0d11fbc5d440a689446c1bd8e87d75194da5" },
+    "executable": false,
+    "reason": "anchoring_not_enabled"
+  }
+}

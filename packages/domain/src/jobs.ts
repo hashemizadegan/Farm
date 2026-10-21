@@ -15,6 +15,7 @@ export const QUEUES = {
   chain: "chain-event-indexing",
   anchor: "harvest-anchoring",
   twinSnapshots: "twin-snapshots",
+  twinSnapshotBatches: "twin-snapshot-batches",
   deadLetter: "dead-letter",
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -23,6 +24,12 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 export interface TwinSnapshotJob {
   tenantId: string;
   farmId: string;
+  bucket: string;
+}
+
+/** Fix one workspace's not-yet-batched snapshot commitments into a Merkle batch, at most once per bucket. */
+export interface TwinSnapshotBatchJob {
+  tenantId: string;
   bucket: string;
 }
 
@@ -76,6 +83,7 @@ export interface JobPayloads {
   [QUEUES.chain]: ChainEventIndexingJob;
   [QUEUES.anchor]: HarvestAnchorJob;
   [QUEUES.twinSnapshots]: TwinSnapshotJob;
+  [QUEUES.twinSnapshotBatches]: TwinSnapshotBatchJob;
 }
 
 export function idempotencyKey<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloads[Q]): string {
@@ -107,6 +115,10 @@ export function idempotencyKey<Q extends keyof JobPayloads>(queue: Q, payload: J
     case QUEUES.twinSnapshots: {
       const p = payload as TwinSnapshotJob;
       return `twin-snapshot:${p.tenantId}:${p.farmId}:${p.bucket}`;
+    }
+    case QUEUES.twinSnapshotBatches: {
+      const p = payload as TwinSnapshotBatchJob;
+      return `twin-snapshot-batch:${p.tenantId}:${p.bucket}`;
     }
     default:
       throw new Error(`unknown queue ${String(queue)}`);

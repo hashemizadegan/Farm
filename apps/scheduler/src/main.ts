@@ -24,6 +24,7 @@ const schedules = buildSchedules({
   chainId: env.CHAIN_ID,
   contracts,
   twinSnapshotCron: env.TWIN_SNAPSHOT_CRON,
+  twinSnapshotBatchCron: env.TWIN_SNAPSHOT_BATCH_CRON,
 });
 
 const queues = new Map<string, Queue>();
@@ -43,11 +44,15 @@ for (const s of schedules) {
   logger.info({ scheduler: s.id, queue: s.queue, pattern: s.pattern }, "schedule upserted");
 }
 
-// The twin snapshot sweep is opt-in: when its cron is unset, make sure no earlier schedule lingers.
-if (!env.TWIN_SNAPSHOT_CRON) {
-  const q = queues.get(QUEUES.twinSnapshots) ?? new Queue(QUEUES.twinSnapshots, { connection, prefix: env.QUEUE_PREFIX });
-  queues.set(QUEUES.twinSnapshots, q);
-  if (await q.removeJobScheduler("twin-snapshots-sweep")) logger.info({ scheduler: "twin-snapshots-sweep" }, "schedule removed (TWIN_SNAPSHOT_CRON unset)");
+// The twin sweeps are opt-in: when a cron is unset, make sure no earlier schedule lingers.
+for (const [cron, queue, id, setting] of [
+  [env.TWIN_SNAPSHOT_CRON, QUEUES.twinSnapshots, "twin-snapshots-sweep", "TWIN_SNAPSHOT_CRON"],
+  [env.TWIN_SNAPSHOT_BATCH_CRON, QUEUES.twinSnapshotBatches, "twin-snapshot-batches-sweep", "TWIN_SNAPSHOT_BATCH_CRON"],
+] as const) {
+  if (cron) continue;
+  const q = queues.get(queue) ?? new Queue(queue, { connection, prefix: env.QUEUE_PREFIX });
+  queues.set(queue, q);
+  if (await q.removeJobScheduler(id)) logger.info({ scheduler: id }, `schedule removed (${setting} unset)`);
 }
 
 const health = startHealthServer({

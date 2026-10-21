@@ -42,6 +42,20 @@ namespace Metafarm.Twin.Core.Api
         public Task<FarmSnapshotDocument> GetSnapshotAsync(string commitmentId, CancellationToken cancellationToken = default) =>
             GetAsync<FarmSnapshotDocument>($"/snapshots/{RequireId(commitmentId, nameof(commitmentId))}", cancellationToken);
 
+        public Task<SnapshotAnchorPlan> GetSnapshotAnchorPlanAsync(string commitmentId, string carrier, string network = AnchorCarriers.SolanaDevnet, CancellationToken cancellationToken = default) =>
+            GetAsync<SnapshotAnchorPlan>($"/snapshots/{RequireId(commitmentId, nameof(commitmentId))}/anchor-plan{PlanQuery(carrier, network)}", cancellationToken);
+
+        public Task<BatchAnchorPlan> GetBatchAnchorPlanAsync(string batchId, string carrier, string network = AnchorCarriers.SolanaDevnet, CancellationToken cancellationToken = default) =>
+            GetAsync<BatchAnchorPlan>($"/data-commitments/batches/{RequireId(batchId, nameof(batchId))}/anchor-plan{PlanQuery(carrier, network)}", cancellationToken);
+
+        /// <summary>Only known carriers and networks reach the URL.</summary>
+        private static string PlanQuery(string carrier, string network)
+        {
+            if (!AnchorCarriers.IsCarrier(carrier)) throw new ArgumentException("unknown anchor carrier", nameof(carrier));
+            if (!AnchorCarriers.IsNetwork(network)) throw new ArgumentException("unknown anchor network", nameof(network));
+            return $"?carrier={carrier}&network={network}";
+        }
+
         private async Task<T> GetAsync<T>(string twinPath, CancellationToken cancellationToken)
         {
             var response = await _transport.GetAsync($"/v1/tenants/{_tenantId}/twin{twinPath}", cancellationToken).ConfigureAwait(false);
