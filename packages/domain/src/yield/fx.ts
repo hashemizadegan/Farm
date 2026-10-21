@@ -16,7 +16,22 @@ export interface RationalRate {
   observedAt: string;
 }
 
-const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
+
+/**
+ * RFC 3339 with an explicit offset, naming a real calendar date and time. `Date.parse` alone rolls
+ * impossible values forward (2026-02-30 becomes 2026-03-02, 24:00 the next day), so the fields are checked.
+ */
+function isRfc3339WithOffset(v: unknown): boolean {
+  if (typeof v !== "string") return false;
+  const m = RFC3339.exec(v);
+  if (!m) return false;
+  const [y, mo, d, h, mi, sec] = m.slice(1, 7).map(Number) as [number, number, number, number, number, number];
+  const daysInMonth = mo >= 1 && mo <= 12 ? new Date(Date.UTC(y, mo, 0)).getUTCDate() : 0;
+  if (d < 1 || d > daysInMonth || h > 23 || mi > 59 || sec > 59) return false;
+  if (m[8] !== undefined && (Number(m[8]) > 23 || Number(m[9]) > 59)) return false;
+  return !Number.isNaN(Date.parse(v));
+}
 const MAX_EXPONENT = 30;
 
 export function assertRationalRate(r: RationalRate): void {
@@ -24,7 +39,7 @@ export function assertRationalRate(r: RationalRate): void {
   assertExactKeys("rate", r, ["num", "den", "source", "observedAt"]);
   if (typeof r.num !== "bigint" || typeof r.den !== "bigint" || r.num <= 0n || r.den <= 0n) throw new YieldAmountError("invalid_parameter", "a rate needs positive bigint num and den");
   if (typeof r.source !== "string" || r.source.trim() === "") throw new YieldAmountError("invalid_parameter", "a rate needs its source");
-  if (typeof r.observedAt !== "string" || !RFC3339.test(r.observedAt) || Number.isNaN(Date.parse(r.observedAt))) throw new YieldAmountError("invalid_parameter", "a rate needs an RFC 3339 observation time with an offset");
+  if (!isRfc3339WithOffset(r.observedAt)) throw new YieldAmountError("invalid_parameter", "a rate needs an RFC 3339 observation time with an offset");
 }
 
 export function assertExponent(name: string, e: unknown): asserts e is number {

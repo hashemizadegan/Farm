@@ -20,6 +20,7 @@ describe("conversion", () => {
   it("scales between exponents (minor units to token base units)", () => {
     expect(convertAmount(382_500n, 2, 6, rate(1n, 1n)).value).toBe(3_825_000_000n);
     expect(convertAmount(5n, 0, 3, rate(1n, 1n)).value).toBe(5_000n);
+    expect(convertAmount(5n, 0, 0, { ...rate(1n, 1n), observedAt: "2028-02-29T23:59:59.5-12:00" }).value).toBe(5n);
   });
 
   it("refuses rates without source or time, non-positive parts, bad exponents and negative or non-bigint amounts", () => {
@@ -27,6 +28,8 @@ describe("conversion", () => {
     bad(() => convertAmount(1n, 2, 2, { ...rate(1n, 1n), source: "" }));
     bad(() => convertAmount(1n, 2, 2, { ...rate(1n, 1n), observedAt: "2026-09-30" }));
     bad(() => convertAmount(1n, 2, 2, { ...rate(1n, 1n), observedAt: "2026-09-30T16:00:00" }));
+    // Impossible instants that Date.parse would silently roll forward.
+    for (const observedAt of ["2026-02-30T16:00:00Z", "2026-04-31T16:00:00Z", "2026-09-30T24:00:00Z", "2026-09-30T16:00:00+24:00"]) bad(() => convertAmount(1n, 2, 2, { ...rate(1n, 1n), observedAt }));
     bad(() => convertAmount(1n, 2, 2, rate(0n, 1n)));
     bad(() => convertAmount(1n, 2, 2, rate(1n, 0n)));
     bad(() => convertAmount(1n, 2, 2, { ...rate(1n, 1n), num: 1 as never }));
