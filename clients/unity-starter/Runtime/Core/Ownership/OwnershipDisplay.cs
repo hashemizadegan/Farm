@@ -30,6 +30,7 @@ namespace Metafarm.Twin.Core.Ownership
                     var what = o.Holders == null || o.Holders.Count == 0 ? "No current holders on chain" : "On-chain holders";
                     var basis = o.Assurance == "inclusion_verified" ? "proof checked" : "as indexed";
                     var at = string.IsNullOrEmpty(o.AsOfSlot) ? "" : ", slot " + o.AsOfSlot;
+                    if (o.HeldByYou == true) what = "You hold this";
                     return what + " (" + basis + at + ")";
                 }
                 case OwnershipKnowledge.TestData:

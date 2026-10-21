@@ -170,6 +170,8 @@ export const twinOwnershipSchema = z.discriminatedUnion("status", [
     assurance: z.enum(["inclusion_verified", "indexer_reported", "fixture"]),
     asOfSlot: z.string().regex(/^[0-9]+$/).nullable(),
     holders: z.array(z.object({ owner: z.string(), amount: z.string().regex(/^[0-9]+$/) })),
+    /** J8: whether the caller's linked player wallets hold it. Absent unless stated (see the API). */
+    heldByYou: z.boolean().optional(),
   }),
 ]);
 

@@ -34,6 +34,11 @@ namespace Metafarm.Twin.Core.Models
         [JsonProperty("assurance")] public string Assurance;
         [JsonProperty("asOfSlot")] public string AsOfSlot;
         [JsonProperty("holders")] public List<Holder> Holders = new List<Holder>();
+        /// <summary>
+        /// Whether the signed-in user's linked player wallets hold it (linked in the web app). Null when
+        /// the API does not say: never read null as "no". Read-only: the client never links wallets.
+        /// </summary>
+        [JsonProperty("heldByYou")] public bool? HeldByYou;
     }
 
     public sealed class Holder
