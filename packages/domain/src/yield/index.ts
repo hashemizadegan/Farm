@@ -17,3 +17,4 @@ export * from "./attestation";
 export * from "./quorum";
 export * from "./aggregation";
 export * from "./distribution";
+export * from "./claim-tree";
