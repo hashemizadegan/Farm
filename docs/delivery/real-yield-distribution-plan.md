@@ -1,789 +1,1066 @@
 # Real yield distribution layer: plan
 
-**Status: proposal for review. Nothing here is approved, implemented, migrated or deployed.**
-Every recommendation is provisional until the owner approves it, and every item marked
-**[Legal]** needs qualified counsel. This document gives no legal conclusions.
+**Status: proposal for review, revision 2. Nothing here is approved, implemented, migrated or
+deployed.** This plan authorises no implementation, execution, deployment, signing or chain
+connection. Every recommendation is provisional until the owner approves it, and nothing here is a
+legal conclusion.
 
 **Inspected:**
-- the draft stack top, `feature/retire-evm-wallet-link` @ `ebb3f56` (PR #59, which contains #40–#59);
-- `main` @ `b59eaff`.
+- `main` at `b59eaff`;
+- the top of the draft stack, `feature/retire-evm-wallet-link` at `ebb3f56` (PR #59, which contains
+  #40–#59).
 
-Where this document says something **exists**, it names the file. It says "on `main`" or "draft
-#NN" for where the thing lives.
+Revision 2 corrects the issues raised in the repository review of revision 1 (`485a6e0`).
 
-## 0. What exists today, and what this plan builds on
+**Labels used throughout:**
 
-**Correction to the brief:** the backend is **Fastify 5 with plain SQL migrations** (`packages/db/migrations/NNNN_*.up.sql`,
-row-level security, `withTenant`/`withSystem`), **not NestJS or Drizzle**. There is no ORM. The schema
-proposals in §7 follow the repository's real convention: SQL migrations, typed repository functions
-in `packages/db/src/repositories`, and zod contracts. TimescaleDB is optional (`0017_telemetry_rollups` falls back to a view
-without it), and MQTT over TLS exists (`apps/worker/src/telemetry`).
+| Label | Meaning |
+| --- | --- |
+| **[Repo]** | Confirmed in the repository at the commits above. The file is cited, with lines where useful. |
+| **[Ext]** | External technical assumption. Must be verified before it is relied on. |
+| **[Product]** | Product proposal, pending owner approval. |
+| **[Legal]** | Legal or compliance proposal. Needs qualified counsel. |
 
-| Existing building block | Where | Reuse in this plan |
+A PR number marks the *open draft PR* that first introduced something. "main" marks code already
+merged.
+
+## 0. Foundations
+
+### 0.1 Legal source of entitlement (governing principle)
+
+**The platform's calculation engine does not create any holder's legal entitlement.**
+
+- The authoritative sources of entitlement are:
+  - the executed token terms;
+  - the offering documents;
+  - subscription agreements;
+  - asset agreements (leases, service contracts, custody agreements);
+  - applicable law.
+
+  These are the **entitlement instruments**. [Legal]
+- Calculation policies (§3) and formula versions must **implement and reference** the approved
+  entitlement instrument. They never extend or replace it.
+- If a calculation policy conflicts with the governing legal documents, **the legal documents take
+  precedence**, and the cycle **must not be published** until the conflict is resolved and a
+  corrected policy is approved.
+- **Every yield cycle records:**
+  - the entitlement instrument that applies, by identifier and version;
+  - the instrument's immutable content hash (SHA-256 of the executed document);
+  - the policy and formula versions that implement it.
+
+  Publication is blocked when any of these is missing.
+- **A legal entitlement review is required before implementation for each supported asset class**
+  (decision D-1).
+
+### 0.2 What exists today, and what this plan builds on
+
+The backend is **Fastify 5** with **plain SQL migrations** (`packages/db/migrations/NNNN_*.up.sql`),
+PostgreSQL row-level security (`withTenant`/`withSystem`, role `metafarm_app`), typed repository
+functions, zod schemas and OpenAPI 3.1. There is no ORM. TimescaleDB is optional: migration 0017
+uses a continuous aggregate when the extension exists, and a plain view otherwise, according to its
+own comments. [Repo]
+
+| Building block | Where | Use in this plan |
 | --- | --- | --- |
-| Money as integer base units, `numeric(78,0)` | `rwa_orders.settlement_amount`, `settlement_intents.amount` (main, 0011/0012) | The same representation for every on-chain amount. Fiat stays in minor units (§3.2). |
-| Per-investor **`distribution` order**: money only, paid as a TRON TRC-20 settlement intent to a party's wallet, with four-eyes approval | `packages/domain/src/rwa/orders.ts`, migrations 0012 and 0015, `POST …/rwa/orders/{id}/approve` (main) | A possible future **push payout** rail (§6.4). A yield cycle would *produce* distribution orders; it never pays by itself. Executing them stays under the RWA and TRON holds. |
-| Compliance gate: KYC, jurisdiction, screenings; anything unknown blocks | `packages/domain/src/rwa/compliance.ts` (main) | Eligibility for payout (§4). |
-| RWA parties and `party_wallets` (Solana and TRON networks) | migration 0012 (main) | The **only** identity that can receive yield. |
-| Reconciliation cases, keyed by `reconciliation_id` of an order | `reconciliation_cases` (main) | Payout reconciliation when payouts are distribution orders. Yield-level reconciliation needs its own table (§7). |
-| Append-only trigger `append_only()`; append-only `audit_events` | migrations 0001 and 0012 (main) | Every yield fact and audit table (§7). |
-| Inputs and equipment costs with `numeric(15,2)` and an ISO currency | `inventory_*` (0005), `service_records` (0007) (main) | Candidate *sources* of operating-cost lines, copied into a cycle as evidence-backed inputs, never read live. |
-| Harvest batches with a canonical public record and `record_hash` | migration 0004 (main) | Evidence for crop volume. |
-| Hour meters and telemetry rollups | 0007, 0008, 0017 (main) | Evidence for equipment-service revenue (usage). |
-| Data commitments; RFC 9162 Merkle (`metafarm-merkle-sha256/1`); proofs re-checked on read | `packages/domain/src/twin/commitments.ts`, migration 0019 (draft #40) | Evidence hashing and evidence batches (§5). The claim tree reuses the hash construction, with its own domain tag (§6.2). |
-| Canonical JSON | `canonicalJson` in `packages/domain/src/harvest.ts` (main), used by snapshots (draft #41) | Canonical calculation artifacts (§3.8). |
-| Content-addressed store with integrity checks | `packages/domain/src/twin/content-store.ts`, `@metafarm/storage` (draft #41/#42) | The evidence store (§5.3). |
-| Plan-only anchors (`executable: false`) for Token-2022 metadata and Bubblegum leaves | `packages/domain/src/twin/anchor.ts` (draft #43) | Planning the anchoring of yield roots, without anchoring. |
-| Unsigned intents with a TTL | `packages/domain/src/twin/intents.ts` (draft #41) | The shape for unsigned claim intents (§6). |
-| J7 ownership index: finalized mint/transfer/burn events with slots, a cursor, `rebuildOwnership` | migration 0020, `packages/chain/src/twin/*` (draft #50–#52) | The snapshot and time-weighted source (§4). The cluster-verification follow-up is required first. |
-| J8 player wallets (separate from party wallets); `heldByYou` | migration 0022 (draft #57) | Display only. **Never a basis for payment** (§4.3). |
-| `Idempotency-Key` on tenant writes; keyset paging | drafts #54, #55 | Every yield write; every yield list. |
-| Offline retry decision for expired Token-2022 attempts | draft #58 | The pattern for "did it land?" before any re-attempt of a yield payout (future). |
-| Unity engine-free core: GET-only transport; reflection test forbids signing | `clients/unity-starter/Runtime/Core` (draft #40+) | Yield read models (§8). |
+| Money as integer base units, `numeric(78,0)` | `rwa_orders.settlement_amount` (0012), `settlement_intents.amount` (0011), main | Internal accounting width for settlement amounts. Claim leaves use a narrower width (§6.2). [Repo] |
+| Per-investor **`distribution` order**: money only; first leg a `distribution` settlement; no second leg | `packages/domain/src/rwa/orders.ts` lines 3 and 48, main | A possible future **push** payout rail (§6.4), under the RWA and TRON holds. [Repo] |
+| Four-eyes approval of distributions and redemptions | API: `apps/api/src/routes/rwa.ts` lines 355–366 (approver ≠ creator). DB: `rwa_orders_four_eyes` (0015); `settlement_intents` CHECK `approved_by IS DISTINCT FROM requested_by` (0011). main | Every yield approval (§2). [Repo] |
+| Compliance gate, checked **three times**: when an order is placed (`gate()`, `rwa.ts` lines 143–148, 422 `compliance_blocked`), when it's approved (`rwa.ts` line 366), and again before execution (`apps/worker/src/rwa/engine.ts` line 630: "KYC or screenings may have changed since the order") | `packages/domain/src/rwa/compliance.ts`, main | The same three-point pattern for any yield payout or claim (§4.4). [Repo] |
+| RWA parties and `party_wallets`, unique per (tenant, network, address) | 0012, main | The **only** identity that can receive yield. [Repo] |
+| Reconciliation cases (`open`/`investigating`/`resolved`/`written_off`), keyed by an order's `reconciliation_id` | 0011 and 0012, main | Payout-level cases, if payouts become distribution orders. [Repo] |
+| `append_only()` trigger function | defined in `0011_rwa_rails.up.sql` line 214; used e.g. on `chain_operation_transitions` (0011) and `compliance_screenings` (0012 line 60), main | Yield fact tables (§7). [Repo] |
+| `audit_events`, append-only via its own trigger (`audit_events_append_only`) | `0001_init.up.sql` lines 431–446, main | Candidate audit store (D-31). [Repo] |
+| Operation lifecycle; `outcomeUnknown` | `packages/domain/src/rwa/lifecycle.ts` line 69, main | Rule for payouts whose outcome is unknown. [Repo] |
+| Input and service costs: `cost numeric(15,2)` and `currency`, **both nullable** | 0005 (inventory), 0007 (`service_records`), main | Candidate cost *sources*, subject to completeness checks (§3.7). [Repo] |
+| Harvest batches with a canonical public record and `record_hash` | 0004, main | Evidence of crop volume. [Repo] |
+| Equipment registry and `meter_readings` (user-recorded hours per date) | 0007, main | See §2.3: not yet sufficient evidence of revenue. [Repo] |
+| `canonicalJson` | `packages/domain/src/harvest.ts` line 91, main | Canonical artifacts (§3.8). [Repo] |
+| Web `/rwa` page, read-only | PR #39, **merged on main** | Pattern for the yield pages. [Repo] |
+| Data commitments; RFC 9162 Merkle (`metafarm-merkle-sha256/1`); `contentHash`, `merkleLeaf`, `verifyMerkleInclusion` | `packages/domain/src/twin/commitments.ts`, migration 0019: **first in PR #40** | Evidence hashing; the claim-tree hash construction. [Repo] |
+| C# `Rfc9162CommitmentVerifier` (engine-free) | `clients/unity-starter/Runtime/Core/Verification`: **first in PR #40** | Proof checks in Unity (§8). [Repo] |
+| Content-store interface | `packages/domain/src/twin/content-store.ts`: **first in PR #41** | Evidence store interface. [Repo] |
+| Unsigned intents with a TTL | `packages/domain/src/twin/intents.ts`: **first in PR #41** | Shape of unsigned claim intents. [Repo] |
+| Plan-only anchors (`executable: false`) | `packages/domain/src/twin/anchor.ts`: **first in PR #41** (its API endpoints in #43) | Planning to anchor yield roots, without anchoring. [Repo] |
+| `@metafarm/storage` (object-storage implementation) | `packages/storage`: **first in PR #43** | The evidence bytes (§5.3). [Repo] |
+| J7 ownership index | migration 0020, `packages/chain/src/twin/*`, PRs #50–#52 | Snapshot and time-weighting source (§4), only after Y0. [Repo] |
+| J8 player wallets, kept separate from party wallets; `heldByYou` | 0022, PR #57 | Display only, **never a basis for allocation or payment**. [Repo] |
+| `Idempotency-Key` on tenant writes; keyset paging | PRs #54, #55 | Every yield write and list. [Repo] |
+| Offline retry decision for expired Token-2022 attempts | PR #58 | Pattern for "did it land?" before any payout re-attempt (future). [Repo] |
+| Public read routes under `/v1/public/...` | e.g. `/v1/public/harvests/{code}`, `/v1/public/rwa/cnft/{representationId}` in `openapi.yaml`, main | The public yield summary route (§7.4). [Repo] |
 
-**What does not exist** and must be designed, or confirmed by the owner:
-- no Solana program of any kind;
-- no on-chain vault, escrow or claim mechanism;
-- no stablecoin rail on Solana;
-- no oracle or exchange-rate source;
-- no bank integration;
-- no investor-facing login (parties are records, not users);
-- no auditor role;
-- no legal structure.
-
-Today's only payout path is the TRON `distribution` order, which is disabled under the holds.
+**What does not exist, and must be designed or confirmed:**
+- any Solana program;
+- any vault, escrow or claim mechanism;
+- a stablecoin rail on Solana;
+- any oracle or exchange-rate source;
+- any bank integration;
+- any investor login (parties are records, not users);
+- an auditor role;
+- recorded cluster identity for the ownership index;
+- any model of rental contracts, invoices or service revenue;
+- any link between `business_assets` and the equipment registry;
+- any grouping (pool) of compressed NFTs;
+- any legal structure or entitlement instrument. [Repo, by absence]
 
 ## 1. Scope and terminology
 
 | Term | Definition (proposed) |
 | --- | --- |
-| **Yield cycle** | One accounting period for one **asset** (or one pool of identical units of an asset) in which proceeds are recognised, costs and reserves are deducted, and a net amount may be allocated to holders. Has an id, a period `[start, end)`, a status (§2.1) and a formula version. |
-| **Asset** | A `business_assets` row (main): the real thing, e.g. a parcel, a machine or a storage unit. Its on-chain **representation** (`asset_representations`) is what holders hold. |
-| **Asset class** | The economic category that decides which lifecycle and evidence apply: land/infrastructure, equipment, crop/commodity-linked, service revenue, non-yield-bearing, simulation/test (below). |
-| **Eligible holder** | An RWA **party** that, at the cycle's eligibility point, held units through one of its registered `party_wallets`, and passes the compliance gate at allocation time. A wallet address on its own is never an eligible holder. |
-| **Ownership unit** | The smallest unit of the representation: a Token-2022 base unit, at the mint's `decimals`; or one compressed NFT (Bubblegum leaf) = 1 unit. |
-| **Snapshot point** | The finalized Solana **slot** at which holdings are read, together with the J7 cursor proving that the index covered it. Wall-clock time is only a label, mapped to a slot by a recorded rule (§4.2). |
-| **Time-weighted ownership** | Σ over intervals of (units held × slots held) within the cycle's slot range, from finalized ownership events. |
-| **Gross revenue (R)** | Proceeds actually recognised for the cycle under the formula version: invoiced sales or service fees, net of refunds, chargebacks, rebates and sales taxes collected for authorities. Recognised only with evidence (§5). |
-| **Operating expenses (O)** | Evidence-backed costs of producing that revenue in the period: inputs, labour, transport, storage, commissions, maintenance actually spent, bad-debt write-offs. |
-| **Maintenance and capital reserve (M)** | An amount withheld for future maintenance or replacement of the asset, by policy (a percentage or a schedule). It is **not** an expense; it is retained, and may be released later (§3.5). |
-| **Climate, insurance or risk reserve (I)** | An amount withheld against crop failure, weather or counterparty losses, by policy. |
-| **Platform or operator fee (P)** | The operator's compensation. Its base (gross, operating result, or after reserves) is a **decision** (§3.3). |
-| **Net distributable yield (NDY)** | The amount, in the settlement unit, that the cycle allocates to eligible holders after the waterfall (§3.3). It can be zero. A negative result is a **loss**, which is not allocated. |
-| **Claim** | A holder's entitlement in a published cycle: one leaf, an amount, a status (§6.5). It is not money until paid. |
-| **Merkle leaf** | The domain-separated hash of one canonical allocation record (§6.2). |
-| **Merkle root** | The root of the cycle's allocation tree. It commits to every leaf, in canonical order. |
-| **Evidence bundle** | The canonical manifest listing every evidence item of the cycle (hash, type, issuer, time), plus the items stored content-addressed (§5). |
-| **Attestation** | A signed or recorded statement by an identified party (auditor, agronomist, buyer, bank) about specific evidence hashes or about the calculation artifact hash. |
-| **Reconciliation** | Comparison of what the cycle says (allocations, payouts) with what happened (funds received, payouts made, claims), with a case for every difference. |
-| **Correction and supersession** | A published cycle is never edited. A correction is a new cycle version with a `supersedes` link and a delta allocation; the old version becomes `superseded`. |
-| **Dispute** | A formal objection to evidence, calculation or allocation, with an owner, a deadline and an outcome. It may freeze payouts for the cycle (§2.3). |
+| **Entitlement instrument** | The executed legal document set that defines what holders are owed (§0.1). Identified by id, version and content hash. |
+| **Yield cycle** | One accounting period for one **economic asset** (§1.1), in which proceeds are recognised, costs and reserves applied, and a net amount may be allocated. It has an id, a version, a period, a status (§2), a policy version, a formula version and an entitlement-instrument reference. |
+| **Asset** | A `business_assets` row (main). Its on-chain representation (`asset_representations`) is what holders hold. |
+| **Asset class** | Land/infrastructure, equipment, crop/commodity-linked, service revenue, non-yield-bearing, simulation/test (§1.1). |
+| **Eligible holder** | An RWA **party** that held units through one of its registered `party_wallets` during the cycle's fixed slot range, from verified RPC-sourced ownership events. Being an eligible holder gives an *economic allocation*. **Payment eligibility is separate** (§4.4). |
+| **Ownership unit** | A Token-2022 base unit, at the mint's `decimals`; or one compressed NFT (one Bubblegum asset) = 1 unit. |
+| **Slot range** | `(start_slot, end_slot]` of finalized Solana slots for the cycle, fixed when the authoritative calculation runs (§2.1), from a verified cluster (Y0). |
+| **Time-weighted ownership** | Σ (units × slots held) inside the slot range, from finalized ownership events (§4.2). |
+| **Accounting currency** | The single currency, per cycle, in which the waterfall is computed (§3.2, D-4). |
+| **Settlement unit** | The token (mint, network, decimals) in which allocations are expressed (D-3). |
+| **Gross revenue** | Invoiced or contracted proceeds recognised for the period under the policy (cash or accrual, D-5). |
+| **Net revenue (R)** | Gross revenue minus refunds, chargebacks and rebates, and minus taxes collected for authorities. |
+| **Operating expenses (O)** | Evidence-backed costs of earning R in the period (§3.7). |
+| **Maintenance and capital reserve (M)**, **climate/insurance reserve (I)** | Amounts set aside by policy. They are not expenses. Who owns them, how they're used and how they're released is D-7. |
+| **Platform or operator fee (P)** | The operator's compensation. Its base, order and caps are D-2. |
+| **Net distributable yield (NDY)** | What the cycle allocates to holders, ≥ 0 (§3.3). |
+| **Loss** | A negative operating result. Recorded, never allocated (§3.4). |
+| **Artifact set** | The frozen calculation artifact, allocation artifact, Merkle tree and evidence bundle of one cycle version (§2.2). |
+| **Claim** | A holder's entitlement to one leaf of a published cycle. Not money until paid. |
+| **Merkle leaf / root** | §6.2. |
+| **Evidence bundle** | The canonical manifest of every evidence item (§5). |
+| **Attestation** | A recorded or signed statement by an identified person about specific hashes (§5.4). |
+| **Reconciliation** | Comparison of expected against actual, with a case for each difference. |
+| **Correction / supersession** | A new cycle version that replaces the old artifact set (§2.4). Never an edit in place. |
+| **Dispute** | A formal objection with an owner, deadline and outcome (§2.5). |
 
-**Asset classes:**
+### 1.1 Asset classes
 
-| Class | Examples in the current model (`ASSET_KINDS`) | Yield source | Notes |
+| Class | `ASSET_KINDS` today [Repo] | Yield source | Notes |
 | --- | --- | --- | --- |
-| Land or infrastructure | `parcel`, `building`, `storage_unit` | rent, leases, storage fees | `parcel` is a cNFT kind (`CNFT_ASSET_KINDS`) |
-| Equipment and machinery | `equipment` | rental or machinery-as-a-service | revenue from hours used (meter readings, telemetry) |
-| Crop or commodity-linked | `tree`, `harvest_lot`, `livestock` | sale of physical produce | price, quality, weather and logistics risk |
-| Service revenue | `storage_unit`, `logistics_lot` | packaging, cold-chain, transport fees | |
-| Non-yield-bearing | any asset whose policy says `yield: none` | none | cycles cannot be created |
-| Simulation/test | any asset flagged `test` (new flag), or on a devnet representation | simulated only | **never** mixed with real cycles; labelled like `fixture` ownership |
+| Land or infrastructure | `parcel`, `building`, `storage_unit` | rent, leases, storage fees | `parcel` is a compressed-NFT kind |
+| Equipment and machinery | `equipment` | rental or machinery-as-a-service | **Prerequisites missing** (§2.3, D-19) |
+| Crop or commodity-linked | `tree`, `harvest_lot`, `livestock` | sale of produce | `tree` and `livestock` are compressed-NFT kinds |
+| Service revenue | `storage_unit`, `logistics_lot` | packaging, cold-chain, transport | no revenue model exists yet |
+| Non-yield-bearing | per entitlement instrument | none | no cycles can be created |
+| Simulation/test | flagged `simulation` (new); devnet; fixture ownership | simulated only | never fundable (§9.1) |
 
-`farm_share` is a share token over a pool of the above. Its class is the class of the pool's
-yield source.
+**An economic asset** is what one cycle covers:
+- a single Token-2022 share mint; or
+- **one** compressed NFT.
 
-## 2. Business models and lifecycle
+The current index treats each Bubblegum (DAS) asset as one indexed asset (`ownershipIndexTargets`
+uses `das_asset_id`, PR #50). **No grouping (pool) of compressed NFTs exists.** Whether to limit
+cycles to one compressed NFT, or to introduce a pool model, is **D-18**. A pool model would need:
+- a stable pool identifier;
+- membership versioning;
+- rules for adding or removing assets;
+- economic entitlement definitions;
+- prevention of double inclusion;
+- legal approval.
 
-### 2.1 One state machine for every cycle
+## 2. Lifecycle
+
+### 2.1 State machine
 
 ```
-draft ─► inputs_locked ─► calculated ─► under_review ─► approved ─► published ─► funded* ─► distributing* ─► closed
-  │            │              │               │             │            │            │              │
-  └► cancelled └► draft       └► draft        └► draft      └► cancelled └► disputed ◄┴──────────────┘
-                (unlock)       (recalc)      (rejected)    (before publish)   │
-                                                                              ├► published (dispute dismissed)
-                                                                              └► superseded (by a correction)
+draft ──lock──► inputs_locked ──calculate──► calculated ──submit──► under_review ──approve──► approved ──publish──► published
+  │                │   ▲                         │                      │                       │                     │
+  │                │   └──────unlock (invalidates artifacts)───────────┘ (reject)               │                     │
+  ▼                ▼                             ▼                                               ▼                     │
+cancelled ◄────────┴─────────────cancel──────────┴───────────────────────────────────────────── cancelled              │
+abandoned ◄── expire (pre-publication states idle past the deadline, D-10)                                             │
+                                                                                                                       │
+published ──close──► closed {reason: no_distribution | loss | unfunded | simulation}                                   │
+published ──fund*──► funded* ──distribute*──► distributing* ──close──► closed {reason: distributed}                    │
+published | funded* | distributing* ──dispute──► disputed ──dismiss──► (the state it came from)                         │
+published | disputed ──supersede (an approved correction is published)──► superseded                                   │
 ```
-`*` means future phases only. `funded` and `distributing` require the separate on-chain or payout approval.
 
-| From → To | Who (proposed permission) | Preconditions | Invalid when |
+`*` marks future phases. They need separate funding and execution approval, and can never be
+entered while the holds apply, or by a simulation cycle.
+
+**Terminal states:** `closed` (with a reason), `cancelled`, `abandoned`, `superseded`. All are
+reachable.
+
+| From → To | Command and actor (proposed permission) | Preconditions | Refused when |
 | --- | --- | --- | --- |
-| draft → inputs_locked | preparer (`yield:prepare`) | every required evidence type for the lifecycle is registered (§5); period closed | period still open; required evidence missing |
-| inputs_locked → draft | preparer | no calculation artifact published | — |
-| inputs_locked → calculated | system (pure calculation) | formula version exists and is approved | input hash changed since lock |
-| calculated → under_review | preparer | calculation artifact stored, hash recorded | — |
-| under_review → approved | **reviewer ≠ preparer** (`yield:approve`), plus attestation quorum (§5.4) | attestations cover the evidence-bundle hash and the artifact hash; no open dispute | same person as preparer (four-eyes, as `rwa_orders_four_eyes`); quorum not met |
-| under_review → draft | reviewer | rejection reason recorded | — |
-| approved → published | approver | allocation tree built; root recorded; eligibility snapshot frozen | J7 not covering the snapshot slot; ownership unknown for any unit (§4.6) |
-| approved → cancelled | approver | — | already published |
-| published → disputed | any authorised holder or reviewer | dispute recorded (§2.3) | cycle closed |
-| disputed → published | dispute authority | dispute dismissed, with reasons | — |
-| published/disputed → superseded | approver, with a correction cycle that is itself approved | correction published | correction not approved |
-| published → funded | **future, separate approval** | funds proven received (§6.4) | phase 1 (simulation): always invalid |
-| funded → distributing → closed | future | per payout rail | phase 1: always invalid |
-| any → (an earlier state) not listed | — | — | always invalid; database trigger, as for `chain_operations` |
+| draft → inputs_locked | `lock`: preparer (`yield:prepare`) | period ended; required evidence registered (§5); every cost line complete (§3.7); entitlement instrument referenced (§0.1) | any of those missing |
+| inputs_locked → draft | `unlock`: preparer | — | — |
+| inputs_locked → calculated | **`calculate` (authoritative)**: preparer; the computation itself is pure | slot range fixed; ownership snapshot complete from **verified RPC** events and a verified cursor (Y0, §4.2); allocation, leaves, tree and artifact set produced and **frozen** (§2.2); every leaf amount fits u64 (§6.2) | ownership unknown or incomplete; fixture events in a non-simulation cycle; cluster unverified; an amount overflows. Each refusal is recorded as a failed calculation, and the cycle stays in `inputs_locked`. |
+| calculated → inputs_locked | `unlock`: preparer | the artifact set is marked `invalidated` (kept, never deleted) | — |
+| calculated → under_review | `submit`: preparer | — | — |
+| under_review → inputs_locked | `reject`: reviewer | reason recorded; the artifact set is invalidated | — |
+| under_review → approved | `approve`: reviewer ≠ preparer (`yield:approve`) | attestation quorum on the **artifact-set hashes** (D-23); no open dispute; compliance snapshot recorded (§4.4) | same person as preparer (four-eyes, as `rwa_orders_four_eyes`); quorum missing; the set changed since attestation |
+| approved → published | `publish`: approver | approved artifact set unchanged | any hash mismatch |
+| any pre-publication state → cancelled | `cancel`: approver | reason | — |
+| any pre-publication state → abandoned | system, after the inactivity deadline (D-10) | — | — |
+| published → closed | `close`: approver | reason `no_distribution` (NDY = 0), `loss`, `simulation`, or `unfunded` (a decision not to fund) | open dispute |
+| published → disputed; funded/distributing → disputed | `dispute`: authorised raiser (D-22) | — | closed or superseded |
+| disputed → the prior state | `dismiss`: dispute authority | reasons recorded | — |
+| published/disputed → superseded | `supersede`: approver, by publishing an approved correction version | correction approved through the same path | correction not approved |
+| published → funded → distributing → closed | **future** | separate approvals (§6.3) | always, in the current phase and for simulation cycles |
+| anything else | — | — | always; enforced by a transition trigger, as for `chain_operations` (0011) |
 
-Every transition is written to an append-only transition log, with actor, time and reason,
-mirroring `chain_operation_transitions` (main).
+Every transition is written to an append-only transition log (actor, time, reason, artifact-set
+hash), on the pattern of `chain_operation_transitions` (0011).
 
-### 2.2 Lifecycles by business model
+**Two kinds of calculation:**
+- **Preview** (`POST …/preview`) is pure and returns numbers. It changes no state and stores
+  nothing authoritative.
+- **Authoritative calculation** (`POST …/calculate`) creates a versioned, frozen artifact set and
+  moves the cycle to `calculated`.
 
-The same columns apply to each model. The differences are shown below. **Responsible party** means
-who records it; the attester is listed separately.
+### 2.2 Order of work, and what approval covers
 
-| Model | Required inputs | Responsible | Evidence required | Approval gates | Calculation | Publication | Funding | Claim | Reconciliation | Dispute and correction |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Crop production and physical sale** | harvest volume and grade; sale contracts; invoices; payments received; direct costs | farm operator | harvest batch record (0004), weighbridge and warehouse receipts, invoices, settlement records, cost receipts; agronomist and auditor attestations | evidence complete; quorum; four-eyes | R = paid invoice value net of refunds and sales taxes; O per receipts | root plus a public summary | future | future | invoices against payments; payouts against allocations | quality or weight dispute → correction cycle |
-| **Equipment rental / MaaS** | rental contracts; hours used; rates; maintenance spent | equipment operator | meter readings (0007) and telemetry rollups (0017) for hours; invoices; payments; service records | as above, plus a usage-evidence check (meter against invoice hours) | R = billed hours × rate, paid; O includes fuel and operator time | as above | future | future | hours billed against hours metered | billing dispute |
-| **Storage, packaging, cold-chain** | storage contracts; throughput; temperature logs | facility operator | warehouse receipts; IoT temperature data (spoilage liability); invoices | as above | R = fees paid; O includes energy | as above | future | future | throughput against receipts | spoilage or claim dispute |
-| **Zero-yield or loss-making cycle** | as for the model | as for the model | as for the model | the same gates: a loss must be just as well evidenced | NDY = 0; loss recorded and carried per policy (§3.5) | published as **"no distribution"**, with the loss shown | none | none | — | the same |
-| **Revenue received, evidence disputed** | as for the model | as for the model | as for the model, plus the dispute record | blocked at `under_review` (or `disputed` after publish) | frozen | not published, or published then `disputed` | frozen | frozen | — | dispute authority decides; outcome is dismiss or correction |
-| **Partial payment** | invoices; partial settlements | as for the model | invoice plus settlement records showing the paid share | as above | **cash basis**: only received amounts count, and the remainder is a receivable carried to a later cycle (decision D-3); or **accrual** with a bad-debt policy | as above | future | future | receivable ageing | later receipt → included in a later cycle, never by reopening this one |
-| **Currency conversion** | the sale currency differs from the settlement unit | as for the model | FX source record: rate, timestamp, provider; actual conversion record if converted | as above, plus FX evidence | converted at the recorded rate (§3.2); conversion costs are O | as above | future | future | realised against recorded rate → difference to the next cycle | FX dispute → correction |
-| **Cancelled or superseded cycle** | — | approver | reason | the approver's decision | — | `cancelled` (before publish) or `superseded` (after) | none | old claims void, replaced by a delta (§6.6) | old against new allocations | — |
+1. Cycle inputs are locked (`lock`).
+2. The eligible slot range is fixed (`calculate`, step a).
+3. The ownership snapshot is completed from verified, finalized, RPC-sourced events (step b).
+4. Unknown or incomplete ownership blocks progression (step b fails).
+5. The waterfall and the allocations are calculated (step c).
+6. Canonical leaves and the Merkle tree are generated (step d).
+7. **Frozen artifact set:** the calculation artifact, allocation artifact, evidence bundle and Merkle
+   root, each with its SHA-256 (step e).
+8. Reviewers attest to those hashes (`under_review`).
+9. Four-eyes approval (`approve`).
+10. The approved root and artifacts are published (`publish`).
+11. Funding and execution are separate, later phases (§6.3).
 
-### 2.3 Disputes
+**Approval covers:**
+- the calculation inputs (input-set hash);
+- the formula, policy and entitlement-instrument versions and hashes;
+- the ownership source (verified cluster identity, cursor) and the slot range;
+- the allocation table;
+- the Merkle root;
+- the evidence and attestation bundle.
 
-- A dispute has: a subject (evidence item, calculation, or allocation leaf), a raiser, a reason, a
-  deadline, an assignee, an outcome (`dismissed`, `corrected`, `withdrawn`), and links to
-  evidence.
-- **Freezing:** while a dispute about a cycle is open, nothing for that cycle moves to
-  `funded` or `distributing` (future). Allocation views show "disputed".
-- The dispute authority, and whether holders can raise disputes at all, are decisions (D-9).
+All of these are part of the hashed artifact set, so changing any of them invalidates the approval.
+
+### 2.3 Lifecycles by business model
+
+| Model | Inputs | Evidence | Gates and calculation notes | Dispute and correction |
+| --- | --- | --- | --- | --- |
+| **Crop production and physical sale** | harvest volume and grade, sale contracts, invoices, receipts, costs | harvest batch (0004), weighbridge and warehouse receipts, invoices, settlement records, cost receipts; agronomist and auditor attestations | R by cash or accrual (D-5) | quality or weight dispute → correction version |
+| **Equipment rental / MaaS** | rental contracts, hours used, rates, maintenance | **Not supported until the prerequisites in D-19 exist.** Today: `business_assets` of kind `equipment` is not linked to the `equipment` registry (0011 against 0007); `meter_readings` are user-recorded hours per date (`hours`, `read_on`, `recorded_by`; 0007), not tamper-evident telemetry; no rental contracts, invoices or service revenue are modelled. No link between sensors and equipment was found in 0008. [Repo] | — | billing dispute |
+| **Storage, packaging, cold-chain** | contracts, throughput, temperature logs | warehouse receipts; IoT data; invoices. Revenue is not modelled yet. | — | spoilage dispute |
+| **Zero yield** | as for the model | the same evidence: a zero must be as well evidenced as a profit | NDY = 0 → `close` with reason `no_distribution` | the same |
+| **Loss-making** | as for the model | the same | loss recorded (§3.4) → `close` with reason `loss` | the same |
+| **Revenue received, evidence disputed** | as for the model | plus the dispute | blocked in review, or `disputed` after publication | dismiss or correct |
+| **Partial payment** | invoices, partial receipts | receipts showing the paid share | cash basis: received only; accrual: receivable with a bad-debt policy (D-5) | a late receipt goes into a later cycle |
+| **Currency conversion** | lines in several currencies | FX records (§3.2) | per D-4 | FX dispute → correction |
+| **Cancelled or superseded** | — | reason | `cancel` before publication; `supersede` after | — |
+
+### 2.4 Corrections and supersession
+
+- A correction is version *n+1* of the same cycle. It goes through `draft → … → published` again,
+  with its own artifact set, and references version *n*'s artifact-set hash.
+- Publishing version *n+1* moves version *n* to `superseded`:
+  - version *n*'s artifact set stays stored and readable, marked superseded, never deleted;
+  - its unclaimed claims become `voided`;
+  - in a future on-chain model, its root would be closed.
+- Holders paid under version *n* get **delta** entries: positive, or negative to be netted later,
+  subject to D-10. [Legal]
+- Before publication, any change to the inputs or the snapshot means `unlock`. That invalidates the
+  frozen set; a new `calculate` creates a new set, and the old one is retained as `invalidated`.
+
+### 2.5 Disputes
+
+- A dispute has a subject (an evidence item, the calculation or an allocation leaf), a raiser, a
+  reason, a deadline, an assignee and an outcome (`dismissed`, `corrected`, `withdrawn`).
+- While a dispute is open, the cycle cannot be funded or distributed (future), and views show
+  "disputed".
+- Who may raise disputes, and the dispute authority: **D-22**.
 
 ## 3. Financial calculation model
 
 ### 3.1 The proposed formula, examined
 
-`NDY_c = max(0, R_c − (O_c + M_c + I_c + P_c))` has five problems:
+`NDY_c = max(0, R_c − (O_c + M_c + I_c + P_c))` leaves five things undefined:
+1. **the fee base**;
+2. **whether reserves are expenses**: they are retained balances, not costs;
+3. **what happens to losses**: `max(0, …)` erases them;
+4. **the order of operations**;
+5. **taxes, refunds, bad debt, currency effects and rounding.**
 
-1. **The fee base is undefined.** If P is a percentage, of what? A fee on gross pays the
-   operator even when the cycle loses money. A fee on profit aligns incentives but needs a
-   precise profit definition.
-2. **Reserves are treated like costs.** M and I are retained, not spent. They belong to holders
-   economically until released or used, so they must be tracked as balances, not deducted and
-   forgotten.
-3. **`max(0, …)` erases losses.** A loss must be recorded, and either carried forward against
-   future cycles or written off, by an explicit policy.
-4. **Order of operations is ambiguous.** Reserves as a percentage of *what*: gross, operating
-   result, or after the fee? Each choice gives different numbers.
-5. **Taxes, refunds and bad debt are missing**, and so are currency effects and the rounding
-   remainder.
+This plan therefore uses an explicit waterfall. The fee base is left open, with alternatives.
 
-### 3.2 Units, precision and rounding (proposed)
+### 3.2 Units, currencies and rounding
 
-- **Settlement unit:** one per cycle, chosen per asset (decision D-2), e.g. a stablecoin token
-  on a named network, with its `decimals`. All allocation amounts are **integers in base units**
-  (as `numeric(78,0)` on main). There is no floating point anywhere in the calculation.
-- **Fiat inputs:** integers in **minor units**, with the ISO 4217 exponent (e.g. 2 for EUR, 0 for
-  JPY). The existing `numeric(15,2)` cost columns are read as minor units ×100 when copied into a
-  cycle.
-- **FX:** a rate is a rational `num/den` of integers, with source id, timestamp and a stored
-  record. Conversion is `floor(amount_minor × num × 10^decimals / (den × 10^exp))` (round down:
-  never create money). The truncated fraction goes to the rounding remainder.
-- **Rounding:** every step rounds **down** to the settlement unit. Allocation uses the
-  **largest-remainder method** with a deterministic tie-break (ascending leaf key bytes). The
-  remainder that cannot be allocated (`NDY − Σ allocations`, at most one base unit per holder) is
-  recorded and goes to the next cycle or a reserve (decision D-7).
-- **Reproducibility:** the calculation is a pure function `(inputs, policy, formulaVersion) → artifact`
-  in `packages/domain`, with no clock, I/O or randomness. The same inputs always give the same bytes
-  and the same hash.
+- **Accounting currency (D-4):** one fiat currency per cycle, in **minor units** with its ISO 4217
+  exponent, e.g. USD with exponent 2. The whole waterfall is computed in it. A cycle never mixes
+  units without the conversion rules below.
+- **Line conversion (D-4):** each revenue or expense line in another currency converts to the
+  accounting currency at the rate for a **defined date**. The options are transaction date,
+  settlement (cash) date, evidence date, or cycle close.
+  - *Provisional proposal:* the **settlement date** for revenue under the cash basis and for paid
+    expenses, because that is when value actually moved.
+  - The rate is a rational `num/den` from an **approved source** (D-4), with a UTC timestamp and the
+    source's identifier.
+  - Local dates resolve to UTC using the evidence's IANA time zone.
+- **Unavailable or corrected rates:**
+  - an unavailable rate **blocks `lock`**;
+  - a rate corrected after publication goes into a correction version (§2.4);
+  - rates are never estimated.
+- **Conversion fees** are expenses (O). **Realised FX differences** (rate used against rate actually
+  obtained) go into the next cycle as a separate line. They never reopen a published cycle.
+- **Accounting → settlement:** the final NDY converts **once**, at the frozen cycle-close rate of
+  accounting currency → settlement unit (D-3, D-4), into **base units of the settlement token**. A
+  pegged token still needs a recorded rate (e.g. 1/1, with its source), never an assumption.
+- **Arithmetic:** integers only. Each division rounds **down**, and the dropped fraction is recorded.
+- **Allocation rounding:**
+  - the largest-remainder method;
+  - ties broken by ascending recipient bytes;
+  - anything that cannot be allocated is the remainder, handled per D-9.
+- **Widths:** internal accounting uses `numeric(78,0)` (as on main). Claim leaves are **u64** (§6.2).
+- **Reproducibility:** a pure function `(inputs, policy, formula, entitlement ref, ownership events,
+  rates) → artifact set`, with no clock, I/O or randomness. The same inputs give the same bytes and
+  hashes.
 
-### 3.3 Proposed waterfall (provisional)
+### 3.3 Waterfall and fee alternatives (D-2)
+
+Notation (accounting currency, minor units):
 
 ```
-R_gross                         invoiced sales or fees recognised in the period (evidence-backed)
-− refunds, chargebacks, rebates
-− sales/VAT collected for authorities (pass-through, never revenue)
-= R                             net revenue
-− O                             operating expenses (evidence-backed, incl. transport, storage, commissions, bad debt written off)
-= OR                            operating result (may be negative)
-if OR ≤ 0:  loss L = −OR; NDY = 0; no reserves added, no profit fee; L handled by policy (§3.5)
-else:
-− LCF_used = min(OR, loss carried forward)          (if carry-forward policy is on)
-= OR'
-− M = m% × OR'                  (or a fixed schedule; capped)
-− I = i% × OR'                  (capped)
-− P = p% × OR'                  (fee on the result after reserves? or before? decision D-1)
-+ released reserves (approved releases only)
-= NDY                           ≥ 0, in settlement units after FX
+R    = gross − refunds − chargebacks − rebates − taxes collected
+O    = operating expenses (§3.7)
+OR   = R − O                                  operating result; may be negative
+LCF  = loss carried forward from earlier cycles (D-8); LCF_used = min(max(OR, 0), LCF)
+OR'  = OR − LCF_used
+M, I = reserve additions (D-6), computed on OR' when OR' > 0, else 0
+P    = fee, by the chosen alternative below
+REL  = approved reserve releases (D-7)
+NDY  = max(0, OR' − M − I − P + REL)          then converted to settlement base units (§3.2)
 ```
 
-Placing P after reserves charges the fee only on cash that actually reaches holders' side of the
-ledger. Placing it before them is common in some structures. **Decision D-1** covers the fee base, the
-fee cap (absolute, or a percentage of R), and any fixed minimum fee. A fixed fee on gross is
-possible, but must be disclosed as payable even in loss cycles.
+When OR ≤ 0: no reserve additions, NDY = 0, and the loss |OR| is recorded (§3.4). Whether a fee is
+still payable in that case depends on the alternative.
 
-**Governance controls:**
-- fee percentages and caps live in a **versioned policy record**, approved four-eyes, and can
-  never be changed for an already-locked cycle;
-- every cycle stores the policy hash it used.
+| Alternative | Fee base | Fee in a loss cycle? | Notes |
+| --- | --- | --- | --- |
+| **F1** | `p% × R` (verified net revenue) | **yes**, unless capped or waived | simple; the operator is paid regardless of the result |
+| **F2** | `p% × OR'` (operating result after losses, before reserves) | no | the fee is not reduced by reserves |
+| **F3** | `p% × (OR' − M − I)` (after reserve allocations) | no | the fee is subordinated to reserves and carried losses |
+| **F4** | fixed or tiered amount, capped (e.g. ≤ q% of R) | per terms | predictable; must be disclosed as payable even in a loss cycle |
+
+**D-2 must decide:**
+- the fee base, and where it sits in the order of operations;
+- a percentage or fixed amount;
+- a minimum and a maximum (cap);
+- whether a fee is payable in a loss cycle;
+- whether the fee is subordinated to reserve requirements and to carried losses;
+- consistency with the entitlement instrument (§0.1).
+
+**The examples below use F3 purely for illustration. This is not a selection.**
 
 ### 3.4 Specific treatments
 
-| Item | Proposed treatment | Decision? |
+| Item | Proposed treatment | Decision |
 | --- | --- | --- |
-| Refunds and chargebacks | Reduce R in the cycle where they occur; if after publication, a negative adjustment in the next cycle (never a reopen) | D-5 |
+| Refunds and chargebacks | Reduce R in the cycle where they arise. After publication, a negative line in the next cycle (never a reopen). | D-5 |
 | Taxes collected (VAT/GST) | Excluded from R | [Legal] |
-| Income taxes, withholding | Out of the formula; holders' tax treatment is [Legal]. Withholding, if required, is a separate deduction per holder | [Legal] D-15 |
+| Withholding and holder taxes | Outside the waterfall; per-holder deduction if required | D-34 [Legal] |
 | Transport, storage, commissions | O, with evidence | — |
-| Bad debt | O when written off under policy (cash basis: never in R) | D-3 |
-| Negative result | Loss L recorded; NDY = 0 | — |
-| Zero result | NDY = 0; published as "no distribution" | — |
-| Loss carry-forward | Off by default? On? With an expiry? | **D-6** |
-| Reserve roll-over and release | Reserves accumulate per asset; release only by an approved, evidenced decision, as an input to a later cycle | **D-5** |
-| Revising a cycle | Never in place. Corrections are new versions (§6.6) | — |
-| Reopening after publication | Not allowed; only supersession | — |
-| Overpayment | A negative delta in the correction, netted against the holder's future allocations; never clawed back on chain without a legal basis | [Legal] D-8 |
-| Underpayment | A positive delta in the correction cycle | — |
-| Double counting | Each evidence item (by content hash) and each source record (invoice number, receipt id) may back at most one cycle input (unique constraint, §7) | — |
+| Bad debt | Cash basis: never in R. Accrual: O when written off under policy | D-5 |
+| Negative result | Loss recorded; NDY = 0; carried per D-8; reserve offset only if D-7 allows | D-7, D-8 |
+| Zero result | NDY = 0; `close` with reason `no_distribution` | — |
+| Revising a cycle | Correction versions only (§2.4) | D-10 |
+| Overpayment and underpayment | Deltas in the correction; netting or recovery per D-10 | D-10 [Legal] |
+| Double counting | Each evidence hash and each source reference (e.g. invoice number) backs at most one live cycle input; enforced by unique constraints (§7) | — |
 
-### 3.5 Examples (fictional numbers; settlement unit = a USD-pegged token with 6 decimals; policy: m = 10%, i = 5%, p = 10% of OR' after reserves, carry-forward on)
+### 3.5 Reserves (D-7)
 
-**A. Positive yield (equipment rental, one month):**
-- R_gross = 12,400.00 USD; refunds 400.00; R = 12,000.00.
-- O = 7,000.00 → OR = 5,000.00; no carry-forward → OR' = 5,000.00.
-- M = 500.00; I = 250.00; base for P = 4,250.00 → P = 425.00.
+**Do not assume reserves are legally available to cover losses until D-7 is approved.** [Legal]
+
+D-7 must decide:
+- **Ownership:** whether reserves belong to the asset, the cycle, the holders (as of when?), the
+  operator, or a separate legal entity (an SPV or trustee).
+- **Segregation:** whether balances are segregated funds or only accounting entries.
+- **Drawdown:**
+  - whether the climate or insurance reserve (I) may offset eligible losses, and which losses count;
+  - the evidence required (e.g. an insurer's assessment, or a weather data attestation);
+  - the authorisation (four-eyes, plus attestation).
+- **Carry-forward and release:** whether balances roll over; the conditions and approvals for
+  releasing them into a cycle (REL).
+- **Disposition:** treatment when the asset is retired, sold, destroyed or removed, and when the
+  holder population changes (which holders benefit from a release).
+- **No double use:** reserve movements form an append-only ledger per asset (add, use, release),
+  each movement referencing its cycle and evidence, and a balance can never go below zero
+  (DB check, plus the ledger).
+
+### 3.6 Examples
+
+All numbers are fictional. They use F3 for illustration only.
+- **Policy:** m = 10% and i = 5% of OR'; p = 10% of (OR' − M − I); carry-forward on; no releases.
+- **Accounting currency:** USD (exponent 2).
+- **Settlement unit:** a USD-referenced token with 6 decimals, at a recorded 1/1 rate.
+- **Conversion:** USD minor units × 10^4 = base units.
+
+**A. Positive yield, one month, one asset:**
+- R = 12,400.00 − 400.00 refunds = 12,000.00; O = 7,000.00 → OR = 5,000.00.
+- No losses carried, so OR' = 5,000.00.
+- M = 500.00; I = 250.00; fee base = 4,250.00 → P = 425.00.
 - **NDY = 3,825.00 USD = 3,825,000,000 base units.**
+- For comparison, with the same inputs:
+  - F1 at 10% of R: P = 1,200.00 → NDY = 3,050.00;
+  - F2 at 10% of OR': P = 500.00 → NDY = 3,750.00;
+  - F4, a fixed 300.00 fee: NDY = 3,950.00.
 
-**B. Zero yield:** R = 6,000.00, O = 6,000.00 → OR = 0 → NDY = 0. Published as "no distribution";
-nothing allocated.
+**B. Zero yield:** R = 6,000.00, O = 6,000.00 → OR = 0 → NDY = 0. `close` with reason
+`no_distribution`.
 
-**C. Loss-making cycle (crop, hail):**
-- R = 2,000.00, O = 9,500.00 → OR = −7,500.00.
-- L = 7,500.00 carried forward. NDY = 0.
-- Next cycle OR = 10,000.00 → LCF_used = 7,500.00 → OR' = 2,500.00 → M = 250, I = 125, P = 212.50 → NDY = 1,912.50.
+**C. Loss-making cycle, then recovery:**
+- Cycle 1: R = 2,000.00, O = 9,500.00 → OR = −7,500.00. Loss 7,500.00 carried; NDY = 0; `close`
+  with reason `loss`.
+- Cycle 2: OR = 10,000.00 → LCF_used = 7,500.00 → OR' = 2,500.00 → M = 250.00, I = 125.00 → fee
+  base 2,125.00 → P = 212.50 → **NDY = 1,912.50**.
+- If D-7 instead allowed the climate reserve to offset the cycle 1 loss, these numbers would differ.
+  That is not assumed here.
 
-**D. Partial payment (cash basis):**
-- Invoiced 20,000.00, received 12,000.00 → R = 12,000.00.
-- The receivable of 8,000.00 is not in R; it enters a later cycle when received.
-- With O = 7,000.00 this is example A's arithmetic.
+**D. Partial payment, cash basis:** invoiced 20,000.00, received 12,000.00 → R = 12,000.00. The
+8,000.00 enters a later cycle when received. With O = 7,000.00, the numbers equal example A.
 
-**E. Multiple currencies:**
-- Sale of 10,000.00 EUR (exponent 2 → 1,000,000 minor units).
-- Recorded rate 1.0850 USD/EUR = 217/200, from source "X" at 2026-09-30T16:00Z.
-- 1,000,000 × 217 × 10^6 / (200 × 10^2) = 10,850,000,000 base units = 10,850.00 USD.
-- A conversion fee of 0.2% = 21.70 USD goes to O. The realised-vs-recorded difference goes to the next cycle.
+**E. Multiple currencies, per-line conversion at the settlement date:**
+- Revenue of 10,000.00 EUR (1,000,000 minor), received on 2026-09-30. The recorded rate is 1.0850
+  USD/EUR = 217/200, from an approved source at 2026-09-30T16:00:00Z.
+- 1,000,000 × 217 / 200 = **1,085,000 USD minor = 10,850.00 USD**.
+- The bank's conversion fee of 21.70 USD (0.2%) is in O.
+- Any later realised difference goes into the next cycle.
 
 **F. Rounding remainder:**
-- NDY = 1,000,000 base units across three holders with equal weight (1/3 each).
-- Exact shares are 333,333.33…. Floors are 333,333 ×3 = 999,999. Remainder 1.
-- Largest remainder: all three are equal; the tie-break by ascending leaf key gives the unit to the first holder.
-- Final 333,334 / 333,333 / 333,333. Recorded remainder = 0, after allocation of the one unit.
-- If the policy is "never allocate remainders", the 1 unit goes to the next cycle instead (D-7).
+- NDY = 1,000,000 base units; three holders with equal weight.
+- Floors are 333,333 ×3 = 999,999, leaving a remainder of 1.
+- Largest remainder, tie broken by ascending recipient bytes → **333,334 / 333,333 / 333,333**;
+  nothing left over.
+- If D-9 instead says "never allocate remainders", the 1 unit goes to the next cycle.
 
-### 3.6 Versioning and hashes
+**G. Overflow guard:** an allocation of 2^64 base units or more cannot be encoded (§6.2). `calculate`
+fails deterministically with `amount_out_of_range`, and the cycle stays in `inputs_locked`.
 
-- `formula_version` is a semver-like id (e.g. `yield-formula/1`) whose implementation is a pure
-  function in the domain package. A new version never changes how old cycles were calculated.
-- The **calculation artifact** is canonical JSON (the `canonicalJson` already on main) containing:
-  - the input record hashes;
-  - the evidence-bundle hash and the policy hash;
-  - every waterfall line, the FX records and the allocation table;
-  - the remainder.
+### 3.7 Cost completeness
 
-  Its SHA-256 is recorded and attested. Anyone can recompute it from the inputs.
+- Existing `cost` and `currency` columns in inventory (0005) and `service_records` (0007) are
+  **nullable** [Repo]. **A missing value is unknown, never zero.**
+- A cost line in a cycle needs an explicit amount (possibly an explicit `0`, with a reason), a
+  currency, and evidence (§5), or a documented reason why none exists.
+- `lock` is **blocked** while any cost line flagged *material* has an unknown amount.
+  - Material means above a threshold, or of a mandatory category per asset class.
+- **Exceptions (D-21):** an estimated cost only with an approved, attested estimate, labelled
+  `estimated`, and trued up in a later cycle. Otherwise no exceptions.
 
-### 3.7 Decisions this section depends on
+### 3.8 Versioning and hashes
 
-D-1 fee base and cap; D-2 settlement units and mints; D-3 cash or accrual basis; D-4 reserve
-percentages and caps; D-5 reserve release, and refunds after publication; D-6 loss
-carry-forward; D-7 rounding remainder; D-8 overpayment netting [Legal].
+- `formula_version` (e.g. `yield-formula/1`) names a pure domain function. A new version never
+  changes how old cycles were calculated.
+- **Policy versions** (rates, fee alternative, caps) are approved four-eyes, referenced by hash, and
+  never change for an already locked cycle.
+- The artifact set is canonical JSON (`canonicalJson`, main) plus the tree. It contains:
+  - the input hashes;
+  - the entitlement reference;
+  - the policy and formula versions;
+  - the rates;
+  - the ownership-source identity and the slot range;
+  - every waterfall line;
+  - allocations;
+  - the remainder;
+  - the root.
 
-## 4. Holder eligibility and allocation
+  Each part's SHA-256, and the set's hash, are recorded and attested.
 
-### 4.1 Models compared
+## 4. Holder eligibility, allocation and payment
 
-| Model | Fairness | Complexity | Transferability | Flash-holding resistance | Sybil / wash risk | Token-2022 | cNFT | J7 index today | Auditability | Legal / UX |
+### 4.1 Allocation models compared
+
+| Model | Fairness | Complexity | Transferability | Flash-holding | Sybil / wash | Token-2022 | Compressed NFT | J7 index [Repo] | Auditability | Legal / UX |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Point-in-time snapshot | low near the cutoff | low | free | **poor** (buy before, sell after) | high | yes | yes | yes: `rebuildOwnership` up to a slot | high | simple to explain; rewards timing |
-| Time-weighted balance | high | medium | free | **good** | low | yes | yes (0/1 per leaf) | **yes: events carry slots**; needs a slot range per cycle | high (events are public) | "you earn for the time you held" |
-| Minimum holding period | medium | low–medium | free | good | medium | yes | yes | yes | high | must be disclosed up front |
-| Epoch-based | medium–high | medium | free | medium | medium | yes | yes | yes | high | understandable if epochs are fixed |
-| Lock-up with transfer restrictions | high | **high** (needs Token-2022 extensions: transfer hook, non-transferable, or freeze) | **restricted** | excellent | low | yes, via extensions on a **new** mint | partly (Bubblegum delegates or freeze) | yes | high | **[Legal]**: restrictions change the product |
-| Hybrid (time-weighted + minimum hold) | high | medium–high | free | excellent | low | yes | yes | yes | high | most explaining needed |
+| Point-in-time snapshot | low near the cutoff | low | free | poor | high | yes | yes (one asset) | yes: events up to a slot | high | rewards timing |
+| Time-weighted (slots) | high | medium | free | good | low | yes | yes: 0/1 per asset | yes: events carry slots; block times are **not** stored | high | "earned for time held" |
+| Minimum holding period | medium | low–medium | free | good | medium | yes | yes | yes | high | must be disclosed |
+| Epoch-based | medium–high | medium | free | medium | medium | yes | yes | yes | high | understandable |
+| Lock-up with transfer restrictions | high | high | restricted | excellent | low | possible via Token-2022 extensions on a new mint [Ext] | Bubblegum delegation or freezing [Ext] | yes | high | changes the product [Legal] |
+| Hybrid | high | medium–high | free | excellent | low | yes | yes | yes | high | most explaining |
 
-### 4.2 Recommendation (provisional, pending D-12)
+### 4.2 Provisional recommendation (D-12) and ownership-source rules
 
-1. **Phase 1 (simulation):** time-weighted over the cycle's slot range from J7's finalized events,
-   with a point-in-time snapshot computed alongside for comparison. Both are pure functions of the
-   stored events.
-2. **Later:** add a minimum-holding threshold if flash-holding shows up in simulations.
-3. **Lock-ups** only with a legal decision and a new mint design.
-
-**Slots or time:** weighting by **slots** is chain-native and reproducible from J7 data alone. It is
-unaffected by validator clocks, but slot duration varies. Weighting by **time** needs a recorded
-slot→time map (block times). Decision D-12.
+- **Phase 1 (simulation):** time-weighted by **slots**, with a point-in-time view alongside for
+  comparison. Weighting by wall-clock time needs block times, which the index doesn't store.
+- **Ownership source:** the J7 index (`chain_ownership_events`, cursor `indexed_through_slot`,
+  migration 0020, PR #50) **after Y0**. Every event and cursor used must come from a source whose
+  cluster identity was **verified and recorded**. The genesis hash is **not stored today**; storing
+  it is a proposed addition (Y0, D-16).
+- **Fixture exclusion (D-17):**
+  - a real or legally effective cycle may use only events and cursors with `source = 'rpc'` from a
+    verified source;
+  - `source = 'fixture'` events (an allowed value in 0020) are permitted only in simulation, tests
+    and demonstrations;
+  - a tree that contains fixture ownership is simulation-only: never fundable, executable or
+    publishable as real.
+- **Amount bound:** the index stores amounts as u64 values (`amount <= 18446744073709551615`, 0020).
+  Weights (units × slots) are computed in arbitrary precision; only final allocations must fit u64.
 
 ### 4.3 Rules
 
-| Topic | Proposed rule |
+| Topic | Rule (proposed) |
 | --- | --- |
-| Eligibility cutoff | The cycle's slot range is `(start_slot, end_slot]`, both finalized. Each is fixed at `inputs_locked` from the first finalized slot at or after the period's wall-clock bounds, with the mapping evidence stored. |
-| Snapshot source | The J7 ownership index (`chain_ownership_events` up to `end_slot`), and only if the asset's cursor ≥ `end_slot`. Never DAS or live RPC at calculation time. The index source must have passed the **cluster verification** (the J7 follow-up). |
-| Transfers near the cutoff | Under time-weighting they matter only in proportion to the time held. Same-slot ordering follows the index (txIndex). Conflicts fail closed. |
-| Several wallets of one party | Holdings are summed per **party** over its registered `party_wallets` on that network. One leaf per party per cycle, paid to the party's designated payout wallet (decision D-14). |
-| Lost or inaccessible wallets | The allocation stays with the party, not the address. A re-designation of the payout wallet needs KYC re-verification, four-eyes approval and a cooling-off period [Legal] (D-14). |
-| **Player wallets vs party wallets** | **Player wallets never create, imply or receive an allocation.** A holder address that is a player wallet but not a party wallet is **unattributed** (below). A player may see `heldByYou` and, if they are also a party through a separate, explicit association, their party's allocation. Two explicit records, two consents. The invariant of J8 is preserved. |
-| Unattributed holders | Units held by addresses that are not a registered party wallet still count in the denominator. Their share is computed, **not paid**, and held as *unattributed* (decision D-13: held for later claim after KYC, released to a reserve after expiry, or excluded from the denominator). Excluding them silently would increase everyone else's share; that is a decision, not a default. |
-| Frozen, sanctioned or blocked | The compliance gate (main) decides at allocation time. Blocked parties' shares are computed and **withheld** (not redistributed), with a case opened. Frozen token accounts (`frozen` representation status) follow the same rule. [Legal] |
-| Unknown ownership | If J7 reports `not_indexed` for the asset, or the cursor is behind `end_slot`, the cycle **cannot be published**. Never treat unknown as "nobody holds". |
-| Test assets | Simulation/test assets and devnet representations are allocated only in simulation cycles, labelled as such, and never mixed with real cycles. |
-| Ownership changes during disputes | Allocation is fixed by the slot range, so later transfers don't change it. A correction recomputes from the same events. |
-| Fractional units | Weights are integers (units × slots); shares are exact rationals until the final floor. |
-| Dust | Allocations below a threshold (D-7) are not paid, but accumulated per party for a later cycle, or released to the remainder by policy. |
-| Rounding and residual | §3.2: largest remainder, deterministic, with the remainder recorded. |
+| Eligibility cutoff | `(start_slot, end_slot]`, finalized, fixed by `calculate`. The mapping from the period's wall-clock bounds to slots is recorded as evidence. |
+| Snapshot completeness | The asset's verified cursor must be ≥ `end_slot`. `not_indexed`, conflicts, an unverified cluster or fixture data block `calculate` (non-simulation). |
+| Transfers near the cutoff | Counted in proportion to slots held. Same-slot order follows the index; conflicts fail closed. |
+| Several wallets of one party | Holdings summed per party over its registered `party_wallets` (unique per tenant, network and address, 0012). One allocation per party. |
+| Payout destination | A party's designated payout wallet: a **new concept** (no such field exists). D-14. |
+| Lost or inaccessible wallets | The allocation stays with the party, not the address. Re-designation needs KYC re-verification, four-eyes approval and a cooling-off period. D-14 [Legal] |
+| **Player wallets vs party wallets** | **Player wallets never create, imply or receive an allocation or a payment.** A player-only address is *unattributed*. Any account-to-party association is explicit, consented, authorised, revocable and audited (D-29). A login never creates, owns or derives a party. |
+| Unattributed holders | Counted in the denominator; their share is computed, recorded and **not paid**. Hold, release or exclude is D-13; it is never silently redistributed. |
+| Unknown ownership | Blocks the cycle. Never "nobody holds". |
+| Test assets | Simulation cycles only (D-17). |
+| Ownership changes during disputes | No effect: the slot range is fixed. |
+| Fractional units, dust | Integer weights; dust below a threshold is accumulated per party (D-9). |
 
-## 5. Evidence and attestation model
+### 4.4 Allocation eligibility and payment eligibility are different
+
+- **An allocation is economic:** what the cycle attributes to a party.
+- **Payment is gated.** A party may have an allocation while payment stays **blocked** until legal
+  and compliance requirements are met.
+- **Blocked amounts are withheld and recorded, never redistributed** (D-13, D-15).
+
+**Compliance is checked at three points**, following the existing order pattern (main: `gate()` in
+`rwa.ts` lines 143–148 and 366; `engine.ts` line 630). D-15 confirms this:
+1. **When a payout or claim intent is created.**
+2. **At four-eyes approval** of the payout (or batch of payouts).
+3. **Immediately before execution or settlement (future).** This check must:
+   - re-screen the **party** (KYC current, jurisdiction allowed, sanctions screening clear and recent);
+   - re-screen the **exact payout destination** (wallet screening clear and recent);
+   - confirm the destination is **still registered to the same eligible party**;
+   - confirm the **network, mint and amount** match the approved payout;
+   - **block payment** if any result is expired, changed, unavailable or negative, and open a case.
+
+## 5. Evidence and attestation
 
 ### 5.1 Separation
 
-| Layer | What | Where (proposed) |
+| Layer | Content | Where |
 | --- | --- | --- |
-| Evidence storage | The original file bytes | the content-addressed store (`@metafarm/storage`, draft #41/#42), private bucket |
-| Evidence metadata | Type, issuer, fields, timestamps, classification | `yield_evidence` rows (§7) |
-| Evidence hash | SHA-256 of the exact bytes | metadata row, plus a `data_commitments` row (draft #40; subject type `record`, or a new `evidence` type) |
-| Attestation | Who vouches for which hashes | `yield_attestations` |
-| On-chain anchor | The root of an evidence batch or of the allocation tree | **plan only** (`planAnchor`, draft #43) until a separate approval |
+| Evidence storage | the bytes | private object storage through `@metafarm/storage` (PR #43), behind the content-store interface (PR #41) |
+| Metadata | type, issuer, fields, times, classification | `yield_evidence` (§7) |
+| Hash | SHA-256 of the exact bytes | metadata, plus a `data_commitments` row (0019, PR #40; a new subject type `evidence` would be a widening CHECK) |
+| Attestation | who vouches for which hashes | `yield_attestations` |
+| On-chain anchor | the root of an evidence batch or the claim tree | **plan only** (`planAnchor`, PR #41; endpoints PR #43) |
 
-The **evidence bundle manifest** is canonical JSON `{scheme:"metafarm-yield-evidence/1", cycleId,
-items:[{type, contentSha256, issuer, sourceId, issuedAt, tz, …}] sorted by (type, contentSha256)}`.
-Its hash is what attestations and the calculation artifact reference.
+**Bundle manifest:** canonical JSON `{scheme: "metafarm-yield-evidence/1", cycleId, cycleVersion,
+items: [...]}`, with items sorted by (type, contentSha256). Its hash is part of the artifact set.
 
 ### 5.2 Evidence types
 
-Common fields for every type:
-- `contentSha256` (of the exact bytes);
-- `byteSize`, `mediaType`;
-- `issuedAt` (an instant, RFC 3339 with offset), plus `timeZone` (IANA) for local-date documents;
-- `sourceId` (the issuer's document number);
-- `recordedBy`, `recordedAt`;
+Every item records:
+- `contentSha256`, `byteSize`, `mediaType`;
+- `issuedAt` (RFC 3339 with offset), plus `timeZone` (IANA) for local-date documents;
+- `sourceId`, `recordedBy`, `recordedAt`;
 - `classification`;
-- `supersedes` (for corrections).
+- `supersedes`.
 
-Corrections are a new item that `supersedes` the old one, which is never deleted. Revocation is an
-attestation of revocation.
+Corrections add a new superseding item. Revocation is a revoking attestation. Nothing is deleted
+except under a retention policy.
 
-| Type | Issuer | Required fields (beyond common) | Format | Signature / attestation | Retention (proposed, [Legal]) | Classification |
+| Type | Issuer | Key fields | Format | Signature / attestation | Retention | Classification |
 | --- | --- | --- | --- | --- | --- | --- |
-| Weighbridge receipt | weighbridge operator | gross/tare/net weight + unit, vehicle id, crop, lot | PDF/image + structured JSON | operator signature or stamp; scanned | 10 y | confidential (commercial) |
-| Warehouse receipt | warehouse | lot, quantity, grade, storage period | PDF + JSON | warehouse-issued; may be a negotiable document [Legal] | 10 y | confidential |
-| Sales invoice | seller (operator) | buyer (pseudonymised id), lines, currency, totals, taxes, due date | PDF/XML (e-invoice formats where they exist) | issuer's e-invoice signature where available | per tax law [Legal] | confidential; contains PII if the buyer is a person |
-| Export and customs records | customs broker or authority | declaration number, HS code, quantities, values | PDF/XML | authority reference | per law | confidential |
-| Bank or settlement record | bank | account (masked), amount, currency, value date, reference | statement extract (CSV/PDF), or an API record | bank-provided; auditor-confirmed | per law | **restricted** (financial PII) |
-| Stablecoin settlement record | chain | network, tx signature or hash, token, amount, from/to | JSON of the finalized transaction | **verified from the chain** at finality (the read-only RPC pattern of J7) | 10 y | confidential |
-| Equipment telemetry | device or platform | device id, window, hours, readings | rollup JSON (0017) | device identity (MQTT TLS client certificate) plus a platform commitment | 3–10 y | internal |
-| IoT data (e.g. temperature) | device | sensor, window, series hash | JSON | as above | 3 y | internal |
-| Weather data | provider | station or grid, window, variables, provider version | JSON | provider reference; licence terms | 3 y | internal; licence-restricted |
-| Auditor or expert attestation | auditor or agronomist | scope, items covered (hashes), opinion, date | signed PDF + JSON | an identified person's signature (method in D-10) | 10 y | confidential |
+| Weighbridge receipt | operator | gross, tare, net, unit, vehicle, lot | PDF/image + JSON | stamp or signature; scanned | per law [Legal] | confidential |
+| Warehouse receipt | warehouse | lot, quantity, grade, period | PDF + JSON | issued by the warehouse; may be a document of title [Legal] | per law [Legal] | confidential |
+| Sales invoice | seller | buyer (pseudonymised), lines, taxes, totals | PDF/XML; e-invoice formats where applicable [Ext] | e-invoice signature where available [Ext] | per tax law [Legal] | confidential, may hold PII |
+| Export and customs records | broker or authority | declaration, HS code, values | PDF/XML | authority reference | per law [Legal] | confidential |
+| Bank or settlement record | bank | masked account, amount, value date, reference | CSV/PDF/API | bank-issued; confirmed by an auditor | per law [Legal] | **restricted** |
+| Stablecoin settlement record | chain | network, signature, mint, amount, from/to | JSON of a finalized transaction | **verified from the chain** at finality, from a verified cluster (Y0) | per policy [Legal] | confidential |
+| Equipment telemetry | device or platform | device, window, hours, readings | rollup JSON (0017) | device identity: MQTT client certificates are configurable (`MQTT_CLIENT_CERT_PEM`), but binding devices to equipment and to their identity is **not confirmed** [Ext] | per policy | internal |
+| IoT data | device | sensor, window, series hash | JSON | as above [Ext] | per policy | internal |
+| Weather data | provider | station or grid, window, variables | JSON | provider reference; licence terms | per licence | internal |
+| Auditor or expert attestation | identified person | scope, item hashes, opinion | signed PDF + JSON | per D-23 | per law [Legal] | confidential |
 
-**Personal and commercial data:**
-- buyer identities, bank details and prices stay in the private store, never in public endpoints;
-- public summaries carry hashes and totals only;
-- fields are minimised and pseudonymised where possible [Legal: data protection].
+Personal data and commercial terms stay in private storage. Public outputs carry totals and hashes
+only (§7.4). [Legal: data protection]
 
-### 5.3 Storage options (D-11)
+### 5.3 Storage options (D-24)
 
-| Option | Availability | Privacy | Pinning / durability | Retention control | Cost | Legal risk |
+| Option | Availability | Privacy | Durability | Retention control | Cost | Legal risk |
 | --- | --- | --- | --- | --- | --- | --- |
-| Private object storage (S3-compatible; already abstracted) | provider SLA | **private by default** | provider durability; versioning and object lock possible | **full** (deletion possible: data-protection rights) | low | low; the data controller keeps control |
-| IPFS (with a pinning service) | depends on pinning | **public content** if the CID is known | needs paid pinning | weak (copies can persist) | low–medium | **high for PII or commercial data**: erasure is impractical |
-| Arweave | permanent | public | permanent by design | **none** | one-off fee | **high**: erasure impossible |
-| A hybrid: private store for bytes, public store for hashes and manifests | good | good | good | good | low | low |
+| Private object storage (abstracted, PR #43) | provider SLA | private | provider; versioning or object lock [Ext] | full | low | low |
+| IPFS with pinning | depends on pinning | public if the CID is known | paid pinning | weak | low–medium | high for PII or commercial data |
+| Arweave | permanent | public | permanent | none | one-off | high: erasure impossible |
+| Hybrid (private bytes, public hashes and manifests) | good | good | good | good | low | low |
 
-**Recommendation (provisional):** keep the bytes in private object storage with object lock or
-versioning, and keep only hashes, manifests and roots in public endpoints or on chain later. IPFS or
-Arweave only ever for data that is meant to be public and contains no PII.
+*Provisional recommendation:* the hybrid. IPFS or Arweave only for content meant to be public, with
+no PII.
 
-### 5.4 Attestations
+### 5.4 Attestations (D-23)
 
-An attestation is `{attester (identified), role, statement type, subject hashes, issuedAt, method,
-signature or reference}`.
+An attestation is `{attester, role, statement, subject hashes, issuedAt, method, signature or
+reference}`. The available methods:
+- **recorded:** an authenticated user with the attester role; audited;
+- **document signature:** the signed PDF's hash is stored;
+- **key signature:** an Ed25519 or ECDSA signature over a domain-separated message, **verified,
+  never produced**, by the platform.
 
-**Methods (D-10):**
-- **recorded** (an authenticated platform user with the attester role clicks "attest"; audited);
-- **document signature** (a signed PDF whose hash is stored);
-- **key signature** (an Ed25519 or ECDSA signature over a domain-separated message, *verified*,
-  never produced, by the platform).
+The quorum per asset class is D-23.
 
-**Quorum (D-10):** e.g. one independent auditor plus one operator manager, for publication. It is
-configurable per asset class.
+## 6. Merkle distribution and claims
 
-## 6. Merkle distribution and claim architecture
+### 6.1 Pipeline
 
-### 6.1 Pipeline (phase 1 = steps 1–10, and 12–13 as read-only simulation)
+The phase-1 steps are simulation and verification only:
 
-1. Receive cycle inputs: records referencing evidence hashes.
-2. Validate: required evidence types per lifecycle (§2.2); hashes present in the store; no source
-   record already used (§3.4).
-3. Calculate: pure function → artifact (§3.6).
-4. Allocate: pure function over J7 events in `(start_slot, end_slot]` → weights per party; the
-   unattributed and withheld shares are recorded (§4.3).
-5. Payout records: `{party, payout wallet, amount}`, deterministic order.
-6. Canonical leaves (§6.2).
-7. Merkle tree (RFC 9162 construction, as on draft #40).
-8. Store the artifact, the manifest and the tree in the content store; record the hashes.
-9. Publish a reviewable draft (internal).
-10. Approve (four-eyes plus quorum) → `published` (internal publication of root and summary).
-11. **Fund: future, separate approval.**
-12. Serve proofs: read-only.
-13. Reconcile: in phase 1, simulated payouts against allocations.
-14. Close or supersede.
+1. Register inputs and evidence.
+2. `lock`.
+3. **`calculate`:**
+   - fix the slot range;
+   - complete the verified snapshot;
+   - waterfall;
+   - allocation;
+   - leaves;
+   - tree;
+   - freeze the artifact set.
+4. Store the artifacts (content store); record the hashes.
+5. Attestation and review (`under_review`).
+6. Four-eyes `approve`.
+7. `publish` (internal; the public summary per §7.4).
+8. *Future:* fund (separate approval).
+9. Serve proofs (read-only; holder access per §7.3).
+10. Reconciliation (simulated in phase 1).
+11. `close` or `supersede`.
 
-### 6.2 Canonical leaf (proposal: binary, fixed layout, for on-chain verifiability later)
+### 6.2 Canonical leaf
 
-Hash: `leaf = SHA-256(0x00 ‖ SHA-256(leaf_bytes))`. That is RFC 9162 leaf hashing over the digest of
-the record, as `merkleLeaf` does on draft #40. Interior nodes are `SHA-256(0x01 ‖ l ‖ r)`. Solana
-programs can verify SHA-256 with a syscall, so the same tree works off-chain and on-chain (D-17).
+- **Hash:** `leaf = SHA-256(0x00 ‖ SHA-256(leaf_bytes))`, with interior nodes `SHA-256(0x01 ‖ l ‖ r)`.
+  This is the RFC 9162 construction of `commitments.ts` (PR #40), with its own domain tag.
+- **On-chain verification:** an on-chain verifier could recompute SHA-256 through Solana's hashing
+  support. Its availability and cost are an **external assumption to verify** before D-26. [Ext]
 
-`leaf_bytes`, little-endian, with every field fixed-size:
+`leaf_bytes` is little-endian, with every field fixed-size:
 
 | Field | Bytes | Notes |
 | --- | --- | --- |
-| domain tag | 32 | `SHA-256("metafarm-yield-leaf/1")`. Domain separation from every other tree. |
-| network id | 1 | 1 = solana-devnet, 2 = solana-mainnet, … (a registry constant). Prevents cross-cluster replay. |
-| cluster genesis hash | 32 | binds the leaf to the verified cluster (the J7 follow-up) |
+| domain tag | 32 | `SHA-256("metafarm-yield-leaf/1")` |
+| network id | 1 | registry constant |
+| cluster identity | 32 | the genesis hash recorded by **Y0** (proposed; **not stored today**) |
 | cycle id | 16 | UUID bytes |
-| cycle version | 4 | u32; corrections increment it |
+| cycle version | 4 | u32 |
 | epoch | 4 | u32 (0 when unused) |
-| asset representation id | 32 | Token-2022 mint, or for cNFT pools the pool's identifier (a 32-byte hash) |
-| recipient | 32 | the party's payout address (Solana pubkey). TRON payout needs a different leaf variant (21-byte address), and stays out of scope under the hold. |
-| payout mint | 32 | the settlement token mint |
-| amount | 16 | u128 in base units |
+| economic asset id | 32 | the Token-2022 mint, or the compressed-NFT asset id (one asset per cycle unless D-18 approves pools) |
+| recipient | 32 | the party's payout wallet (Solana). A TRON payout would need a different leaf variant, out of scope under the TRON hold |
+| payout mint | 32 | the settlement token |
+| **amount** | **8** | **u64** in settlement base units |
 | formula version | 2 | u16 |
-| tree version | 2 | u16 (the leaf-layout version) |
-| leaf index | 4 | u32, the position in canonical order |
+| leaf-layout version | 2 | u16 |
+| leaf index | 4 | u32 |
 
-- **Canonical order:** by `recipient` bytes ascending. Duplicates are impossible because the
-  allocation is per party → one recipient per party per cycle (a unique constraint on `(cycle,
-  version, recipient)`).
-- **Replay protection:** the domain tag, network, genesis hash, cycle id and version make a leaf valid
-  only for one tree. A future claim program would also record claimed indices per root (a bitmap).
+**Amount width:**
+- SPL token amounts are u64 [Ext: SPL semantics]; the index already bounds amounts to u64 [Repo].
+- Before encoding, each `numeric(78,0)` allocation is checked against `0 < amount ≤ 18446744073709551615`.
+- Any failure makes `calculate` fail deterministically (`amount_out_of_range`).
+- The internal accounting width (`numeric(78,0)`) is distinct from the canonical leaf width (u64).
 
-### 6.3 Stages distinguished
+**Order and uniqueness:**
+- leaves are ordered by recipient bytes;
+- each tree has a unique (tree, recipient) pair, so there is one leaf per payout wallet per cycle
+  version.
 
-| Stage | What it means | Phase 1 |
-| --- | --- | --- |
-| Off-chain calculation | the pure artifact | yes |
-| Off-chain publication | the root and summary visible to authorised users | yes (internal) |
-| On-chain root anchoring | the root written on chain (memo, Token-2022 metadata or a program account) | **plan only** (`executable: false`) |
-| On-chain vault funding | settlement tokens moved into an escrow the claim program controls | **no**. Needs a program that does not exist |
-| On-chain claim | a holder proves a leaf and receives funds | **no**. Needs a program that does not exist |
-| Off-chain payout | platform-pushed transfers (e.g. the existing `distribution` orders on TRON) | **no** (RWA and TRON holds) |
-| Manual reconciliation | cases for every mismatch | yes (simulated) |
+**Replay protection:**
+- the domain tag, network, cluster identity, cycle id and version make a leaf valid for one tree only;
+- a future claim program would also keep a per-root claimed-bitmap.
 
-**Future boundary:** a Solana claim program would need:
-- a vault per cycle (an associated token account owned by a PDA);
-- a root per cycle and version;
+### 6.3 Stages
+
+| Stage | Phase 1 |
+| --- | --- |
+| Off-chain calculation, artifact set | yes |
+| Off-chain publication (internal; public summary) | yes |
+| On-chain root anchoring | **plan only** (`executable: false`) |
+| Vault funding | **no**: no program exists; needs separate approval |
+| On-chain claim | **no**: no program exists |
+| Off-chain push payout (distribution orders, TRON) | **no**: RWA execution and TRON holds |
+| Reconciliation | simulated |
+
+**Future boundary (D-25):** a Solana claim program, if chosen, would need:
+- a vault per cycle owned by a program address;
+- a root per cycle version;
 - a claimed-bitmap;
-- a `claim(leaf, proof)` instruction that checks the domain tag, the network, the root and the bit;
-- an admin path to supersede or close a root, with timelock and multisig.
+- `claim(leaf, proof)` checking the domain tag, network, cluster, root and bit;
+- an admin path for supersession and closure, with timelock and multisig.
 
-It has to be designed, audited and approved separately (D-16).
+It would need its own design, audit and approval. [Ext for the program design]
 
-### 6.4 Push or pull (D-16)
+### 6.4 Push or pull, and custody (D-25)
 
-- **Push** (the existing model on main): the platform creates one `distribution` order per party,
-  each with four-eyes approval and a TRON settlement intent. It's simpler for holders, but means
-  platform-initiated transfers, custody and AML exposure, and the TRON hold.
-- **Pull** (a Merkle claim): holders claim from a funded vault. It needs a program, an audit,
-  wallet UX and fee payment by the holder.
+**Push** uses the existing model: one `distribution` order per party, with a TRON TRC-20 settlement
+from **`RWA_TRON_TREASURY`** (main configuration).
+- This means an **operator-controlled treasury temporarily or operationally controls funds intended
+  for recipients**. The legal and regulatory consequences need qualified review. [Legal]
+- Before any live execution, these must be addressed:
+  - treasury reconciliation;
+  - segregation of client funds;
+  - treatment in the operator's insolvency;
+  - access control;
+  - signing governance (KMS/HSM, multisig);
+  - incident recovery.
 
-In both cases, the Merkle root is the audit commitment.
+**Pull** means holders claim from a funded vault. It needs a program, an audit, wallet UX, and
+holders paying network fees unless they are sponsored. Custody questions apply to the vault as well.
 
 ### 6.5 Claims
 
-- **Status:** `pending` (published, not yet claimable) → `claimable` → `claim_intent_created` →
-  `submitted` (future) → `claimed` | `failed` | `expired` | `voided` (superseded) | `withheld`
-  (compliance).
-- **Idempotency:** a claim intent is keyed by `(cycle, version, leaf index)`. Repeating it returns
-  the same unsigned intent (the pattern of draft #41: TTL, no signing).
-- **Partial failure:** a submitted claim that has not been observed is never re-sent (the
-  `outcomeUnknown` rule on main). It is re-checked like draft #58's decision.
-- **Expiry and unclaimed funds:** a claim window per cycle (D-18). Unclaimed amounts go back to a
-  reserve or the next cycle by policy [Legal: unclaimed property rules].
-- **Double claim:** prevented by the claimed-bitmap (future on chain), and off-chain by the unique
-  leaf per recipient plus a status machine.
-- **Fees:** in pull, the holder pays network fees unless the platform sponsors them (D-18).
-- **Failed transactions:** handled as in the existing operation lifecycle (main).
-- **Finality:** everything is read at `finalized`. A reorg before finality is not counted.
-- **Devnet and mainnet:** different network ids and genesis hashes in the leaf. Mainnet stays locked
-  (`RWA_MAINNET_ENABLED`).
+- **Status:** `pending` → `claimable` → `claim_intent_created` → `submitted`* → `claimed` | `failed` |
+  `expired` | `voided` (superseded) | `withheld` (compliance).
+- **Idempotency:** `(cycle, version, leaf index)`. A repeated request returns the same unsigned
+  intent (the TTL pattern of PR #41).
+- **Partial failure:** a submitted claim that has not been observed is never re-sent (`outcomeUnknown`,
+  main). It is re-checked as in PR #58.
+- **Expiry and unclaimed funds:** D-27 [Legal: unclaimed property].
+- **Double claim:** the off-chain uniqueness and status machine, plus a future on-chain bitmap.
+- **Finality:** everything is read at `finalized`, from a verified cluster.
+- **Devnet and mainnet:** different network id and cluster identity in the leaf. Mainnet stays
+  locked (`RWA_MAINNET_ENABLED`).
 
-### 6.6 Corrections and supersession
-
-- A correction is cycle version *n+1*, with the same id, a new root and `supersedes = n`.
-- Holders who were already paid under version *n* get **delta** leaves: positive, or zero with a
-  recorded negative to net later (D-8).
-- In a pull model, version *n*'s root is closed in the program (future).
-- Off-chain, version *n*'s unclaimed claims become `voided`.
-
-**Phase 1 produces only:**
-- the calculation artifact;
-- the evidence manifest;
-- the tree;
-- proofs;
-- **unsigned** claim intents;
-- simulated reconciliation reports.
-
-It signs, submits, funds and claims nothing.
+**Phase 1 produces only** artifacts, proofs, **unsigned** claim intents and simulated
+reconciliation. It never signs, submits, funds or claims anything.
 
 ## 7. Database and API plan
 
-Convention: plain SQL migrations, RLS by `tenant_id` with `FORCE ROW LEVEL SECURITY`, the
-`metafarm_app` role, typed repositories, zod schemas, OpenAPI 3.1. **No migration is written yet.**
+Plain SQL migrations, RLS with `FORCE ROW LEVEL SECURITY`, `metafarm_app`, typed repositories, zod,
+OpenAPI. **No migration is written here.** The numbering would continue after 0022.
 
-### 7.1 Reuse first
+### 7.1 Reuse
 
-- `data_commitments` and `commitment_batches` (draft #40) hold the hashes of evidence and of
-  artifacts, and batch them for later anchoring. Add a subject type `evidence` (a widening
-  CHECK, like 0019).
-- `audit_events` (main, append-only) for *who did what*. The yield tables need their own
-  **append-only fact tables**, but no separate `yield_audit_events`: one audit log, with yield
-  actions (`yield.cycle.approved`, …), avoids two sources of truth. A table-specific transition log
-  holds state changes.
-- `reconciliation_cases` (main) is keyed to `rwa_orders` by foreign key. Payout-level cases can use
-  it once payouts are distribution orders. Yield-level differences need `yield_reconciliations`.
-- `idempotency_records` (draft #54) covers every write. Keyset paging (draft #55) covers every list.
-- `parties`, `party_wallets` and the compliance gate (main) handle eligibility.
+| Existing | Use |
+| --- | --- |
+| `data_commitments`, `commitment_batches` (0019, PR #40) | Evidence and artifact hashes, and their batching |
+| `parties`, `party_wallets` and the compliance gate (main) | Eligibility and payment gating |
+| `reconciliation_cases` (main; keyed to `rwa_orders`) | Payout-level cases only, if payouts are distribution orders. Cycle-level differences need `yield_reconciliations`. |
+| Idempotency (PR #54) and paging (PR #55) | Every write and list |
+| Audit storage | **D-31** (below) |
 
-### 7.2 Proposed tables (names shortened to `yield_*`; all tenant-scoped with RLS unless noted)
+### 7.2 Proposed tables (all tenant-scoped with RLS)
 
-| Table | PK | FKs | Unique | Status / versions | Money | Hashes | Append-only? | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `yield_cycles` (the brief's `yield_distributions`) | id uuid | tenant; asset (`business_assets`); representation; supersedes → self | (tenant, asset, period, version) | status (§2.1), `version` int, `formula_version`, `policy_hash` | settlement mint + decimals | `inputs_hash`, `artifact_hash`, `evidence_bundle_hash`, `root` | **no** (status moves), but locked columns are immutable by trigger after `inputs_locked` | slot range; `simulation` bool |
-| `yield_cycle_transitions` | bigserial | cycle | — | from/to, actor, reason | — | — | **yes** | mirrors `chain_operation_transitions` |
-| `yield_inputs` | id | cycle; evidence | (cycle, kind, source_ref): no double counting; and (tenant, source_kind, source_ref) across live cycles | — | `amount_minor numeric(78,0)`, `currency` (ISO) or mint | `content_sha256` | **yes** (corrections supersede) | kinds: revenue, refund, tax_collected, receivable, … |
-| `yield_expenses` | id | cycle; evidence | (tenant, source_kind, source_ref) | — | as above | sha | **yes** | could be merged into `yield_inputs` with a `side` column (reviewer's choice) |
-| `yield_reserves` | id | asset; cycle | — | movement kind: add, release, use | base units | — | **yes** (a ledger) | the balance per asset is a view |
-| `yield_policies` | id | tenant; asset class | (tenant, name, version) | approved_by ≠ created_by | percentages as integer basis points; caps in base units | `policy_hash` | **yes** | versioned |
-| `yield_evidence` | id | cycle | (tenant, content_sha256, type) | `supersedes` | — | `content_sha256`, `storage_ref` | **yes** | classification; retention class |
-| `yield_attestations` | id | cycle; attester user | (cycle, attester, statement, subject_hash) | revoked_by → self | — | subject hashes, signature | **yes** | |
-| `yield_fx_rates` | id | — | (source, pair, at) | — | `num`, `den` numeric(78,0) | record hash | **yes** | |
-| `yield_ownership_snapshots` | id | cycle | (cycle, version) | — | — | `events_hash` (of the J7 events used), cursor slot | **yes** | references, not copies, of J7 events, plus their hash |
-| `yield_allocations` | id | cycle; party | (cycle, version, party) | kind: paid, unattributed, withheld, dust | base units, weight numerator and denominator | — | **yes** | |
-| `yield_merkle_trees` | id | cycle | (cycle, version) | tree_version | total base units | root, leaf count | **yes** | |
-| `yield_merkle_leaves` | (tree, index) | tree; allocation | (tree, recipient) | — | base units | leaf hash, leaf bytes (hex) | **yes** | |
-| `yield_claims` | id | leaf | (leaf) | §6.5 status; idempotency key | — | intent hash | no (status moves), plus a transition log | phase 1: intents only |
-| `yield_reconciliations` | id | cycle | — | open/investigating/resolved/written_off (as on main) | expected/observed | — | resolution rows append-only | |
-| `yield_disputes` | id | cycle; subject | — | open/resolved, outcome | — | subject hash | events append-only | |
-| `yield_corrections` | id | from cycle version → to version | (cycle, to_version) | — | deltas | — | **yes** | |
+| Table | Key points |
+| --- | --- |
+| `yield_cycles` | id; (tenant, economic asset, period, version) unique; status; `simulation` bool; entitlement instrument id, version and hash; policy and formula versions; accounting currency; settlement mint and decimals; slot range; ownership-source identity (Y0); artifact-set hash; root. Columns frozen by a trigger after `calculate`. |
+| `yield_cycle_transitions` | append-only; actor, reason, artifact-set hash |
+| `yield_artifact_sets` | id; (cycle, version, set number) unique; status `frozen`/`invalidated`/`approved`/`superseded`; the hashes of every part; append-only apart from a status column guarded by a trigger |
+| `yield_inputs` (revenue and expense lines; reviewer's choice whether expenses are separate) | append-only; side and kind; amount in `numeric(78,0)` minor units; currency; `completeness` (`known`/`zero`/`estimated`); evidence hash; **unique (tenant, source_kind, source_ref) across live cycles**, to prevent double counting |
+| `yield_reserve_movements` | append-only ledger per asset: add, use, release; balance ≥ 0 by check; each movement references its cycle and evidence |
+| `yield_policies` | append-only, versioned; basis points and caps as integers; four-eyes; policy hash |
+| `yield_fx_rates` | append-only; source, pair, at; `num`/`den` as `numeric(78,0)`; record hash |
+| `yield_evidence` | append-only; (tenant, content_sha256, type) unique; supersedes; classification; retention class |
+| `yield_attestations` | append-only; (artifact set, attester, statement) unique; revocations as new rows |
+| `yield_ownership_snapshots` | append-only; cycle; source identity; cursor slot; events hash; **`source_kind` CHECK (`rpc`), unless the cycle is a simulation** (enforced by a trigger joining `yield_cycles.simulation`) |
+| `yield_allocations` | append-only; (artifact set, party) unique; kind (`allocated`, `unattributed`, `withheld`, `dust`); weights; `numeric(78,0)` amount |
+| `yield_merkle_trees`, `yield_merkle_leaves` | append-only; (tree, recipient) unique; leaf bytes and hash; amount ≤ u64 max by CHECK |
+| `yield_claims` (+ transitions) | status machine; idempotency key; phase 1 holds intents only |
+| `yield_reconciliations`, `yield_disputes`, `yield_corrections` | resolution rows append-only |
+| `ownership_source_identities` (Y0) | network; verified genesis hash; endpoint fingerprint (scheme and host only, never credentials); verified_at; verifier. Referenced by cursors and snapshots. *Proposed.* |
 
-All timestamps are `timestamptz` (UTC), and the IANA zone is stored where local dates matter.
-Indexes go on `(tenant_id, status, created_at)` and on every foreign key. Retention follows §5.2.
+All timestamps are `timestamptz` (UTC), with IANA zones stored where local dates matter. Indexes go
+on `(tenant_id, status, created_at)` and on every foreign key. Retention follows §5.2.
 
-**Access:** the app role gets SELECT/INSERT on fact tables and UPDATE only on status columns, guarded
-by transition triggers. Public views expose only roots and summaries (§7.4).
+**Access:** the app role gets SELECT/INSERT on fact tables, and UPDATE only on guarded status
+columns.
 
-### 7.3 API (proposed; all under `/v1/tenants/{tenantId}/yield`, `Idempotency-Key` on writes, keyset paging on lists)
+**D-31: audit storage.** Reuse `audit_events`, or add a dedicated `yield_audit_events`?
 
-| Endpoint | Purpose | Authorization (proposed new permissions) |
+| Aspect | Reuse `audit_events` (0001) | Dedicated `yield_audit_events` |
 | --- | --- | --- |
-| `POST /cycles` | create a draft | `yield:prepare` (operator) |
-| `POST /cycles/{id}/evidence` | register evidence metadata (bytes go to the store via the existing upload flow) | `yield:prepare` |
-| `POST /cycles/{id}/inputs` | add revenue or expense lines | `yield:prepare` |
-| `POST /cycles/{id}/lock` | → inputs_locked | `yield:prepare` |
-| `POST /cycles/{id}/attestations` | attest to hashes | `yield:attest` (auditor or agronomist) |
-| `POST /cycles/{id}/preview` | calculate (pure; no state change) | `yield:prepare`, `yield:review` |
-| `POST /cycles/{id}/review` | → under_review | `yield:prepare` |
-| `POST /cycles/{id}/approve` | → approved (four-eyes) | `yield:approve` (≠ preparer) |
-| `POST /cycles/{id}/publish` | → published (root) | `yield:approve` |
-| `GET /cycles`, `GET /cycles/{id}` | read | `yield:read` |
-| `GET /cycles/{id}/allocations?party=` | allocations | `yield:read`; holder-facing variant below |
-| `GET /cycles/{id}/proofs/{leafIndex}` | Merkle proof | `yield:read`; holder variant |
-| `POST /cycles/{id}/claims/{leafIndex}/intent` | **unsigned** claim intent | holder variant only; phase 1 returns a simulation-labelled intent |
-| `POST /claims/{id}/status` | record observed status (system or worker only) | system |
-| `POST /cycles/{id}/disputes` | open a dispute | `yield:review`, or holder variant (D-9) |
-| `POST /cycles/{id}/corrections` | create a correction version | `yield:approve` |
-| `GET /cycles/{id}/audit` | the complete trail (transitions + audit events + hashes) | `audit:read` or `yield:review` |
+| Append-only | already enforced (trigger, 0001 lines 431–446) | needs `append_only()` (0011) |
+| RLS | per the existing setup | defined fresh, yield-specific |
+| Query performance | shared table; filter by action prefix and tenant | narrower table; indexes tuned for yield |
+| Retention | one policy for every audit event | can differ (e.g. longer for financial records) [Legal] |
+| Isolation | mixed with operational events | isolated |
+| Export | one export path | a separate, yield-only export (e.g. for auditors) |
+| Migration complexity | none | one more table and its grants |
 
-**Role mapping** (existing roles on main: owner, admin, manager, verifier, worker, viewer; D-19):
+*Provisional recommendation:* reuse `audit_events` for *who did what*, and keep state history in
+the append-only transition logs. This is not settled; it is D-31.
 
-| Brief role | Proposal |
+### 7.3 API (proposed; under `/v1/tenants/{tenantId}/yield`; `Idempotency-Key` on writes; keyset paging on lists)
+
+| Endpoint | Purpose | Authorization |
+| --- | --- | --- |
+| `POST /cycles` | create a draft | `yield:prepare` |
+| `POST /cycles/{id}/evidence`, `/inputs` | register evidence metadata and lines | `yield:prepare` |
+| `POST /cycles/{id}/lock`, `/unlock` | lock or unlock inputs | `yield:prepare` |
+| `POST /cycles/{id}/preview` | **non-mutating** calculation | `yield:prepare`, `yield:review` |
+| `POST /cycles/{id}/calculate` | **authoritative**: freezes the artifact set → `calculated` | `yield:prepare` |
+| `POST /cycles/{id}/submit`, `/reject` | review flow | `yield:prepare` / `yield:review` |
+| `POST /cycles/{id}/attestations` | attest to artifact-set hashes | `yield:attest` |
+| `POST /cycles/{id}/approve` | four-eyes | `yield:approve` (≠ preparer) |
+| `POST /cycles/{id}/publish`, `/close`, `/cancel` | publish or close | `yield:approve` |
+| `POST /cycles/{id}/disputes`, `/corrections` | disputes and corrections | per D-22 / `yield:approve` |
+| `GET /cycles`, `GET /cycles/{id}`, `GET /cycles/{id}/audit` | operator views | `yield:read`; `audit:read` for the trail |
+| **Holder-facing:** `GET …/my-allocations`, `GET …/proofs/{leafIndex}`, `POST …/claims/{leafIndex}/intent` | the holder's allocation, proof and **unsigned** intent | **only after the account-to-party linking of D-29 exists**; compliance checkpoint 1 (§4.4) at intent creation |
+
+**Roles (D-28):** existing roles on main are owner, admin, manager, verifier, worker and viewer
+(`packages/domain/src/roles.ts`).
+
+| Role | Access |
 | --- | --- |
-| Admin | owner or admin: everything except attesting their own preparation |
+| Admin | owner or admin |
 | Operator | manager + `yield:prepare` |
-| Auditor | **a new role** (or the existing `verifier` extended) with `yield:read`, `yield:attest`, `yield:review`, `audit:read`, but no `prepare` and no `approve` |
-| Asset manager | admin + `yield:approve` |
-| Player | `/v1/me/...` only: **no** allocation by player identity. Sees `heldByYou` and public summaries |
-| Linked (player) wallet | display only; never a payout identity |
-| RWA party wallet | **Parties cannot log in today.** Holder-facing allocation and proof endpoints need an explicit, consented user↔party association (D-20). Until then, holders get statements through operators |
-| Public | `GET /public/yield/{cycleId}`: status, period, totals (R, O, M, I, P, NDY), root, formula version, evidence-bundle hash. **No** per-holder amounts, no evidence bytes, no counterparties (D-21) |
+| Auditor | a new role, or `verifier` extended: `yield:read`, `yield:attest`, `yield:review`, `audit:read`, but not `prepare` or `approve` |
+| Asset manager | `yield:approve` |
+| Player | `heldByYou` and public summaries only |
+| Linked player wallet | display only, never a payout identity |
+| RWA party | holder-facing endpoints only through an explicit, consented, authorised, revocable and audited account-to-party link (D-29). A login never creates or derives a party. |
+| Public | §7.4 |
 
-## 8. Unity and web experience
+### 7.4 Public summary
 
-**Read models** (engine-free core; GET only; netstandard2.1; no signing types — the reflection test
-on draft #40 extends to them):
-- `YieldCycleSummary`: status, period, formula version, totals with currency, `lastUpdated`,
-  dispute/correction flags, `isSimulation`;
-- `YieldVerification`: evidence-bundle hash, root, artifact hash, attestation count against quorum,
-  and a locally re-checked proof status (reusing `Rfc9162CommitmentVerifier`);
-- `YieldAllocationView`: amount, claimable, `heldByYou` semantics.
+`GET /v1/public/yield/cycles/{cycleId}`, following the `/v1/public/...` convention on main, returns
+only:
+- status, period;
+- formula and policy versions;
+- totals (R, O, M, I, P, NDY) in the accounting currency, if D-30 allows publishing totals at all;
+- the root and the artifact-set hash.
 
-**`heldByYou` and "your allocation":**
-- `heldByYou` keeps the J8 rule: true only from chain readings; absent for unknown ownership, test
-  data or no linked wallet; never false-for-unknown.
-- **"Your allocation" is separate.** It is shown only through the party association (D-20), never
-  inferred from a player wallet.
+It **never** returns:
+- evidence bytes or private attestations;
+- holder allocations or wallet addresses;
+- compliance status;
+- counterparties, prices, or other commercially sensitive records.
 
-**UI states:**
+D-30 decides the details.
 
-| State | Meaning shown |
+## 8. Unity and web
+
+**Unity engine-free core:** read-only DTOs, GET only, netstandard2.1. The reflection test that
+forbids signing types (PR #40) covers them.
+
+| Model | Contents |
 | --- | --- |
-| Draft | "Being prepared: figures may change" |
+| `YieldCycleSummary` | status, period, formula version, totals with their currency, `lastUpdated`, dispute/correction flags, `isSimulation` |
+| `YieldVerification` | root, artifact-set hash, attestation count against quorum, and a proof result re-checked locally with `Rfc9162CommitmentVerifier` |
+| `YieldAllocationView` | amount and claimable state, shown **only** through the D-29 party link |
+
+**`heldByYou`** keeps J8's rule:
+- true only from verified chain readings;
+- absent for unknown ownership, test data, or a user with no linked wallet;
+- never false-for-unknown.
+
+It is **not** an allocation indicator.
+
+| UI state | Shown as |
+| --- | --- |
+| Draft | "Being prepared" |
 | Under review | "Awaiting independent review" |
-| Approved | "Approved; not yet published" |
-| Published | "Published: verification details available" |
+| Approved | "Approved, not yet published" |
+| Published | "Published, with verification details" |
 | Claimable | future |
 | Claimed | future |
 | Partially claimed | future |
 | Disputed | "Disputed: payouts paused" |
-| Superseded | "Replaced by version n+1" (with a link) |
-| No yield | "No distribution this period", with the reason |
-| Loss-making cycle | "Loss this period", with the amount and the carry-forward effect |
-| Verification unavailable | shown as such, never as verified |
-| Ownership unavailable | "Ownership not indexed": never "you hold nothing" |
+| Superseded | "Replaced by version n+1", with a link |
+| No yield | "No distribution", with the reason |
+| Loss-making | the loss amount and its carry-forward effect |
+| Verification unavailable | never shown as verified |
+| Ownership unavailable | "not indexed", never "you hold nothing" |
 
-**Disclosures:** every yield view links to the risk disclosure [Legal]. It shows gross, costs,
-reserves, fee and NDY separately, uses past tense for figures, and makes no projections. The 3D or
-metaverse presentation (e.g. a glowing field) must not stand in for these figures, and must not use
-reward or game vocabulary for financial amounts.
+**Disclosures:**
+- every yield view links to the risk disclosure [Legal];
+- each view shows the waterfall lines separately, uses past tense, and makes no projections or
+  guarantees;
+- the 3D or metaverse presentation never replaces financial or legal disclosures, and uses no game
+  vocabulary for money.
 
-**Web:** read-only pages first (cycle list, cycle detail, evidence summary by hash, verification),
-reusing the `/rwa` patterns (draft #39 on main, paging on draft #55).
+**Web:** read-only pages on the `/rwa` pattern (PR #39, main), with paging (PR #55).
 
-## 9. Security, compliance and operational controls
+## 9. Security, compliance and operations
 
-### 9.1 Invariants (proposed, to be tested)
+### 9.1 Invariants
 
-1. No key material is stored; no signing in the backend; no submission in phases 1–12.
-2. The Unity core stays read-only (the reflection test).
-3. Player wallets and party wallets stay separate. No allocation is ever derived from a player
-   wallet.
-4. Signature **verification** only (attestations, wallet proofs); never transaction signing.
-5. Domain-separated messages and leaves (`metafarm-yield-*`).
-6. Replay protection: network, genesis hash, cycle and version in every leaf; single-use intents.
-7. Idempotent writes (`Idempotency-Key`), with unique constraints as the backstop.
-8. Four-eyes for approve and publish; preparer ≠ approver ≠ attester, enforced in the database.
-9. Evidence is immutable; corrections supersede; nothing is deleted except by retention policy.
-10. Audit-log integrity: `audit_events` is append-only; periodic hash-chaining of exports (D-22).
-11. No double allocation: one leaf per recipient per cycle version; sources are unique across cycles.
-12. No double claim: the bitmap (future), plus off-chain status uniqueness.
-13. Cluster verification for every chain read (closes the J7 follow-up).
-14. Secret redaction (existing logger); no credential-bearing URLs.
-15. PII and commercial data only in the private store; public views carry totals and hashes.
-16. Rate limits (draft #53) on holder endpoints; abuse and Sybil handling via party KYC (wallets
-    alone never count).
-17. Disaster recovery: the artifacts are reproducible from stored inputs plus the J7 events. Backups
-    cover the yield tables and the store, and restore tests verify the hashes.
+1. No key material stored; no backend signing; no submission in any phase before Y16.
+2. The Unity core stays read-only.
+3. Player and party wallets stay separate: no allocation or payment from a player wallet, and no
+   implicit account-to-party link.
+4. Verification only; never transaction signing.
+5. Domain-separated messages and leaves.
+6. Replay protection: network, verified cluster identity, cycle and version in each leaf;
+   single-use intents.
+7. Idempotent writes, with unique constraints as the backstop.
+8. Four-eyes: preparer ≠ approver; attesters are identified.
+9. Immutable evidence and artifact sets, with supersession instead of edits.
+10. Audit integrity (D-31, D-32).
+11. No double allocation or double counting (unique sources; one leaf per recipient).
+12. No double claim.
+13. **Cluster identity verified and recorded for every chain read (Y0).**
+14. **Fixture ownership never in a real cycle (D-17):**
+    - DB: a trigger on snapshots;
+    - service: `calculate` refuses;
+    - tests: fixture events plus a non-simulation cycle → refused.
+15. **Compliance checked at intent, at approval, and before execution; blocked amounts withheld, not
+    redistributed.**
+16. Legal precedence: no publication without an entitlement reference, or with a known conflict.
+17. Amounts bounded to u64 at the leaf.
+18. Secret redaction (existing logger); no credential-bearing URLs (Y0 records the scheme and host
+    only).
+19. PII and commercial data private.
+20. Rate limits (PR #53).
+21. Sybil resistance through party KYC.
+22. Disaster recovery: artifact sets can be reproduced from inputs and stored events, and backup
+    restores are checked by hash.
 
-### 9.2 Compliance workstream ([Legal] throughout; no conclusions here)
+### 9.2 Compliance workstream ([Legal] throughout; no conclusions)
 
 | Area | Questions for counsel |
 | --- | --- |
-| Securities or investment product | Are share tokens with yield an investment contract, collective investment scheme or similar in each target jurisdiction? |
-| Commodities and warehouse receipts | Are warehouse receipts used as evidence also documents of title? |
-| Payments and e-money | Does pushing or holding stablecoin for holders require a licence? |
-| AML/KYC and sanctions | The existing screening gate; is travel-rule data needed? |
-| Custody and wallets | Do vaults or escrow make the operator a custodian? |
-| Tax reporting | Withholding; holder statements |
-| Consumer disclosures | Risk warnings; no guarantees |
-| Cross-border settlement | Currency controls |
-| Data protection | Evidence PII; retention against erasure |
-| Advertising and yield claims | Wording on the web and in Unity |
+| Entitlement instruments | Form, governing law, amendment process (D-1) |
+| Securities or collective investment | Classification of the share tokens and the yield in each jurisdiction (D-34) |
+| Commodities and warehouse receipts | Whether receipts used as evidence are documents of title |
+| Payments, e-money and **custody** | **Push from `RWA_TRON_TREASURY` puts funds intended for recipients under operator control.** Treasury reconciliation, segregation, insolvency treatment, access control, signing governance and incident recovery must be resolved before live execution (D-25). A vault in the pull model raises the same questions. |
+| AML/KYC and sanctions | Screening at intent, approval and execution; travel-rule data |
+| Tax | Withholding; holder statements |
+| Consumer disclosures | No guarantees; the waterfall shown in full |
+| Cross-border | Currency controls; geographic availability (D-35) |
+| Data protection | PII in evidence; retention against erasure |
+| Advertising | Yield wording on the web and in Unity |
 
-## 10. Testing strategy (designed before implementation)
+## 10. Testing strategy
 
 | Test | Fixtures | Invariant | CI without external services? |
 | --- | --- | --- | --- |
-| Pure calculation | examples A–F (§3.5) as named fixtures | exact base units; NDY ≥ 0; loss recorded | yes |
-| Formula versions | the same inputs under v1 and v2 | old artifacts unchanged | yes |
-| Decimal and rounding | exponents 0/2/3; decimals 0/6/9; huge values (78 digits) | floor everywhere; Σ allocations + remainder = NDY | yes |
-| Currency conversion | rational rates; inverse pairs | deterministic; no floats | yes |
-| Evidence hash | known bytes → known hash | the manifest hash is stable under item order | yes |
-| Canonical serialization | key order, unicode, numbers as strings | byte-identical | yes |
-| Merkle leaf determinism | the §6.2 layout vectors | the same leaf bytes in TS and C# | yes (TS + C# job) |
-| Proof verification | trees of 1, 2, 3, 2^n, 2^n+1 leaves | RFC 9162 behaviour, as on draft #40 | yes |
-| Duplicate prevention | the same source twice; the same recipient twice | rejected by function and by constraint | yes; DB in the integration job |
-| Snapshot / time-weighted | J7 event fixtures | the weights match a hand-computed table | yes |
+| Waterfall F1–F4 | examples A–F | exact minor and base units | yes |
+| Overflow | example G; 2^64−1 and 2^64 | deterministic `amount_out_of_range` | yes |
+| Leaf serialization | the §6.2 layout vectors, TS and C# | identical bytes; u64 little-endian | yes (TS + C# jobs) |
+| Rounding | exponents 0/2/3; decimals 0/6/9 | Σ allocations + remainder = NDY | yes |
+| Currency | per-line conversion; missing rate blocks `lock` | determinism; no floats | yes |
+| Cost completeness | unknown against zero; material threshold | `lock` refused | yes |
+| Reserves | add/use/release ledger | balance ≥ 0; no double use | yes (DB) |
+| Evidence and canonical JSON | known bytes | stable hashes | yes |
+| Merkle proofs | 1, 2, 3, 2^n, 2^n+1 leaves | RFC 9162 behaviour | yes |
+| Snapshot and time-weighting | ownership-event fixtures | weights match hand tables | yes |
 | Transfer at cutoff | events at `end_slot` and `end_slot+1` | included / excluded | yes |
-| Multiple wallets | a party with 3 wallets | one leaf, summed weight | yes |
-| Unknown ownership | cursor behind; conflicts | publication refused | yes |
-| Unattributed and withheld | a holder without a party; a blocked party | the share is recorded, not paid, not redistributed | yes |
-| Disputes and corrections | version n → n+1 deltas | no edits in place; deltas sum correctly | yes (DB) |
-| Idempotency | repeated writes with the same key | one effect | yes (DB) |
-| Authorization | each role × endpoint | four-eyes enforced | yes (DB) |
-| API contract | OpenAPI ↔ routes | routes test (existing) | yes |
-| DB constraints | append-only triggers; uniques | updates and deletes refused | yes (integration job) |
-| Unity core read-only | reflection | GET only; no signing types | yes (C# job) |
-| Browser | read-only pages; disclosure present; no "guaranteed" wording | axe clean | yes (Playwright job) |
-| Devnet integration | real mint plus J7 | snapshot from a live index | **no**: after the holds lift |
-| Unity Editor and IL2CPP | read models in scenes | — | **no**: Unity 6 machine |
+| Multiple wallets | a party with three wallets | one allocation | yes |
+| Unknown ownership | cursor behind; conflict | `calculate` refused | yes |
+| **Fixture exclusion** | fixture events in a non-simulation cycle | refused by service and DB | yes (DB) |
+| **Cluster identity (Y0)** | mismatch, missing identity, configuration mismatch, provenance | refused | yes (stubbed RPC) |
+| Unattributed and withheld | a player-only holder; a blocked party | recorded, not paid, not redistributed | yes |
+| **Compliance checkpoints** | expiry between approval and execution; destination re-registered | blocked at the next checkpoint | yes (DB) |
+| State machine | every transition, both valid and invalid; terminal reachability | trigger refuses invalid ones | yes (DB) |
+| Freeze and approval | a change after attestation | approval refused | yes (DB) |
+| Corrections | version n → n+1 | old set superseded; deltas | yes (DB) |
+| Idempotency, authorization, contract | as existing | four-eyes; routes match OpenAPI | yes |
+| Unity read-only | reflection | GET only | yes (C#) |
+| Browser | pages; disclosures; no "guaranteed" | axe clean | yes (Playwright) |
+| Devnet | live index | matches the explorer | **no**: after the holds lift |
+| Unity Editor and IL2CPP | read models | — | **no**: Unity 6 machine |
 
 ## 11. Delivery roadmap
 
-**Where the work goes:**
-- **as a separate feature stack**, not appended to #40–#59. The readiness document (`readiness.md`)
-  freezes that stack's merge order and blast radius, and adding yield PRs would reopen both;
-- **based on `feature/retire-evm-wallet-link` (#59)**, because it depends on J7 (#50–#52), J8 (#57),
-  idempotency (#54), paging (#55) and the twin primitives (#40–#43);
-- **retargeted to `main`** once #40–#59 are merged.
+**Placement:**
+- a **separate feature stack**, never appended to or modifying the frozen #40–#59 stack, whose merge
+  order and blast radius are fixed in `docs/delivery/readiness.md`;
+- **based on `feature/retire-evm-wallet-link` (#59)** for anything that needs the draft capabilities;
+- retargeted to `main` after #40–#59 merge.
 
-Y1–Y3 depend only on main's domain package, and could even go straight to `main` if the owner
-prefers.
+**Only Y1 and Y2** are independent of the stack: Y2 uses `canonicalJson` on main. Y3 onwards depends
+on draft capabilities (PR #40 and later).
 
-| PR | Scope | Depends on | DB | API | Unity | Security impact | Migration risk | Tests | Acceptance | Rollback | Railway | Devnet | Unity 6 | Legal | Runs with execution off |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Y1 | Vocabulary, state machine, invariants (domain types and docs) | — | — | — | — | none | — | transition tables | invalid transitions rejected | revert | no | no | no | review of terms | yes |
-| Y2 | Calculation library (waterfall, FX, rounding, artifact hash) | Y1 | — | — | — | none | — | §10 calc rows | examples A–F exact | revert | no | no | no | policy decisions D-1…D-8 before *use* | yes |
-| Y3 | Evidence and attestation model (manifest, types, verification of attestation signatures) | Y1 | — | — | — | verify-only crypto | — | hash vectors | manifest reproducible | revert | no | no | no | retention classes [Legal] | yes |
-| Y4 | Content-addressed evidence storage wiring (private bucket abstraction) | Y3, draft #42 | — | — | — | private data | — | store integrity | bytes ↔ hash | revert | no (config only later) | no | no | data protection | yes |
-| Y5 | Allocation from J7 events (snapshot + time-weighted; party mapping; unattributed/withheld) | Y2, #52, J7 cluster-check follow-up | — | — | — | — | — | §10 ownership rows | weights match fixtures | revert | no | no | no | D-12, D-13 | yes |
-| Y6 | Merkle leaves and proofs (TS + C# vectors) | Y5 | — | — | C# verifier (read-only) | — | — | leaf/proof vectors | TS = C# | revert | no | no | no | — | yes |
-| Y7 | Schema (§7.2) + append-only triggers + RLS | Y1–Y6 | **additive migration** | — | — | RLS | low (new tables only) | constraint tests | triggers refuse edits | down migration (blocked when deployed) | no | no | no | — | yes |
-| Y8 | Read-only API + public summary | Y7, #54, #55 | — | **new GETs** | — | authZ | — | contract + authZ | no PII publicly | revert | no | no | no | D-21 | yes |
-| Y9 | Preparer/reviewer write API (draft → published) with four-eyes | Y8 | — | new POSTs | — | four-eyes | — | idempotency + authZ | cannot self-approve | revert | no | no | no | D-9, D-10 | yes |
-| Y10 | Web read-only pages + disclosures | Y8 | — | — | — | wording | — | Playwright + axe | no guarantee wording | revert | no | no | no | disclosure text | yes |
-| Y11 | Unity read models | Y8 | — | — | read-only DTOs | read-only | — | C# + reflection | GET only | revert | no | no | **yes** (validation) | — | yes |
-| Y12 | Unsigned claim intents | Y6, Y9 | — | POST intent (simulation) | — | no signing | — | intent determinism | marked simulation | revert | no | no | no | D-16 | yes |
-| Y13 | Simulation and reconciliation tools | Y9, Y12 | — | — | — | — | — | end-to-end simulation | reports reconcile | revert | no | no | no | — | yes |
-| Y14 | Devnet-only verification (snapshot from a live index) | Y13; the deploy hold lifted | — | — | — | cluster check | — | runbook | matches the explorer | disable flags | **yes** | **yes** | no | — | yes |
-| Y15 | Solana claim program / on-chain anchoring | separate approval | — | — | — | **high** | — | program audit | — | — | yes | yes | no | **yes** | no |
-| Y16 | Live claim and settlement | legal, security, ops and deploy approval | — | — | — | **high** | — | — | — | — | yes | yes | no | **yes** | no |
+| PR | Scope | Depends on | DB | API | Unity | Railway | Devnet | Unity 6 | Legal | Execution off |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Y0** | **Cluster identity:** verify the RPC cluster (genesis hash); record verified identities; bind each ownership source and cursor to one; reject mismatched or unverified sources; stubbed-RPC tests for mismatch, missing identity, configuration mismatch, provenance. Builds on the J7 code as a **new PR on top of #59, without modifying #50–#52.** | #52 (code), #59 (base) | additive (`ownership_source_identities`; references from cursors) | none | none | no | no (stubbed) | no | no | yes |
+| Y1 | Vocabulary, state machine, invariants (types and docs) | — (main) | — | — | — | no | no | no | review of terms | yes |
+| Y2 | Calculation library: waterfall F1–F4 as policy, FX, rounding, u64 bound, artifact hash | Y1 (main `canonicalJson`) | — | — | — | no | no | no | D-2…D-10 before *use* | yes |
+| Y3 | Evidence and attestation model | Y1, **PR #40** (`commitments.ts`) | — | — | — | no | no | no | retention [Legal] | yes |
+| Y4 | Evidence storage wiring | Y3, **PR #41** (interface), **PR #43** (`@metafarm/storage`) | — | — | — | no | no | no | data protection | yes |
+| Y5 | Allocation from verified ownership events; fixture exclusion; unattributed and withheld handling | Y2, **Y0**, #52 | — | — | — | no | no | no | D-12, D-13, D-17, D-18 | yes |
+| Y6 | Leaves and proofs; TS and C# vectors; u64 | Y5, PR #40 (C# verifier) | — | — | C# verifier (read-only) | no | no | no | — | yes |
+| Y7 | Schema (§7.2) + triggers + RLS | Y0–Y6 | additive migrations | — | — | no | no | no | — | yes |
+| Y8 | Operator read API + `/v1/public/...` summary | Y7, #54, #55 | — | GETs | — | no | no | no | D-30 | yes |
+| Y9 | Preparer and reviewer write API (`lock` … `publish`, `close`); preview against `calculate` | Y8 | — | POSTs | — | no | no | no | D-1, D-22, D-23 | yes |
+| Y10 | Web read-only pages + disclosures | Y8 | — | — | — | no | no | no | disclosure text | yes |
+| Y11 | Unity read models | Y8 | — | — | DTOs | no | no | **yes** (validation) | — | yes |
+| **Y12** | **Account-to-party link:** explicit, consented, authorised, revocable, audited; never derives a party | **D-29 approved**, Y8 | additive | `/v1/me/...` link endpoints | — | no | no | no | **yes** | yes |
+| Y13 | Holder-facing allocation, proofs, **unsigned** claim intents (compliance checkpoint 1) | **Y12**, Y6, Y9 | — | holder GETs, intent POST | optional DTOs | no | no | no | D-25, D-27 | yes |
+| Y14 | Simulation and reconciliation tools | Y9, Y13 | — | — | — | no | no | no | — | yes |
+| Y15 | Devnet-only verification | Y0, Y14; the deploy hold lifted | — | — | — | **yes** | **yes** | no | — | yes |
+| Y16 | Solana program / on-chain anchoring | **separate approval** | — | — | — | yes | yes | no | **yes** | no |
+| Y17 | Live claim or settlement | **legal, security, operations and deploy approval** | — | — | — | yes | yes | no | **yes** | no |
+
+**No phase from Y15 onwards, and no production payout, is approved by this plan.** Every PR is a
+draft until reviewed. Rollback for Y0–Y14 is a revert. Additive migrations have down migrations,
+which are blocked in deployed environments (`downMigrationBlocked`, main).
 
 ## 12. Decision register
 
-Gate key: **Impl** = required before implementation; **Dev** = before devnet; **Prod** = before
-production. Approval key: **L** = legal/compliance; **T** = technical; **P** = product.
+**Timing key:**
+- **Impl** = required before implementation;
+- **Dev** = required before devnet;
+- **Prod** = required before production.
 
-| # | Decision | Gate | Approval |
-| --- | --- | --- | --- |
-| D-1 | Fee base (gross / operating result / after reserves), fee percentage, cap, minimum | Impl (for Y2 policy defaults) | P, L |
-| D-2 | Settlement currencies and supported mints/networks | Dev | P, T, L |
-| D-3 | Cash or accrual basis; receivables and bad debt | Impl | P, L |
-| D-4 | Reserve percentages and caps (M, I) | Impl | P |
-| D-5 | Reserve roll-over and release; refunds after publication | Impl | P, L |
-| D-6 | Loss carry-forward (on/off, expiry) | Impl | P, L |
-| D-7 | Rounding remainder and dust threshold | Impl | P, T |
-| D-8 | Correction and supersession policy; overpayment netting or recovery | Impl | P, L |
-| D-9 | Dispute authority; who may raise disputes; deadlines | Dev | P, L |
-| D-10 | Attestation methods and quorum per asset class | Dev | P, T, L |
-| D-11 | Evidence storage choice and retention | Dev | T, L |
-| D-12 | Holding model (snapshot / time-weighted / minimum hold / hybrid); slots or time | Impl | P, T, L |
-| D-13 | Unattributed holders: hold, release or exclude | Impl | P, L |
-| D-14 | Payout-wallet designation, lost wallets, recovery | Dev | P, L |
-| D-15 | Legal classification per jurisdiction; tax withholding | Prod (and before any public launch) | L |
-| D-16 | Push (distribution orders) or pull (claim program); program design | Dev (for design), Prod (for use) | T, L, P |
-| D-17 | Hash function for the claim tree (SHA-256 as proposed, or Keccak) | Impl | T |
-| D-18 | Claim expiry, unclaimed funds, fee sponsorship | Dev | P, L |
-| D-19 | Roles: a new auditor role, or extend `verifier`; new `yield:*` permissions | Impl | T, P |
-| D-20 | Investor identity: how a party gets a login (user↔party association with consent) | Dev | P, L |
-| D-21 | What is public (totals, root) and what is not | Impl | P, L |
-| D-22 | Audit-log hash-chaining and export | Prod | T |
-| D-23 | Oracle and FX sources | Dev | T, L |
-| D-24 | Geographic availability | Prod | L |
-| D-25 | Auto-compounding allowed? (proposal: no) | Prod | P, L |
-| D-26 | Governance or reputation tokens at all? (proposal: none) | Prod | P, L |
-| D-27 | Any platform token? (proposal: none) | Prod | P, L |
-| D-28 | Initial release limited to one asset class? (proposal: yes; equipment rental, whose usage evidence is strongest today) | Impl | P |
+**Approval key:** **L** = legal/compliance; **T** = technical; **P** = product.
+
+| # | Question | Options | Provisional recommendation | Approvers | Timing | If unresolved |
+| --- | --- | --- | --- | --- | --- | --- |
+| **D-1** | **Authoritative entitlement instrument** | token terms / offering docs / asset agreements; how versioned and hashed; who approves; how amendments apply to existing and future cycles; which terms prevail | legal documents prevail; each cycle references an instrument hash; amendments apply only to cycles locked after approval | **L, P, T** | **Impl** (per asset class) | no cycle can be implemented or published |
+| D-2 | Fee | F1 net revenue / F2 OR' before reserves / F3 after reserves / F4 fixed or tiered with a cap; minimum and maximum; fee in a loss cycle; subordination | none selected (examples use F3 for illustration only) | P, L | Impl | Y2's policy cannot be fixed |
+| D-3 | Settlement units and mints | per network or token | — | P, T, L | Dev | no settlement conversion |
+| **D-4** | **Accounting currency and FX** | the waterfall currency; conversion date (transaction, settlement, evidence, close); approved sources; time zones; unavailable and corrected rates; fees; realised differences; when to convert to the settlement unit | per-line at the settlement date; a single final conversion at close; unavailable rate blocks `lock` | P, T, L | Impl | multi-currency cycles blocked |
+| D-5 | Cash or accrual; receivables; bad debt; refunds after publication | — | cash basis | P, L | Impl | revenue recognition undefined |
+| D-6 | Reserve rates and caps (M, I) | percentages or schedules | — | P, L | Impl | reserves zero by default (needs approval) |
+| **D-7** | **Reserve ownership, segregation, drawdown, release, disposition, double-use** | §3.5 | reserves not usable for losses until approved | **L**, P | Impl | no drawdown or release allowed |
+| D-8 | Loss carry-forward | on or off; expiry | on, with no expiry, pending counsel | P, L | Impl | losses recorded, not carried |
+| D-9 | Rounding remainder, dust | allocate or carry | largest remainder; dust carried | P, T | Impl | remainder carried |
+| D-10 | Correction and supersession; overpayment netting or recovery; abandonment deadline | — | §2.4 | P, L | Impl | corrections impossible |
+| **D-11** | **When the snapshot and allocation freeze** | at `calculate` (before review) / at publication | at `calculate`, so approval covers the root (§2.2) | P, T | Impl | approval would not cover the allocation |
+| D-12 | Holding model; slots or time | §4.1 | time-weighted by slots | P, T, L | Impl | allocation undefined |
+| D-13 | Unattributed and withheld shares | hold for later claim / release / exclude from the denominator | hold, with expiry per D-27 | P, L | Impl | not paid, kept |
+| D-14 | Payout-wallet designation, lost wallets | — | per party, four-eyes, cooling-off | P, L | Dev | no payout destination |
+| **D-15** | **Compliance at intent, approval and execution** | §4.4 | adopt the existing three-point pattern | L, T | Impl | no payout path may be built |
+| **D-16** | **Cluster identity verification and genesis-hash storage** | genesis hash / another approved identifier; where stored; how bound | genesis hash per source (Y0) | T | Impl (before Y5) | no ownership-based work |
+| **D-17** | **Fixture-event exclusion** | DB, service and test controls | all three | T | Impl | risk of fixture data in a real cycle |
+| **D-18** | **Compressed-NFT scope** | one compressed NFT per cycle / a pool model (stable id, versioned membership, add/remove rules, entitlement definitions, no double inclusion, legal approval) | none selected | P, L, T | Impl (for cNFT classes) | cNFT assets excluded |
+| **D-19** | **Linking assets to equipment** | link `business_assets` ↔ `equipment`; contract records; revenue evidence; telemetry provenance | required before any equipment class | P, T | Impl (for equipment) | equipment class unsupported |
+| D-20 | Initial asset class | undecided; equipment rental only after D-19 | **left undecided** | P | Impl | no first cycle chosen |
+| D-21 | Cost-completeness exceptions | none / attested estimates | attested estimates only, trued up later | P, L | Impl | `lock` blocked when material costs are unknown |
+| D-22 | Dispute authority and raisers | — | — | P, L | Dev | disputes cannot be raised |
+| D-23 | Attestation methods and quorum per class | §5.4 | — | P, T, L | Dev | `approve` cannot pass |
+| D-24 | Evidence storage | §5.3 | hybrid | T, L | Dev | no evidence storage |
+| D-25 | Push or pull; program design; **custody** (treasury control, segregation, insolvency, access, signing governance, incident recovery) | §6.4 | none selected | **L, T, P** | Dev (design), Prod (use) | no payout path |
+| D-26 | Claim-tree hash function | SHA-256 / Keccak | SHA-256, pending verification of on-chain cost [Ext] | T | Impl | leaf layout unfixed |
+| D-27 | Claim expiry, unclaimed funds, fee sponsorship | — | — | P, L | Dev | no expiry |
+| D-28 | Roles and permissions (`yield:*`; auditor role) | — | new `yield:*` permissions | T, P | Impl | no endpoints |
+| D-29 | Account-to-party linking | explicit, consented, authorised, revocable, audited link | required for Y12 and Y13 | P, L, T | Impl (for Y12) | no holder-facing endpoints |
+| D-30 | Public exposure | totals or root only | root, status and hashes; totals only if approved | P, L | Impl (Y8) | public endpoint omitted |
+| **D-31** | **Audit storage** | reuse `audit_events` / dedicated `yield_audit_events` (§7.2) | reuse, plus transition logs | T, L | Impl (Y7) | schema cannot be fixed |
+| D-32 | Audit hash-chaining and export | — | — | T | Prod | — |
+| D-33 | Oracle sources (non-FX: prices, weather) | — | — | T, L | Dev | none used |
+| D-34 | Legal classification; tax withholding | — | — | L | Prod (before any public launch) | no launch |
+| D-35 | Geographic availability | — | — | L | Prod | no launch |
+| D-36 | Auto-compounding | — | no | P, L | Prod | none |
+| D-37 | Governance or reputation tokens | — | none | P, L | Prod | none |
+| D-38 | Platform token | — | none | P, L | Prod | none |
+
+**Renumbering from revision 1:**
+
+| Revision 1 | Revision 2 |
+| --- | --- |
+| D-1 (fee) | D-2 |
+| D-2 (settlement units) | D-3 |
+| D-3 (cash or accrual) | D-5 |
+| D-4 (reserve rates) | D-6 |
+| D-5 (reserve release) | D-7 |
+| D-6 (loss carry-forward) | D-8 |
+| D-7 (rounding) | D-9 |
+| D-8 (corrections) | D-10 |
+| D-9 (disputes) | D-22 |
+| D-10 (attestation) | D-23 |
+| D-11 (storage) | D-24 |
+| D-12 (holding model) | D-12 |
+| D-13 (unattributed) | D-13 |
+| D-14 (payout wallet) | D-14 |
+| D-15 (classification) | D-34 |
+| D-16 (push/pull) | D-25 |
+| D-17 (hash) | D-26 |
+| D-18 (expiry) | D-27 |
+| D-19 (roles) | D-28 |
+| D-20 (investor identity) | D-29 |
+| D-21 (public) | D-30 |
+| D-22 (audit chaining) | D-32 |
+| D-23 (oracles) | D-4 and D-33 |
+| D-24 (geography) | D-35 |
+| D-25 (compounding) | D-36 |
+| D-26 (governance tokens) | D-37 |
+| D-27 (platform token) | D-38 |
+| D-28 (initial class) | D-20 |
+
+**New in revision 2:** D-1, D-4 (expanded), D-7 (expanded), D-11, D-15, D-16, D-17, D-18, D-19,
+D-21, D-31.
