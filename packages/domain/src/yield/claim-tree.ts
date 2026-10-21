@@ -24,6 +24,16 @@ import { YIELD_RECORD_STATUSES, assertYieldRecordUsable, type YieldRecordStatus 
 export const CLAIM_LEAF_DOMAIN = "metafarm-yield-leaf/1";
 export const CLAIM_LEAF_LAYOUT_VERSION = 1;
 export const CLAIM_LEAF_BYTES = 201;
+/**
+ * Leaf layout 2 binds every leaf to the cycle's ownership snapshot: the 201 bytes of layout 1 unchanged
+ * (with layout version 2 at offset 195), followed by the 32-byte ownership snapshot hash. 233 bytes.
+ * Layout 1 stays valid; which layout a tree uses is its policy's choice. The plan's §6.2 table defines
+ * layout 1 only; layout 2 is an addition pending owner acknowledgement.
+ */
+export const CLAIM_LEAF_LAYOUT_VERSION_SNAPSHOT_BOUND = 2;
+export const CLAIM_LEAF_BYTES_V2 = 233;
+export const CLAIM_LEAF_LAYOUT_VERSIONS = [CLAIM_LEAF_LAYOUT_VERSION, CLAIM_LEAF_LAYOUT_VERSION_SNAPSHOT_BOUND] as const;
+const leafLength = (layout: number) => (layout === CLAIM_LEAF_LAYOUT_VERSION_SNAPSHOT_BOUND ? CLAIM_LEAF_BYTES_V2 : CLAIM_LEAF_BYTES);
 export const CLAIM_TREE_SCHEME = "metafarm-yield-claim-tree/1";
 
 // ── Pluggable hashing (D-26) ──────────────────────────────────────────────────────────────────────
@@ -62,8 +72,8 @@ export interface ClaimTreePolicy {
   status: YieldRecordStatus;
   /** The hasher a tree under this policy must use. Pending D-26. */
   hasherId: string;
-  /** Leaf layout; only version 1 exists. */
-  leafLayoutVersion: 1;
+  /** Leaf layout: 1 (plan §6.2), or 2 (bound to the ownership snapshot). */
+  leafLayoutVersion: 1 | 2;
   /** Largest number of leaves in one tree (≤ 2^32). */
   maxLeaves: number;
 }
@@ -78,6 +88,9 @@ export const SIMULATION_CLAIM_TREE_POLICY: ClaimTreePolicy = Object.freeze({
   maxLeaves: 65_536, // pending: an operational bound for simulation
 });
 
+/** As SIMULATION_CLAIM_TREE_POLICY, with leaves bound to the ownership snapshot (layout 2). Simulation only. */
+export const SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND: ClaimTreePolicy = Object.freeze({ ...SIMULATION_CLAIM_TREE_POLICY, id: "simulation-claim-tree-snapshot-bound", leafLayoutVersion: 2 });
+
 export function claimTreePolicyProblems(v: unknown): string[] {
   if (!v || typeof v !== "object" || Array.isArray(v)) return ["a claim-tree policy must be an object"];
   const o = v as Record<string, unknown>;
@@ -88,7 +101,7 @@ export function claimTreePolicyProblems(v: unknown): string[] {
   if (!(typeof o.version === "number" && Number.isSafeInteger(o.version) && o.version >= 1)) out.push("version must be an integer ≥ 1");
   if (!(YIELD_RECORD_STATUSES as readonly unknown[]).includes(o.status)) out.push(`status must be one of ${YIELD_RECORD_STATUSES.join(", ")}`);
   if (typeof o.hasherId !== "string" || o.hasherId === "") out.push("hasherId must be a non-empty string");
-  if (o.leafLayoutVersion !== CLAIM_LEAF_LAYOUT_VERSION) out.push(`leafLayoutVersion must be ${CLAIM_LEAF_LAYOUT_VERSION}`);
+  if (!(CLAIM_LEAF_LAYOUT_VERSIONS as readonly unknown[]).includes(o.leafLayoutVersion)) out.push(`leafLayoutVersion must be one of ${CLAIM_LEAF_LAYOUT_VERSIONS.join(", ")}`);
   if (!(typeof o.maxLeaves === "number" && Number.isSafeInteger(o.maxLeaves) && o.maxLeaves >= 1 && o.maxLeaves <= 2 ** 32)) out.push("maxLeaves must be an integer between 1 and 2^32");
   return out;
 }
@@ -155,6 +168,8 @@ export interface ClaimLeafContext {
   payoutMint: string;
   /** u16 version of the yield formula. */
   formulaVersion: number;
+  /** 64 lowercase hex: the ownership snapshot hash. Required for layout 2, refused for layout 1. */
+  ownershipSnapshotHash?: string;
 }
 
 export interface ClaimLeafFields {
@@ -170,6 +185,8 @@ export interface ClaimLeafFields {
   formulaVersion: number;
   leafLayoutVersion: number;
   leafIndex: number;
+  /** Layout 2 only: the 32-byte ownership snapshot hash. Absent for layout 1. */
+  ownershipSnapshotHash?: Uint8Array;
 }
 
 const uint = (name: string, v: unknown, bits: 8 | 16 | 32) => {
@@ -184,12 +201,19 @@ export function claimLeafDomainTag(): Promise<Uint8Array> {
   return domainTag;
 }
 
-/** The 201 leaf bytes. Refuses an amount that is not 0 < amount ≤ u64 with `amount_out_of_range`. */
+/**
+ * The leaf bytes: 201 for layout 1, 233 for layout 2. Refuses an amount that is not 0 < amount ≤ u64 with
+ * `amount_out_of_range`.
+ */
 export async function encodeClaimLeaf(f: ClaimLeafFields): Promise<Uint8Array> {
   if (typeof f.amount !== "bigint" || f.amount <= 0n || f.amount > U64_MAX) throw new YieldAmountError("amount_out_of_range", "a leaf amount must satisfy 0 < amount ≤ 2^64 − 1");
+  if (!(CLAIM_LEAF_LAYOUT_VERSIONS as readonly unknown[]).includes(f.leafLayoutVersion)) throw new ClaimTreeError("invalid_input", `unknown leaf layout ${String(f.leafLayoutVersion)}`);
+  const bound = f.leafLayoutVersion === CLAIM_LEAF_LAYOUT_VERSION_SNAPSHOT_BOUND;
+  if (bound && !(f.ownershipSnapshotHash instanceof Uint8Array && f.ownershipSnapshotHash.length === 32)) throw new ClaimTreeError("invalid_input", "a layout 2 leaf needs the 32-byte ownership snapshot hash");
+  if (!bound && f.ownershipSnapshotHash !== undefined) throw new ClaimTreeError("invalid_input", "a layout 1 leaf has no ownership snapshot hash");
   for (const [k, len] of [["clusterIdentity", 32], ["cycleId", 16], ["economicAssetId", 32], ["recipient", 32], ["payoutMint", 32]] as const)
     if (!(f[k] instanceof Uint8Array) || f[k].length !== len) throw new ClaimTreeError("invalid_input", `${k} must be ${len} bytes`);
-  const out = new Uint8Array(CLAIM_LEAF_BYTES);
+  const out = new Uint8Array(leafLength(f.leafLayoutVersion));
   const view = new DataView(out.buffer);
   let at = 0;
   const put = (b: Uint8Array) => {
@@ -216,13 +240,14 @@ export async function encodeClaimLeaf(f: ClaimLeafFields): Promise<Uint8Array> {
   at += 2;
   view.setUint32(at, uint("leafIndex", f.leafIndex, 32), true);
   at += 4;
-  if (at !== CLAIM_LEAF_BYTES) throw new ClaimTreeError("invalid_input", "internal: leaf length");
+  if (bound) put(f.ownershipSnapshotHash!);
+  if (at !== out.length) throw new ClaimTreeError("invalid_input", "internal: leaf length");
   return out;
 }
 
-/** Decodes 201 leaf bytes, checking the domain tag and layout version. */
+/** Decodes leaf bytes (layout 1: 201 bytes; layout 2: 233), checking the domain tag, layout and length. */
 export async function decodeClaimLeaf(bytes: Uint8Array): Promise<ClaimLeafFields> {
-  if (!(bytes instanceof Uint8Array) || bytes.length !== CLAIM_LEAF_BYTES) throw new ClaimTreeError("invalid_input", `a leaf is ${CLAIM_LEAF_BYTES} bytes`);
+  if (!(bytes instanceof Uint8Array) || (bytes.length !== CLAIM_LEAF_BYTES && bytes.length !== CLAIM_LEAF_BYTES_V2)) throw new ClaimTreeError("invalid_input", `a leaf is ${CLAIM_LEAF_BYTES} or ${CLAIM_LEAF_BYTES_V2} bytes`);
   const tag = await claimLeafDomainTag();
   if (!tag.every((b, i) => b === bytes[i])) throw new ClaimTreeError("invalid_input", "the leaf's domain tag is not metafarm-yield-leaf/1");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -241,7 +266,9 @@ export async function decodeClaimLeaf(bytes: Uint8Array): Promise<ClaimLeafField
     leafLayoutVersion: view.getUint16(195, true),
     leafIndex: view.getUint32(197, true),
   };
-  if (f.leafLayoutVersion !== CLAIM_LEAF_LAYOUT_VERSION) throw new ClaimTreeError("invalid_input", `unknown leaf layout ${f.leafLayoutVersion}`);
+  if (!(CLAIM_LEAF_LAYOUT_VERSIONS as readonly number[]).includes(f.leafLayoutVersion)) throw new ClaimTreeError("invalid_input", `unknown leaf layout ${f.leafLayoutVersion}`);
+  if (bytes.length !== leafLength(f.leafLayoutVersion)) throw new ClaimTreeError("invalid_input", `a layout ${f.leafLayoutVersion} leaf is ${leafLength(f.leafLayoutVersion)} bytes`);
+  if (f.leafLayoutVersion === CLAIM_LEAF_LAYOUT_VERSION_SNAPSHOT_BOUND) f.ownershipSnapshotHash = slice(201, 32);
   return f;
 }
 
@@ -398,7 +425,10 @@ export async function buildClaimTree(input: { plan: DistributionPlan; policy: Cl
   if (!cycle || typeof cycle.simulation !== "boolean") throw new ClaimTreeError("invalid_input", "the plan has no cycle");
   assertYieldRecordUsable(cycle, { status: policy.status, kind: "claim-tree policy" });
   if (!hasher || hasher.id !== policy.hasherId) throw new ClaimTreeError("hasher_mismatch", `the policy requires hasher ${policy.hasherId}, not ${String(hasher?.id)}`);
-  assertExactKeys("leaf context", context as unknown, ["networkId", "clusterIdentity", "epoch", "economicAssetId", "payoutMint", "formulaVersion"]);
+  assertExactKeys("leaf context", context as unknown, ["networkId", "clusterIdentity", "epoch", "economicAssetId", "payoutMint", "formulaVersion", "ownershipSnapshotHash"]);
+  const bound = policy.leafLayoutVersion === CLAIM_LEAF_LAYOUT_VERSION_SNAPSHOT_BOUND;
+  if (bound && !(typeof context.ownershipSnapshotHash === "string" && /^[0-9a-f]{64}$/.test(context.ownershipSnapshotHash))) throw new ClaimTreeError("invalid_input", "a layout 2 tree needs the ownership snapshot hash (64 lowercase hex)");
+  if (!bound && context.ownershipSnapshotHash !== undefined) throw new ClaimTreeError("invalid_input", "a layout 1 tree takes no ownership snapshot hash");
 
   const fixed = {
     networkId: uint("networkId", context.networkId, 8),
@@ -410,6 +440,7 @@ export async function buildClaimTree(input: { plan: DistributionPlan; policy: Cl
     payoutMint: decodeKey32("payoutMint", context.payoutMint),
     formulaVersion: uint("formulaVersion", context.formulaVersion, 16),
     leafLayoutVersion: policy.leafLayoutVersion,
+    ...(bound ? { ownershipSnapshotHash: unhex(context.ownershipSnapshotHash!) } : {}),
   };
 
   const payable = plan.entries.filter((e) => e.state === "payable");

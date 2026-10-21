@@ -228,7 +228,8 @@ describe("pluggable hashing and fail-closed policy (D-26)", () => {
   it("validates the policy record", () => {
     expect(claimTreePolicyProblems(SIMULATION_CLAIM_TREE_POLICY)).toEqual([]);
     expect(claimTreePolicyProblems({})).toHaveLength(6);
-    expect(claimTreePolicyProblems({ ...SIMULATION_CLAIM_TREE_POLICY, leafLayoutVersion: 2 })).toHaveLength(1);
+    expect(claimTreePolicyProblems({ ...SIMULATION_CLAIM_TREE_POLICY, leafLayoutVersion: 2 })).toEqual([]); // layout 2: snapshot-bound
+    expect(claimTreePolicyProblems({ ...SIMULATION_CLAIM_TREE_POLICY, leafLayoutVersion: 3 })).toHaveLength(1);
     expect(claimTreePolicyProblems({ ...SIMULATION_CLAIM_TREE_POLICY, maxLeaves: 2 ** 32 + 1 })).toHaveLength(1);
     expect(claimTreePolicyProblems({ ...SIMULATION_CLAIM_TREE_POLICY, hashFunction: "keccak" })).toHaveLength(1);
   });
