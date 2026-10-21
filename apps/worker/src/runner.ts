@@ -1,6 +1,6 @@
 import type { Job } from "bullmq";
 import { NonRetryableJobError } from "@metafarm/domain";
-import type { Logger } from "@metafarm/observability";
+import type { JobMetrics, Logger } from "@metafarm/observability";
 
 /**
  * Persistence for job idempotency. Backed by the job_runs table in production
@@ -22,6 +22,8 @@ export interface RunnerDeps {
   store: JobRunStore;
   deadLetter: DeadLetterSink;
   logger: Logger;
+  /** Job outcomes and durations per queue (metafarm_jobs_total, metafarm_job_duration_seconds). */
+  metrics?: JobMetrics;
 }
 
 /**
@@ -44,6 +46,7 @@ export function wrapHandler<T>(queue: string, handler: Handler<T>, deps: RunnerD
     const state = await deps.store.claim(key, queue);
     if (state === "completed") {
       log.info("job already completed; skipping");
+      deps.metrics?.jobs.inc({ queue, outcome: "skipped" });
       return { skipped: true };
     }
 
@@ -52,12 +55,17 @@ export function wrapHandler<T>(queue: string, handler: Handler<T>, deps: RunnerD
       const result = await handler(job.data, { log, attempt, jobId: job.id });
       await deps.store.complete(key, result);
       log.info({ durationMs: Date.now() - started }, "job completed");
+      deps.metrics?.jobs.inc({ queue, outcome: "completed" });
+      deps.metrics?.duration.observe({ queue }, (Date.now() - started) / 1000);
       return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const permanent = err instanceof NonRetryableJobError;
       const last = permanent || attempt >= maxAttempts;
       log.error({ err, durationMs: Date.now() - started, permanent, last }, "job failed");
+      deps.metrics?.jobs.inc({ queue, outcome: "failed" });
+      deps.metrics?.duration.observe({ queue }, (Date.now() - started) / 1000);
+      if (last) deps.metrics?.jobs.inc({ queue, outcome: "dead_lettered" });
       if (permanent) job.discard();
       await deps.store.fail(key, message, last);
       if (last) {

@@ -93,6 +93,25 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/HealthReport" }
 
+  /metrics:
+    get:
+      tags: [health]
+      security: [{ metricsToken: [] }]
+      summary: Metrics in the Prometheus text format (off unless METRICS_TOKEN is set)
+      description: |
+        Request counts and timings per route template, and nothing tenant-specific. Answers 404 when
+        METRICS_TOKEN is not configured, and 401 without `Authorization: Bearer <METRICS_TOKEN>`.
+        The metric names are listed in docs/observability.md.
+      operationId: getMetrics
+      responses:
+        "200":
+          description: Prometheus text exposition format 0.0.4
+          content:
+            text/plain:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/me:
     get:
       tags: [identity]
@@ -2950,6 +2969,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    metricsToken:
+      type: http
+      scheme: bearer
+      description: The METRICS_TOKEN platform secret; only for GET /metrics.
 
   parameters:
     AnchorCarrier:

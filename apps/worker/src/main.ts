@@ -3,7 +3,7 @@ import { Redis } from "ioredis";
 import { loadEnv, workerEnvSchema } from "@metafarm/config";
 import { bubblegumTreeOf, claimJobRun, completeJobRun, createPool, failJobRun, pingDatabase, withSystem } from "@metafarm/db";
 import { QUEUES, idempotencyKey, jobIdFromKey, timeBucket, type JobPayloads } from "@metafarm/domain";
-import { createLogger, installGracefulShutdown, startHealthServer } from "@metafarm/observability";
+import { MetricsRegistry, QUEUE_STATES, createJobMetrics, createLogger, createQueueDepthGauge, installGracefulShutdown, startHealthServer } from "@metafarm/observability";
 import { createViemChainReader } from "./chain-reader";
 import { alertEvaluationHandler, alertSweepHandler, maintenanceDueSweepHandler, pendingBoundarySweepHandler, sensorSilenceSweepHandler } from "./handlers/alerts";
 import { chainIndexHandler } from "./handlers/chain";
@@ -60,7 +60,9 @@ async function enqueue<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloa
   });
 }
 
-const deps = { store, deadLetter, logger };
+// Metrics are recorded always (in memory) and exposed on HEALTH_PORT only when METRICS_TOKEN is set.
+const metricsRegistry = new MetricsRegistry();
+const deps = { store, deadLetter, logger, metrics: createJobMetrics(metricsRegistry) };
 // Where the ownership index reads finalized events from: Token-2022 and Bubblegum V1 transactions through the Solana RPC,
 // read-only (the history client has no send method). Only when the index is enabled and an RPC URL is
 // set, and on mainnet only with RWA_MAINNET_ENABLED; otherwise ownership-index jobs are skipped.
@@ -190,9 +192,20 @@ const workers = Object.entries(processors).map(([name, processor]) => {
   return w;
 });
 
+// Queue depth is read from Redis at scrape time, and only when metrics are exposed.
+const depthQueues = env.METRICS_TOKEN ? Object.keys(processors).map((name) => new Queue(name, { connection, prefix })) : [];
+if (depthQueues.length > 0)
+  createQueueDepthGauge(metricsRegistry, async (g) => {
+    for (const q of depthQueues) {
+      const counts = await q.getJobCounts(...QUEUE_STATES);
+      for (const state of QUEUE_STATES) g.set({ queue: q.name, state }, counts[state] ?? 0);
+    }
+  });
+
 const health = startHealthServer({
   port: env.HEALTH_PORT,
   isDraining: () => shutdown.isShuttingDown,
+  metrics: { token: env.METRICS_TOKEN, render: () => metricsRegistry.render() },
   checks: [
     { name: "database", check: () => pingDatabase(pool) },
     { name: "redis", check: async () => (await connection.ping()) === "PONG" },
@@ -228,6 +241,7 @@ shutdown.register({ name: "producers", close: async () => void (await Promise.al
 // Workers close first: stop taking new jobs and wait for in-flight ones to finish.
 shutdown.register({ name: "workers", close: async () => void (await Promise.all(workers.map((w) => w.close()))) });
 shutdown.register({ name: "health", close: () => new Promise<void>((r) => health.close(() => r())) });
+if (depthQueues.length > 0) shutdown.register({ name: "metrics-queues", close: async () => void (await Promise.all(depthQueues.map((q) => q.close()))) });
 // Telemetry flushes what it holds before the database closes.
 if (telemetry) shutdown.register({ name: "telemetry", close: () => telemetry.close() });
 // The engine finishes its current step before the database closes.

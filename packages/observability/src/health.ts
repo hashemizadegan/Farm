@@ -1,4 +1,6 @@
 import { createServer, type Server } from "node:http";
+import { PROMETHEUS_CONTENT_TYPE } from "./metrics";
+import { metricsAuthorized } from "./standard-metrics";
 
 export type HealthCheck = { name: string; check: () => Promise<boolean> };
 
@@ -30,6 +32,8 @@ export async function runChecks(checks: HealthCheck[], timeoutMs = 2_000): Promi
  * Minimal health server for non-HTTP services (worker, scheduler).
  * - GET /healthz : liveness, always 200 while the process runs and is not draining
  * - GET /readyz  : readiness, 200 only when every dependency check passes
+ * - GET /metrics : Prometheus text, only with `metrics.token` set and `Authorization: Bearer <token>`
+ *   (401 otherwise); without a token it is 404 like any other path
  */
 export function startHealthServer(opts: {
   port: number;
@@ -37,6 +41,7 @@ export function startHealthServer(opts: {
   host?: string;
   checks: HealthCheck[];
   isDraining: () => boolean;
+  metrics?: { token: string | undefined; render: () => Promise<string> };
 }): Server {
   const server = createServer(async (req, res) => {
     if (req.url === "/healthz") {
@@ -50,6 +55,19 @@ export function startHealthServer(opts: {
       const ok = report.status === "ok" && !opts.isDraining();
       res.writeHead(ok ? 200 : 503, { "content-type": "application/json" });
       res.end(JSON.stringify(report));
+      return;
+    }
+    if (req.url === "/metrics" && req.method === "GET" && opts.metrics?.token) {
+      if (!metricsAuthorized(req.headers.authorization, opts.metrics.token)) {
+        res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+      try {
+        const body = await opts.metrics.render();
+        res.writeHead(200, { "content-type": PROMETHEUS_CONTENT_TYPE }).end(body);
+      } catch {
+        res.writeHead(500).end();
+      }
       return;
     }
     res.writeHead(404).end();
