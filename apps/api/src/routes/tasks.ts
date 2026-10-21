@@ -151,7 +151,7 @@ export async function taskRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/v1/tenants/:tenantId/farms/:farmId/tasks/:taskId/complete", async (req) => {
+  app.post("/v1/tenants/:tenantId/farms/:farmId/tasks/:taskId/complete", { config: { idempotency: "handler" } }, async (req) => {
     const { farmId, taskId } = parse(taskParams, req.params);
     const body = parse(completeTaskSchema, req.body ?? {});
     const key = idempotencyKey(req);

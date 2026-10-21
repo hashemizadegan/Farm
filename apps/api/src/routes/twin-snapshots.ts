@@ -21,7 +21,7 @@ const snapshotParams = z.object({ tenantId: z.string().uuid(), commitmentId: z.s
 const listQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).default(10), cursor: z.string().uuid().optional() }).strict();
 
 export async function twinSnapshotRoutes(app: FastifyInstance) {
-  app.post("/v1/tenants/:tenantId/twin/farms/:farmId/snapshots", async (req, reply) => {
+  app.post("/v1/tenants/:tenantId/twin/farms/:farmId/snapshots", { config: { idempotency: "handler" } }, async (req, reply) => {
     const { tenantId, farmId } = parse(farmParams, req.params);
     if (req.body !== undefined && req.body !== null && (typeof req.body !== "object" || Object.keys(req.body as object).length > 0))
       throw new HttpError(400, "invalid_request", "this request takes no body");

@@ -27,7 +27,7 @@ export async function observationRoutes(app: FastifyInstance) {
    * Observations entered through the API are `user-entered`. Sensor and
    * provider data arrive through signed webhooks and carry their own labels.
    */
-  app.post("/v1/tenants/:tenantId/farms/:farmId/observations", async (req, reply) => {
+  app.post("/v1/tenants/:tenantId/farms/:farmId/observations", { config: { idempotency: "handler" } }, async (req, reply) => {
     const { tenantId, farmId } = parse(farmParams, req.params);
     const body = parse(createObservationSchema, req.body);
     const key = idempotencyKey(req);
