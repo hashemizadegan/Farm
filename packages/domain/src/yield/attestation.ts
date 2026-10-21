@@ -191,6 +191,19 @@ function assertEd25519PublicKeyUsable(publicKeyHex: string): void {
 }
 
 /**
+ * Checks a public key's algorithm and encoding without verifying anything: supported algorithm, exact
+ * length, lowercase hex, uncompressed P-256 form, and (Ed25519) canonical and not of small order. Whether
+ * a P-256 point is on the curve is checked when it is imported for verification.
+ */
+export function assertKeySignaturePublicKey(algorithm: KeySignatureAlgorithm, publicKeyHex: string): void {
+  if (!(KEY_SIGNATURE_ALGORITHMS as readonly unknown[]).includes(algorithm)) throw new YieldAttestationError("unsupported_algorithm", `unsupported key algorithm ${String(algorithm)}`);
+  const size = KEY_BYTES[algorithm];
+  if (typeof publicKeyHex !== "string" || !HEX.test(publicKeyHex) || publicKeyHex.length !== size.publicKey * 2) throw new YieldAttestationError("malformed_key", `a ${algorithm} public key is ${size.publicKey} bytes of lowercase hex`);
+  if (algorithm === "ecdsa_p256_sha256" && !publicKeyHex.startsWith("04")) throw new YieldAttestationError("malformed_key", "a P-256 public key must be uncompressed (04‖x‖y)");
+  if (algorithm === "ed25519") assertEd25519PublicKeyUsable(publicKeyHex);
+}
+
+/**
  * Verifies a signature with Web Crypto. Returns false for a well-formed signature that does not verify;
  * throws for an unsupported algorithm or a key or signature of the wrong shape, and for Ed25519 keys that
  * are non-canonical or of small order.
@@ -199,13 +212,10 @@ function assertEd25519PublicKeyUsable(publicKeyHex: string): void {
  * an approved key is not done here: it is part of the attester identity requirements (D-23).
  */
 export async function verifyKeySignature(algorithm: KeySignatureAlgorithm, publicKeyHex: string, message: Uint8Array, signatureHex: string): Promise<boolean> {
-  if (!(KEY_SIGNATURE_ALGORITHMS as readonly unknown[]).includes(algorithm)) throw new YieldAttestationError("unsupported_algorithm", `unsupported key algorithm ${String(algorithm)}`);
+  assertKeySignaturePublicKey(algorithm, publicKeyHex);
   const size = KEY_BYTES[algorithm];
-  if (typeof publicKeyHex !== "string" || !HEX.test(publicKeyHex) || publicKeyHex.length !== size.publicKey * 2) throw new YieldAttestationError("malformed_key", `a ${algorithm} public key is ${size.publicKey} bytes of lowercase hex`);
-  if (algorithm === "ecdsa_p256_sha256" && !publicKeyHex.startsWith("04")) throw new YieldAttestationError("malformed_key", "a P-256 public key must be uncompressed (04‖x‖y)");
   if (typeof signatureHex !== "string" || !HEX.test(signatureHex) || signatureHex.length !== size.signature * 2) throw new YieldAttestationError("malformed_signature", `a ${algorithm} signature is ${size.signature} bytes of lowercase hex`);
   if (!(message instanceof Uint8Array)) throw new YieldAttestationError("invalid_attestation", "the message must be bytes");
-  if (algorithm === "ed25519") assertEd25519PublicKeyUsable(publicKeyHex);
 
   const subtle = globalThis.crypto.subtle;
   const params = algorithm === "ed25519" ? { name: "Ed25519" } : { name: "ECDSA", namedCurve: "P-256" };
