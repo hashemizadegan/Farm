@@ -110,6 +110,15 @@ describe("Token-2022 ownership source", () => {
     await expect(createToken2022OwnershipSource(node(1_000n, history), "solana-devnet", { maxTransactions: 1 }).eventsAfter(asset, null)).rejects.toBeInstanceOf(OwnershipHistoryError);
     await expect(createToken2022OwnershipSource(node(1_000n, history), "solana-mainnet").eventsAfter(asset, null)).rejects.toBeInstanceOf(OwnershipHistoryError);
   });
+
+  it("stores nothing on a first window without a mint, so missing history never reads as no holders", async () => {
+    // No history at all (or a node that kept none) and history that starts after the mint.
+    await expect(createToken2022OwnershipSource(node(1_000n, []), "solana-devnet").eventsAfter(asset, null)).rejects.toBeInstanceOf(OwnershipHistoryError);
+    await expect(createToken2022OwnershipSource(node(1_000n, history.slice(1)), "solana-devnet").eventsAfter(asset, null)).rejects.toBeInstanceOf(OwnershipHistoryError);
+    // A later window may hold no mint: the cursor shows that the earlier history was read.
+    const quiet = await createToken2022OwnershipSource(node(2_000n, history), "solana-devnet").eventsAfter(asset, 1_600n);
+    expect(quiet).toEqual({ events: [], throughSlot: 2_000n });
+  });
 });
 
 describe("httpSolanaHistoryRpc", () => {
