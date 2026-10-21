@@ -67,6 +67,11 @@ Nothing else: no Solana SDK, no wallet adapter, no Cesium. Those come with later
   computes the same RFC 9162 path lengths, refuses any altered path entry or index, and agrees that holders
   allocated 0 (`zero_amount`) have no claim. The platform side (`large-holder-envelope.test.ts`) also checks
   deterministic cost and size envelopes at 4,096 and 16,384 holders.
+- **Read model (`ReadModelCrossStackTests`)**: `Samples/claim-readmodel.sample.json` holds the claims the platform's
+  claim read model (`packages/domain/src/yield/claim-read-model.ts`) serves for the same 64 holders after
+  projecting the cycle into records, persisting it as a byte image and reloading it (each proof rebuilt from
+  stored tree nodes, 2 + path-length record reads per lookup). The client decodes every layout 2 leaf exactly,
+  verifies every claim, and requires each one to be identical to the in-memory lookup's claim for that party.
 - **Vitest (`packages/domain/src/twin/client-samples.test.ts`)**: the sample payloads parse with the
   API's own schemas, and the sample proof verifies with the platform's verifier.
 - **Not checked in CI**: `Runtime/Unity` needs the Unity editor. Open it in Unity 6 and fix anything
@@ -150,6 +155,8 @@ the committed file to match exactly; regenerate by writing `await claimPayloadSa
 (regenerate with `await tinyHoldersSampleText()`).
 `Samples/claim-payloads.large-tree.sample.json` comes from `packages/domain/src/yield/large-holder.test-support.ts`
 and is checked by `large-holder-envelope.test.ts` (regenerate with `await largeTreeSampleText()`).
+`Samples/claim-readmodel.sample.json` comes from `packages/domain/src/yield/claim-read-model.sample.test-support.ts`
+and is checked by `claim-read-model.test.ts` (regenerate with `await claimReadModelSampleText()`).
 
 A claim for 0 is never valid: the platform never makes a zero amount payable (it is deferred with
 `deferredReason: "zero_amount"`), and `ClaimLeafCodec` refuses a zero amount when encoding and when decoding,
