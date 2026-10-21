@@ -6,6 +6,31 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 01:30 local (zero-allocation policy: option B)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #77 | zero-allocation policy, TS and C# | `feature/yield-zero-allocation` | `ba3b7f0` | #76 | 39680962950 | 14/14 passed |
+
+- **Decision (owner asked for one): option B.** A payable entry is never 0. A party whose amount is 0 is `deferred` with
+  `deferredReason: "zero_amount"`, whatever the dust threshold.
+  - The rule is fixed, not configurable: no wallet → withheld; amount 0 → deferred `zero_amount` (takes precedence);
+    below the threshold → deferred `below_dust_threshold`; otherwise payable.
+  - Why B rather than A: it keeps `dustThreshold: 0n` valid instead of pre-empting D-9. It also holds for any threshold
+    and is enforced at every layer. On leaves and roots it is equivalent to A: threshold 0 and 1 give the same root on
+    1,200 extreme holders.
+  - A zero amount carries nothing forward, so conservation is unchanged. Non-zero amounts keep their previous states.
+- **Where it is enforced:**
+  - the planner (`partyEntryState`);
+  - the pipeline's `calculate` and `cycleArtifactProblems` (`distribution_invalid`);
+  - the leaf encoder and decoder in TS and C#, so proof and payload verification reject a zero leaf in both stacks;
+  - the claim lookup, which reports the deferral reason to holders.
+- **Cross-stack:** new `Samples/claim-payloads.tiny-holders.sample.json` (31 claims, 13 `zero_amount` deferrals). C#
+  recomputes the allocation and states with `BigInteger` and requires an exact match, and an independent Python check
+  agrees. In the regenerated `claim-payloads.sample.json`, the root and claims are unchanged; only the artifact hash and
+  one lookup reason changed.
+- **Holds unchanged:** simulation only; no chain, network, signing, deployment or merge.
+
 ## 2026-10-22, 01:00 local (ownership ingestion interface; 1,000+ holder stress harness)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
