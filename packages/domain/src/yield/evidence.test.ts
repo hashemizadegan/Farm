@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { YieldEvidenceError, assertEvidenceBytes, buildEvidenceManifest, canonicalEvidenceManifest, evidenceItemProblems, evidenceManifestHash, type EvidenceItem } from "./evidence";
+import { type YieldEvidenceError, assertEvidenceBytes, buildEvidenceManifest, canonicalEvidenceManifest, evidenceItemProblems, evidenceManifestHash, type EvidenceItem } from "./evidence";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 // SHA-256 of the UTF-8 strings, computed independently (Python hashlib).
