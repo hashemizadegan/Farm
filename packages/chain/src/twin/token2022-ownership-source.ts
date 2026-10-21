@@ -11,6 +11,13 @@
  * the same slot are ordered as getSignaturesForAddress lists them. If that ever gives an impossible
  * order, the projection reports a conflict and the index reader fails closed; it cannot report a wrong
  * holder.
+ *
+ * Fail closed on missing history: on the first window (no cursor), at least one mint of the token must
+ * be in the finalized history the node returns. Otherwise nothing is stored and the asset stays not
+ * indexed, so a node that returns no history, or only history after the first mint, can never make the
+ * asset look unowned. A mint whose supply was never issued stays not indexed for the same reason. This
+ * cannot detect a node that dropped some, but not all, of the early mints: index from a node that keeps
+ * full history.
  */
 import type { ChainAssetRef, OwnershipEvent, OwnershipEventSource } from "@metafarm/domain";
 import { TOKEN_2022_PROGRAM } from "../solana/keys";
@@ -107,6 +114,8 @@ export function createToken2022OwnershipSource(rpc: SolanaHistoryRpc, network: "
         if (tx.err) continue;
         events.push(...ownershipEventsFromBalances(asset, { signature: s.signature, slot: s.slot, txIndex, pre: tx.preTokenBalances, post: tx.postTokenBalances }));
       }
+      if (afterSlot === null && !events.some((e) => e.kind === "mint"))
+        throw new OwnershipHistoryError(`no mint of ${asset.id} in the finalized history the node returned: incomplete history or nothing issued yet`);
       return { events, throughSlot };
     },
   };
