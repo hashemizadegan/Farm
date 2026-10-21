@@ -87,7 +87,7 @@ describe("client starter samples", () => {
   it("the sync fixtures are platform-built snapshots with the documented ordering and diff", async () => {
     const records = load("sync-commitments.sample.json") as Record<string, { id: string; subjectId: string; schema: string; contentSha256: string; byteSize: number; storageRef: string; sourceTime: string }>;
     const snaps: Record<string, FarmSnapshot> = {};
-    for (const name of ["a", "b", "c"]) {
+    for (const name of ["a", "b", "c", "d", "e", "f"]) {
       const bytes = readFileSync(path.join(samples, `sync-${name}.content.sample.json`));
       const { snapshot, check } = await reconstructFarmSnapshot(bytes.toString("utf8"));
       expect(check).toEqual({ ok: true, problems: [] });
@@ -109,5 +109,17 @@ describe("client starter samples", () => {
     expect([...a.keys()].filter((k) => !b.has(k))).toEqual(["structure/3333"]);
     expect([...b.keys()].filter((k) => a.has(k) && a.get(k) !== b.get(k))).toEqual(["machine/2222", "plot/1111"]);
     expect([...b.keys()].filter((k) => a.get(k) === b.get(k))).toHaveLength(3);
+
+    // D, E and F are A plus exactly one change each, at a later time (the Unity validation cases 4a-4c).
+    const changes = (x: FarmSnapshot) => {
+      const m = byKey(x);
+      return { added: [...m.keys()].filter((k) => !a.has(k)), removed: [...a.keys()].filter((k) => !m.has(k)), changed: [...m.keys()].filter((k) => a.has(k) && a.get(k) !== m.get(k)) };
+    };
+    for (const n of ["d", "e", "f"]) expect(snaps[n]!.takenAt > snaps.a!.takenAt).toBe(true);
+    expect(changes(snaps.d!)).toEqual({ added: [], removed: [], changed: ["machine/2222"] });
+    expect(snaps.d!.entities.find((e) => e.type === "machine")!.data).toMatchObject({ source: "business_asset", geometry: { type: "Point" } });
+    expect(changes(snaps.e!)).toEqual({ added: [], removed: [], changed: ["plot/1111"] });
+    expect(snaps.e!.entities.find((e) => e.type === "plot")!.data.source).toBe("survey");
+    expect(changes(snaps.f!)).toEqual({ added: ["plot/3333"], removed: ["structure/3333"], changed: [] });
   });
 });

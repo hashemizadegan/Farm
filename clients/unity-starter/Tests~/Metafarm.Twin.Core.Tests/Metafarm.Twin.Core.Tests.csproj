@@ -16,4 +16,9 @@
   <ItemGroup>
     <None Include="../../Samples/*.json" LinkBase="Samples" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The validation harness's engine-free runner (Validation/Engine), tested here against a model scene.
+         Its Unity part (Validation/Unity) needs the editor and is not built here. -->
+    <Compile Include="../../Validation/Engine/*.cs" LinkBase="Validation" />
+  </ItemGroup>
 </Project>

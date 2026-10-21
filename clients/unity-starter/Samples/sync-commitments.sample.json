@@ -43,5 +43,50 @@
     "attestationRef": null,
     "batch": null,
     "createdAt": "2026-10-21T07:00:01.000Z"
+  },
+  "d": {
+    "id": "a1000000-0000-4000-8000-00000000000d",
+    "farmId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "subjectType": "farm",
+    "subjectId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "schema": "metafarm.farm-snapshot",
+    "schemaVersion": 1,
+    "contentSha256": "4ca8d083417130589e07244e8d6b4c2972a0ae3a430cabfad1030ea9c5137797",
+    "byteSize": 2432,
+    "storageRef": "sha256:4ca8d083417130589e07244e8d6b4c2972a0ae3a430cabfad1030ea9c5137797",
+    "sourceTime": "2026-10-21T08:00:00.000Z",
+    "attestationRef": null,
+    "batch": null,
+    "createdAt": "2026-10-21T08:00:01.000Z"
+  },
+  "e": {
+    "id": "a1000000-0000-4000-8000-00000000000e",
+    "farmId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "subjectType": "farm",
+    "subjectId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "schema": "metafarm.farm-snapshot",
+    "schemaVersion": 1,
+    "contentSha256": "559995058599e36fdbe8eb261cafe2ec08595039e3eadaf5960394f3631e993b",
+    "byteSize": 2289,
+    "storageRef": "sha256:559995058599e36fdbe8eb261cafe2ec08595039e3eadaf5960394f3631e993b",
+    "sourceTime": "2026-10-21T08:00:00.000Z",
+    "attestationRef": null,
+    "batch": null,
+    "createdAt": "2026-10-21T08:00:01.000Z"
+  },
+  "f": {
+    "id": "a1000000-0000-4000-8000-00000000000f",
+    "farmId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "subjectType": "farm",
+    "subjectId": "6b0c6f4e-8d1a-4c4e-9a43-0d1b2f3c4a5b",
+    "schema": "metafarm.farm-snapshot",
+    "schemaVersion": 1,
+    "contentSha256": "9a5ff20b398fabacfed7237d06179c8edb0952cf86b62f4395190c63c155716a",
+    "byteSize": 2290,
+    "storageRef": "sha256:9a5ff20b398fabacfed7237d06179c8edb0952cf86b62f4395190c63c155716a",
+    "sourceTime": "2026-10-21T08:00:00.000Z",
+    "attestationRef": null,
+    "batch": null,
+    "createdAt": "2026-10-21T08:00:01.000Z"
   }
 }

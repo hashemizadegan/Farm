@@ -25,6 +25,7 @@ disabled.
 | `Runtime/Unity` (`Metafarm.Twin.Unity`) | Unity | `UnityWebRequestTransport` (https only, bearer token), `LocalFrame` (metres around the farm origin, as in `packages/map-scene`), and the `FarmSceneLoader` MonoBehaviour (draws the scene; `ApplySnapshotPlan` only executes a `SceneUpdatePlan`) |
 | `Samples/` | none | Mock payloads in the API's shape. The farm, assets and addresses are made up. |
 | `Tests~/` | .NET | Builds `Runtime/Core` outside Unity and runs its tests. Unity ignores folders ending in `~`. |
+| `Validation/` | Unity (define-gated) | Unity 6 validation package for the adapter: a step runner (engine-free, tested in CI against a model scene) and a harness MonoBehaviour compiled only with `METAFARM_TWIN_VALIDATION`. Not part of the runtime; see `Validation/README.md` |
 
 Each layer depends only on the ones above it in this table; `Runtime/Core` has no reference to
 UnityEngine (`noEngineReferences` in its assembly definition). DTO files group related wire
@@ -57,7 +58,9 @@ Nothing else: no Solana SDK, no wallet adapter, no Cesium. Those come with later
 1. Create a Unity 6 URP project and add `com.unity.nuget.newtonsoft-json` (Package Manager → Add
    package by name).
 2. Copy `Runtime/` to `Assets/Metafarm/Twin/` and `Samples/scene.sample.json` to
-   `Assets/Metafarm/Twin/Samples/`.
+   `Assets/Metafarm/Twin/Samples/`. To try snapshot sync offline as well, also copy
+   `sync-commitments.sample.json` and `sync-a…f.content.sample.json` byte for byte (their SHA-256 is
+   checked; do not re-save them in an editor).
 3. Add an empty GameObject with `FarmSceneLoader` and set **Sample Scene** to the sample. Press Play:
    the boundary, Block A and the point assets appear around the origin.
 4. For a server: implement `ITokenSource` with the platform's OIDC sign-in (authorization code with
@@ -90,13 +93,15 @@ Polling skips the content request (`UpToDate`) only when the newest record has t
 and content hash, both of which were verified when it was accepted. `state.Snapshot`, `r.Snapshot`
 and the diff's entities are copies: changing them never changes the baseline the next sync uses.
 
-Migrating from the earlier `SyncAsync(farmId, heldCommitmentId)`:
+Migrating from the earlier `SyncAsync(farmId, heldCommitmentId)` (illustrative: `Use` stands for
+your own code):
 
 ```csharp
-// before: var r = await sync.SyncAsync(farmId, heldCommitmentId); if (r.Outcome == Updated) use(r.Snapshot);
+// before: var r = await sync.SyncAsync(farmId, heldCommitmentId);
+//         if (r.Outcome == SnapshotSyncOutcome.Updated) Use(r.Snapshot);
 var state = new FarmSnapshotState(farmId);   // replaces heldCommitmentId; keep it between polls
 var r = await sync.SyncAsync(state);
-if (r.Accepted) use(r.Snapshot, r.Diff);     // Initial or Updated; state now holds the snapshot
+if (r.Accepted) Use(r.Snapshot, r.Diff);     // Initial or Updated; state now holds the snapshot
 ```
 
 A first sync (`Initial`) diffs from nothing, so every entity is added and the scene places every
@@ -109,4 +114,5 @@ asset-registry object. `Unchanged` and `UpToDate` need no scene work.
   not exist on the platform either).
 - Ownership is only as good as the platform's ownership reader; the deployed API has none yet, so
   real assets show "Ownership unknown (not indexed)".
-- `Runtime/Unity` is unverified until compiled in Unity, including `FarmSceneLoader.ApplySnapshotPlan`.
+- `Runtime/Unity` is unverified until compiled in Unity, including `FarmSceneLoader.ApplySnapshotPlan`;
+  `Validation/README.md` has the exact steps (Editor and IL2CPP player) to validate it.

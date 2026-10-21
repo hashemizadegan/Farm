@@ -1,0 +1,9 @@
+{
+  "name": "Metafarm.Twin.Validation",
+  "rootNamespace": "Metafarm.Twin.Validation",
+  "references": ["Metafarm.Twin.Core", "Metafarm.Twin.Unity"],
+  "precompiledReferences": ["Newtonsoft.Json.dll"],
+  "overrideReferences": true,
+  "autoReferenced": false,
+  "defineConstraints": ["METAFARM_TWIN_VALIDATION"]
+}

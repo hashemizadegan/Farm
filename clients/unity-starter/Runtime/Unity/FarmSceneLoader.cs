@@ -26,6 +26,8 @@ namespace Metafarm.Twin.Unity
         private readonly Dictionary<string, GameObject> _drawn = new Dictionary<string, GameObject>();
 
         public IReadOnlyDictionary<string, TwinObject> Objects => _objects;
+        /// <summary>The twin object ids currently drawn (read-only; used by the validation harness).</summary>
+        public IReadOnlyCollection<string> DrawnObjectIds => _drawn.Keys;
 
         private async void Start()
         {
