@@ -27,7 +27,6 @@ export interface Deps {
   storage: ObjectStorage;
   auth: AuthProvider;
   /** Recovers the signer of an EIP-191 personal message. Injected for testability. */
-  recoverMessageAddress: (message: string, signature: `0x${string}`) => Promise<string>;
   now: () => Date;
   /** Present when CHAIN_RPC_URL and HARVEST_REGISTRY_ADDRESS are configured. */
   harvestChain?: HarvestChainReader;

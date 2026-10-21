@@ -64,15 +64,15 @@ Trust boundaries: **browser ↔ API** (untrusted input), **provider ↔ webhook 
 
 ## 5. Wallet signature replay
 
-**Asset:** account ↔ wallet links.
-**Attacks:** replay a captured signature; reuse a signature made for another site (phishing); use a different chain; reuse an old message.
+**Asset:** account ↔ player-wallet links (J8, Solana; `docs/player-wallets.md`).
+**Attacks:** replay a captured signature; reuse a signature made for another site (phishing); reuse an old message; link someone else's wallet; confuse a player wallet with an investor (RWA party) wallet.
 
-**Controls** (`packages/domain/src/wallet-auth.ts`, `apps/api/src/routes/chain.ts`)
-- EIP-4361-style message with **domain, URI, chain ID, nonce, issued-at and expiration**, all checked server-side against configuration.
-- Nonce: 32-char, CSPRNG, bound to the authenticated user, one outstanding per user, short TTL, **consumed atomically** (`DELETE … WHERE nonce AND user AND not expired`); a second use fails.
-- Validity window capped to the nonce TTL; small clock-skew tolerance only.
-- The statement says the signature authorises no transaction. Linking a wallet grants no tenant permission.
-- The address ↔ user mapping lives only in `wallet_links`; it is never written on-chain or into token metadata, and audit logs record only the chain id.
+**Controls** (`packages/chain/src/solana/player-wallet.ts`, `apps/api/src/routes/player-wallets.ts`)
+- A Sign-In-With-Solana-style message with **domain, URI, address, nonce, issued-at and expiration**, issued by the server and stored verbatim. The signature is checked (Ed25519) over exactly those bytes, so nothing is re-parsed.
+- Challenge: 32-character CSPRNG nonce, bound to the user and the address, one outstanding per pair, short TTL, **taken atomically and consumed whatever the outcome**. A replay, or a second try with another signature, fails.
+- The statement says the signature authorises no transaction and registers nothing with an investor account. Linking grants no tenant permission. Player wallets are a separate table from RWA party wallets, and neither is ever derived from the other.
+- The address ↔ user mapping lives only in `player_wallets` (not granted to the tenant role); audit logs record only the chain and the outcome.
+- The EVM wallet link (EIP-4361, `/v1/wallet/*`) is retired. Its `wallet_links` and `wallet_nonces` tables are kept untouched until the owner decides to drop them.
 
 ## 6. Admin compromise
 

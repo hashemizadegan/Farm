@@ -3,6 +3,67 @@
 The latest entry is on top. Each entry records what was completed (with the exact verification), what
 is blocked and why, and the next action. Scope and statuses are in [`plan.md`](plan.md).
 
+## 2026-10-21, 13:14 local (readiness for review; activity paused)
+
+- **#59 approved to stay a draft** (owner). The EVM tables and data are kept: no drops, no changes.
+- **Readiness document:** `docs/delivery/readiness.md`. It covers:
+  - the status table;
+  - the linear merge order of #40–#59 (verified ancestry; merge commits, not squash);
+  - the breaking-change matrix: #59 is the only PR that removes operations, and #55 changes RWA list
+    paging. All four migrations are additive; 0019 only widens a CHECK;
+  - the devnet runbook for J7 and J8;
+  - 14 security invariants, with evidence;
+  - one recorded gap: the J7 sources do not check the endpoint's genesis hash, so the runbook does it
+    manually.
+- **Holds confirmed:**
+  - J7 and J8 live validation wait for the deployment stack;
+  - Unity Editor and IL2CPP wait for the engine host;
+  - Token-2022 wiring is blocked by the RWA execution hold;
+  - `RWA_SOLANA_SIGNER_SECRET` and `RWA_MAINNET_ENABLED` are off, and TRON execution is off.
+- **Next action:** owner review in the order of `readiness.md`, section 2. No further work is scheduled.
+
+## 2026-10-21, afternoon (owner decisions on wallets, Token-2022/TRON and metrics)
+
+### Draft PR stack (all drafts, none merged)
+
+`main` ← #40 … #55 ← #56 ← #57 ← #58 ← #59
+
+| PR | Branch | Tested tip | CI run on that tip | C# | e2e |
+| --- | --- | --- | --- | --- | --- |
+| #56 | `feature/metrics` | `2562ccf` | 39573969953: 14/14 | 63/63 | (passed) |
+| #57 | `feature/player-wallets` | `ec62d53` | 39575392455: 14/14 | 65/65 | 46 passed (44 before; the J8 spec ran) |
+| #58 | `feature/token2022-reconciliation` | `132a40a` | 39576512792: 14/14 | 65/65 | 46 passed |
+| #59 | `feature/retire-evm-wallet-link` | `fc77570` | 39576690363: 14/14 | 65/65 | 46 passed |
+
+#59's tip moves with this handoff commit, which changes only the two delivery docs.
+
+### Completed
+
+- **Decisions recorded** in `plan.md`, "Owner decisions": wallet linking, Token-2022/TRON, metrics.
+- **#57, J8:**
+  - player wallets, kept separate from RWA party wallets (migration 0022);
+  - proof of control by a single-use message the user's own wallet signs; the platform never signs;
+  - the web account page (Wallet Standard; message signing only), with en and fa copy;
+  - `heldByYou` on asset detail, read-only in Unity;
+  - acceptance criteria 1–8 in `docs/player-wallets.md` are met by tests. Criterion 9 (a real wallet) and criterion 10 (Unity) are pending.
+- **#58:** `decideToken2022Retry`, offline decision logic with 18 named fixtures. Not wired; TRON out of scope.
+- **#56 (follow-up):** a documented, collector-neutral scrape and Alertmanager route, tested to parse. Nothing provisioned.
+- **#59:** the EVM wallet link is retired; its tables and the Railway config are untouched.
+
+### Blocked, and why
+
+- **J8 with a real wallet, and J7 live:** need a running deploy (on hold) or an owner-run local stack. J7 also needs a devnet RPC endpoint.
+- **Unity Editor and IL2CPP:** no Unity environment.
+- **Token-2022 wiring:** RWA execution holds. **TRON:** holds.
+- **Dropping the EVM tables:** destroys data; the owner's call.
+- **Signed-in `/rwa`:** waits for the owner.
+- Staging is unchanged and `f14b940d` is untouched.
+
+### Next action
+
+Nothing in confirmed scope can move without one of the external steps above. Resume with whichever
+arrives first: a deploy window, a devnet RPC endpoint, a Unity machine, or a lifted hold.
+
 ## 2026-10-21, later (session 1, continued)
 
 ### Draft PR stack (all drafts, none merged)

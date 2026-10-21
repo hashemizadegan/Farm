@@ -78,7 +78,6 @@ CORS_ORIGINS=https://<web-domain>
 WEBHOOK_SIGNING_SECRETS=<generate a long random value>
 WALLET_AUTH_DOMAIN=<web-domain>
 WALLET_AUTH_URI=https://<web-domain>
-WALLET_ALLOWED_CHAIN_IDS=<chain id, e.g. 11155111 for Sepolia, or 31337 if unused>
 AUDIT_IP_SALT=<generate a long random value>
 UPLOAD_MODE=proxy
 ```
@@ -96,7 +95,6 @@ NEXT_PUBLIC_API_URL=https://<api-domain>
 NEXT_PUBLIC_OIDC_AUTHORITY=https://<your-tenant>.us.auth0.com
 NEXT_PUBLIC_OIDC_CLIENT_ID=<SPA client id>
 NEXT_PUBLIC_OIDC_AUDIENCE=https://api.metafarm-staging
-NEXT_PUBLIC_WALLET_CHAIN_ID=<same chain id as the API>
 # Free basemap, no key (https://openfreemap.org). Its style already carries the
 # required attribution, so NEXT_PUBLIC_MAP_ATTRIBUTION stays unset.
 NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty

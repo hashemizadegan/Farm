@@ -3,6 +3,9 @@
 Living document. Update it in the same PR as the work it describes. The handoff record for the next
 session is [`handoff.md`](handoff.md).
 
+**Merge order, breaking changes, the devnet runbook for J7 and J8, and the security invariants:**
+[`readiness.md`](readiness.md).
+
 ## Product and sources of scope
 
 A separate 3D farm client (Unity 6, URP) on the existing Farm platform. **Ownership** comes from the
@@ -38,7 +41,7 @@ CI success never counts as Env.
 | J5 | The client keeps a farm current, verified, never rolling back, updating only what changed | content endpoint (#46) | Core `SnapshotSync`, `SnapshotDiff`, `SceneUpdatePlan` (#47); Unity `ApplySnapshotPlan` (#47) | yes | Core: yes (C# 63/63 on #52–#56) | Unity Editor and IL2CPP: **pending, blocked** (no Unity environment; package in #48) | no |
 | J6 | A client proves a snapshot back to its batch root and a plan-only anchor | anchor plans (#43), chain check (#46) | Core `SnapshotChain`, `AnchorPlanReview` (#44, #46) | yes | yes | pending | no |
 | J7 | **Ownership shown from the chain**: who holds an asset, as of which slot | Ownership index (events, cursors, index-backed reader, worker job, API wiring; all off by default): #50. Token-2022 source (#51) and Bubblegum V1 source (#52), both from finalized RPC history | Core `OwnershipDisplay` shows `chain_index` as known ownership with its slot; "no current holders" is distinct from "not indexed" (#52) | yes | yes: fixture-tested (constructed events and RPC responses, mpl-bubblegum serializers); #50–#52 14/14. Acceptance check: `docs/ownership-index.md` | **pending**: never run against a live cluster. Unity: pending | no |
-| J8 | A player links a Solana wallet and sees "you hold this" | Player wallets: challenge, Ed25519 proof, link/list/unlink (migration 0022), `heldByYou` on asset detail; off by default (#57) | Web account page links through the Wallet Standard (message signing only); Unity core reads `heldByYou` (#57) | yes | see #57 | **pending**: no real browser wallet tried; Unity pending | no |
+| J8 | A player links a Solana wallet and sees "you hold this" | Player wallets: challenge, Ed25519 proof, link/list/unlink (migration 0022), `heldByYou` on asset detail; off by default (#57) | Web account page links through the Wallet Standard (message signing only); Unity core reads `heldByYou` (#57) | yes | yes: API integration tests, web unit tests, C# 65/65, and Playwright in Chromium with an injected stand-in wallet (#57) | **pending**: no real wallet extension tried; Unity Editor and IL2CPP pending | no |
 | J9 | Transfer or trade from the client | previews only (#40), unsigned intents (#41) | `DisabledTransferPreviewer` | previews only | yes | no | no |
 | J10 | Batch roots anchored on-chain | plan-only (#43) | plan review (#44) | plan-only | yes | no | no |
 | J11 | Operators see real-world assets in the web app (read-only `/rwa`) | existing RWA API | web `/rwa` (#39); reads every page of the paged lists (#55, not deployed) | yes | yes | staging (#39 only): pages load signed-out; **signed-in check pending** | #39 only: staging, web only (`c02ae39d`) |
@@ -52,7 +55,8 @@ Not a user journey, but confirmed scope. Each is implemented and tested on a dra
 | Redis-backed rate limits, shared across API replicas (`RATE_LIMIT_STORE=redis`, fail open) | #53 | yes | yes (Redis in the integration job) | no | no |
 | `Idempotency-Key` on every tenant-scoped write (migration 0021) | #54 | yes | yes | no | no |
 | Keyset pages for the RWA lists; web `/rwa` reads every page | #55 | yes | yes | no | no |
-| Metrics (API, worker) and alert rules, off unless `METRICS_TOKEN` is set | #56 | yes | yes (PromQL syntax not checked: no `promtool` in CI) | no metrics backend exists | no |
+| Metrics (API, worker) and alert rules, off unless `METRICS_TOKEN` is set; future scrape and Alertmanager route documented only (decision 3) | #56 | yes | yes (PromQL syntax not checked: no `promtool` in CI) | no collector (by decision) | no |
+| Retire the EVM wallet link (roadmap item 7) | #59 | yes | yes | no | no |
 
 ## Acceptance criteria (confirmed)
 
@@ -84,14 +88,17 @@ These holds block J9 and J10 entirely, and block J8 and J7 at deployment.
 
 ## Next actionable work (in order)
 
-1. **J8 player wallets (#57):** follow CI. Then, with the owner: a manual check with a real browser wallet (needs the web app and the API with both flags on, so a deploy, which is on hold).
-2. **Token-2022 reconciliation, offline (roadmap item 4, within decision 2 below):** `decideToken2022Retry`, a pure decision with fixtures, tests and documentation (#58). It is not wired into the engine, and wiring waits for the RWA execution holds to lift. TRON is out of scope.
-   - **Acceptance criteria:** a retry only after `expired`, past the blockhash limit at finalized, with no other unsettled attempt on the mint, and only when the signature and every state reading show the action did not happen. An exact change means `landed` (never retried). Any other change, or missing evidence, holds the intent. No chain reads, signing or submission.
-3. **Metrics (decision 3):** document a future Prometheus-compatible scrape and an Alertmanager-compatible route (#56 follow-up); nothing provisioned.
-4. **J7 live validation:** needs an owner-configured devnet RPC endpoint and a deploy (on hold).
-5. **J1 and J5 Unity validation:** `clients/unity-starter/Validation/README.md` in Unity 6 (Editor, then IL2CPP). **Blocked: no Unity environment is available to this work.**
-6. **J11:** the signed-in `/rwa` check, once the owner opens the page.
-7. **Roadmap item 7** (retire the EVM wallet sign-in): follows J8 being validated with a real wallet.
+Everything in confirmed scope that needs no external action is now implemented on draft PRs (#40–#59).
+What remains waits on the owner, an environment or a hold:
+
+1. **J8, a real wallet:** link with Phantom, Solflare or Backpack against a running web app and API with both J8 flags on. Needs a deploy (on hold) or a local run by the owner.
+2. **J7 live validation:** needs an owner-configured devnet RPC endpoint and a deploy (on hold).
+3. **J1, J5 and J8 in Unity 6** (Editor, then IL2CPP): `clients/unity-starter/Validation/README.md`. **Blocked: no Unity environment.**
+4. **J11:** the signed-in `/rwa` check, once the owner opens the page.
+5. **Token-2022 reconciliation, wiring:** `decideToken2022Retry` (#58) is offline only. Wiring it into the engine waits for the RWA execution holds to lift. TRON stays out of scope.
+   - **Acceptance criteria (met offline):** a retry only after `expired`, past the blockhash limit at finalized, with no other unsettled attempt on the mint, and only when the signature and every state reading show the action did not happen. An exact change means `landed`, never retried. Any other change, or missing evidence, holds the intent.
+6. **Metrics collector:** provision a Prometheus-compatible scraper and an Alertmanager-compatible route when operations decide to (examples in `docs/observability.md`).
+7. **Retired EVM tables:** dropping `wallet_links` and `wallet_nonces` loses data, so it needs the owner.
 
 ## Owner decisions (2026-10-21)
 

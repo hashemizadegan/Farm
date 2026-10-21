@@ -407,32 +407,6 @@ d("API authorization", () => {
     expect(actions).toContain("permission.denied");
   });
 
-  it("rejects a replayed wallet nonce", async () => {
-    const address = "0x1111111111111111111111111111111111111111";
-    const { app: walletApp } = await buildTestApp({ pool, deps: { recoverMessageAddress: async () => address } });
-    try {
-      const n = await walletApp.inject({ method: "POST", url: "/v1/wallet/nonce", headers: await auth("owner"), payload: { address, chainId: 31337 } });
-      expect(n.statusCode).toBe(200);
-      const signature = `0x${"11".repeat(65)}`;
-      const first = await walletApp.inject({ method: "POST", url: "/v1/wallet/verify", headers: await auth("owner"), payload: { message: n.json().message, signature } });
-      expect(first.statusCode).toBe(200);
-      const replay = await walletApp.inject({ method: "POST", url: "/v1/wallet/verify", headers: await auth("owner"), payload: { message: n.json().message, signature } });
-      expect(replay.statusCode).toBe(400);
-    } finally {
-      await walletApp.close();
-    }
-  });
-
-  it("refuses disallowed chains when issuing a nonce", async () => {
-    const r = await app.inject({
-      method: "POST",
-      url: "/v1/wallet/nonce",
-      headers: await auth("owner"),
-      payload: { address: "0x1111111111111111111111111111111111111111", chainId: 1 },
-    });
-    expect(r.statusCode).toBe(400);
-  });
-
   it("validates NFT metadata against content rules", async () => {
     const r = await app.inject({
       method: "POST",

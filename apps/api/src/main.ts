@@ -1,7 +1,6 @@
 import { apiDocsEnabled, apiEnvSchema, loadEnv } from "@metafarm/config";
 import { createPool, readOwnershipIndex } from "@metafarm/db";
 import { createLogger, installGracefulShutdown } from "@metafarm/observability";
-import { recoverMessageAddress } from "viem";
 import { IndexOwnershipReader, httpSolanaRpc, httpTron } from "@metafarm/chain";
 import { buildApp } from "./app";
 import { createDevProvider } from "./auth/dev";
@@ -46,7 +45,6 @@ const app = await buildApp({
     jobs,
     storage: storage(),
     auth: authProvider(),
-    recoverMessageAddress: (message, signature) => recoverMessageAddress({ message, signature }),
     now: () => new Date(),
     harvestChain:
       env.CHAIN_RPC_URL && env.HARVEST_REGISTRY_ADDRESS ? createHarvestChainReader(env.CHAIN_RPC_URL, env.HARVEST_REGISTRY_ADDRESS) : undefined,
