@@ -24,6 +24,13 @@ chain events rather than by live provider calls, and that says exactly which slo
 | Bubblegum source | `createBubblegumOwnershipSource` (packages/chain) | Reads the finalized history of the asset's Merkle tree, which comes from the platform's records (`asset_representations.tree_id`; null when unknown or ambiguous). A mint comes from the leaf-schema event that follows `mint_v1` / `mint_to_collection_v1`. A transfer (leaf owner to new leaf owner) and a burn are decoded from the instruction, with the asset derived as `leafAssetId(tree, nonce)`. A redeem of the asset is refused. On a first window, the asset's mint must be in the tree's history, otherwise nothing is stored and the asset stays not indexed (a wrong tree can never make it look unowned). Discriminators and layouts are tested against mpl-bubblegum. V1 instructions only. |
 | Token-2022 source | `createToken2022OwnershipSource` + `httpSolanaHistoryRpc` (packages/chain) | Reads the mint's finalized signatures (newest first, paged, stopping at the cursor) and each successful transaction. It reduces each transaction to its change in holders: pre/post token balances netted per owner, losers paired with gainers in owner order as transfers, a leftover gain as a mint and a leftover loss as a burn. Failed transactions are skipped. It refuses (stores nothing) when a listed transaction is unavailable, a balance has no owner, or a window exceeds its limit. The RPC client has only `getSlot`, `getSignaturesForAddress` and `getTransaction`, all at `finalized`; it cannot send. |
 
+## Client
+
+The Unity core shows `chain_index` readings as known ownership, labelled with their slot, for example
+"On-chain holders (as indexed, slot 310000500)". An indexed asset with no holders (burned) reads "No
+current holders on chain", which is never shown for an asset that is not indexed. `fixture` readings
+stay "Test data, not chain state".
+
 ## Settings (all off by default)
 
 | Setting | Service | Effect |

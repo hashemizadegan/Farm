@@ -16,6 +16,7 @@ namespace Metafarm.Twin.Core.Tests
     {
         [Theory]
         [InlineData("indexed", "das", "inclusion_verified", OwnershipKnowledge.Known)]
+        [InlineData("indexed", "chain_index", "indexer_reported", OwnershipKnowledge.Known)]
         [InlineData("indexed", "fixture", "fixture", OwnershipKnowledge.TestData)]
         [InlineData("not_indexed", null, null, OwnershipKnowledge.Unknown)]
         [InlineData("not_on_chain", null, null, OwnershipKnowledge.NotOnChain)]
@@ -26,6 +27,26 @@ namespace Metafarm.Twin.Core.Tests
             Assert.Equal(expected, OwnershipDisplay.Classify(o));
             Assert.Equal(OwnershipKnowledge.Unknown, OwnershipDisplay.Classify(null));
             Assert.Equal("Ownership unknown (not indexed)", OwnershipDisplay.Label(new OwnershipReading { Status = "not_indexed" }));
+        }
+
+        [Fact]
+        public void LabelsIndexedOwnershipWithItsSlotAndNeverConfusesNoHoldersWithUnknown()
+        {
+            var held = new OwnershipReading
+            {
+                Status = "indexed", Source = "chain_index", Assurance = "indexer_reported", AsOfSlot = "310000500",
+                Holders = { new Holder { Owner = "Owner1111111111111111111111111111111111111", Amount = "1" } },
+            };
+            Assert.Equal("On-chain holders (as indexed, slot 310000500)", OwnershipDisplay.Label(held));
+
+            var burned = new OwnershipReading { Status = "indexed", Source = "chain_index", Assurance = "indexer_reported", AsOfSlot = "310000600" };
+            Assert.Equal(OwnershipKnowledge.Known, OwnershipDisplay.Classify(burned));
+            Assert.Equal("No current holders on chain (as indexed, slot 310000600)", OwnershipDisplay.Label(burned));
+
+            var verified = new OwnershipReading { Status = "indexed", Source = "das", Assurance = "inclusion_verified", Holders = held.Holders };
+            Assert.Equal("On-chain holders (proof checked)", OwnershipDisplay.Label(verified));
+
+            Assert.Equal("Ownership unknown (not indexed)", OwnershipDisplay.Label(new OwnershipReading { Status = "not_indexed", Reason = "reader_unavailable" }));
         }
 
         [Fact]

@@ -15,7 +15,7 @@ disabled.
 | `Runtime/Core/Transport` (`…Core.Transport`) | none | `ITwinTransport`: GET only |
 | `Runtime/Core/Auth` (`…Core.Auth`) | none | `ITokenSource` for the user's OIDC access token; `NoTokenSource` for offline use. No token is stored in the starter. |
 | `Runtime/Core/Api` (`…Core.Api`) | none | `ITwinReadApi` and `TwinReadClient` (scene, asset detail, commitment proof, snapshots, anchor plans); ids must be UUIDs, and anchor carriers and networks must be known values |
-| `Runtime/Core/Ownership` (`…Core.Ownership`) | none | `IOwnershipReader`, `ApiOwnershipReader`, and `OwnershipDisplay`, which never shows "not indexed" as "no owner" and labels fixture data as test data |
+| `Runtime/Core/Ownership` (`…Core.Ownership`) | none | `IOwnershipReader`, `ApiOwnershipReader`, and `OwnershipDisplay`, which never shows "not indexed" as "no owner", labels fixture data as test data, and names the slot indexed ownership is as of (an indexed asset with no holders reads "No current holders on chain") |
 | `Runtime/Core/Transactions` (`…Core.Transactions`) | none | `ITransferPreviewer` (preparation only) and `DisabledTransferPreviewer`, the default. There is no signing or submission interface. |
 | `Runtime/Core/Verification` (`…Core.Verification`) | none | `ICommitmentVerifier` and `Rfc9162CommitmentVerifier`: checks content hashes and Merkle proofs locally, using the platform's scheme `metafarm-merkle-sha256/1` |
 | `Runtime/Core/Anchoring` (`…Core.Anchoring`) | none | `AnchorPlanReview`: checks an anchor plan (`AnchorModels.cs`) against the root the client verified, refuses any plan that claims to be executable, and words it as "planned only, not anchored" |
