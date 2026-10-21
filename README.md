@@ -66,6 +66,7 @@ pnpm lint && pnpm typecheck
 | Tenant isolation incl. RLS without filters | `packages/db/src/tenant-isolation.int.test.ts` |
 | API authorization (404 cross-tenant, role 403s, uploads, wallet replay) | `apps/api/src/authz.int.test.ts` |
 | Security baseline (headers, CORS, body limit, rate limit, webhooks) | `apps/api/src/app.test.ts` |
+| Rate limits shared across replicas through Redis | `apps/api/src/rate-limit.int.test.ts` |
 | Job idempotency, retries, dead-letter | `apps/worker/src/runner.test.ts`, `apps/worker/src/jobs.int.test.ts` |
 | Deterministic 3D fixtures | `packages/map-scene/src/core/scene-builder.test.ts` + `__fixtures__/` |
 | Contracts (roles, fixed supply, pause, no confiscation) | `contracts/nft/test/` |

@@ -125,6 +125,12 @@ export const apiEnvSchema = z
     // Per client IP per window. A farm team often shares one connection, and the app polls while pages are open.
     RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(1200),
     RATE_LIMIT_WINDOW: z.string().default("1 minute"),
+    /**
+     * Where rate-limit counters live. `memory` (default) counts per API process, so each replica has its
+     * own budget. `redis` shares the counters across replicas through REDIS_URL. If Redis cannot be
+     * reached, requests are served without limiting (fail open) and the error is logged.
+     */
+    RATE_LIMIT_STORE: z.enum(["memory", "redis"]).default("memory"),
     TRUST_PROXY: bool.default("true"),
     WEBHOOK_SIGNING_SECRETS: csv.default(""),
     /** Let a signed-in user with no workspace create one and become its owner. */
