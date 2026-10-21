@@ -6,6 +6,32 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 01:00 local (ownership ingestion interface; 1,000+ holder stress harness)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #76 | ownership ingestion interface, simulation adapters, synthetic generator, scale tests | `feature/yield-ownership-ingestion` | `670d624` | #75 | 39678157321 | 14/14 passed |
+
+- **Interface:** `IOwnershipSourceAdapter` returns a `VerifiedOwnershipSnapshot`. `loadVerifiedOwnershipSnapshot` is the entry
+  point and fails closed:
+  - real-network requests are refused before the adapter is called;
+  - only `simulationOnly: true` adapters are accepted;
+  - the result must re-verify, be frozen, and answer the request (asset, network, reference, verification time).
+- **Adapters:**
+  - `MockOwnershipAdapter`: deterministic synthetic data.
+  - `FileFixtureOwnershipAdapter`: a strict JSON fixture with decimal-string u64s, read through an injected reader, with an
+    optional SHA-256 pin. The domain reads no files.
+  - A chain-backed adapter (Y0/Y5) is still blocked on D-16, D-12 and D-17.
+- **Generator:** SplitMix64 over bigints, canonical order by construction, uniform, skewed and extreme u64 profiles. The
+  committed 40-holder fixture is reproduced byte for byte by an independent Python implementation.
+- **Scale:** the pipeline with layout 2 leaves over 1,024, 1,537, 1,200 (extreme: total > 100 × u64), 2,048 and 4,096
+  holders. Each run is checked independently: every proof, every leaf, the root via the twin implementation, exact
+  largest-remainder allocation, conservation, and determinism by seed. No stack or size limits were hit.
+- **Finding (no behaviour change):** with the simulation default `dustThreshold: 0n` (pending D-9), a zero allocation is a
+  payable entry, and the claim tree refuses the whole cycle (fail closed). Real datasets with tiny holders need a threshold
+  of at least 1, or a D-9 rule deferring zero allocations.
+- **Holds unchanged:** no chain, RPC, network, signing, deployment or merge.
+
 ## 2026-10-22, 00:27 local (owner decision: leaf layout 2 approved)
 
 The owner approved claim leaf layout 2 in these terms:
