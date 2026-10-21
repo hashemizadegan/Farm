@@ -6,6 +6,32 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-21, night (ownership snapshot verifier; leaf layout 2)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #75 | ownership snapshot verifier, bound into the pipeline and every leaf | `feature/yield-ownership-snapshot` | `b7854a7` | #74 | 39664489877 | 14/14 passed; C# 82 passed (81 on #74) |
+
+- **Snapshot verifier:** `verifyAndNormalizeSnapshot` takes raw u64 shares as bigints and returns a deeply frozen
+  `VerifiedOwnershipSnapshot`, with exact integer share bases and a SHA-256 commitment (matches an independent Python
+  vector).
+  - Network ids: simulation only; real networks are refused.
+  - Parties: unique and already in canonical order; unsorted input is refused.
+  - Payout addresses: unique after normalisation.
+  - Total: an exact bigint sum, refused if zero.
+  - This verifies a snapshot as data. Reading ownership from a chain (Y0, Y5) is still not built.
+- **Pipeline binding:** the pipeline consumes the verified snapshot.
+  - It requires the snapshot's asset to match the leaves' asset and builds **leaf layout 2**: the §6.2 leaf plus the
+    32-byte snapshot hash, 233 bytes.
+  - The artifact embeds the snapshot; verification recomputes its hash, requires it in every leaf, and requires the
+    plan's shares and addresses to match it.
+  - A one-unit share change or an address change fails verification, even with the snapshot and artifact hashes
+    recomputed.
+- **Needs owner acknowledgement:** leaf layout 2 is an addition to the plan's §6.2 table, which defines layout 1
+  only. The plan document is not changed. Layout 1 and its parity vectors are untouched.
+- **C#:** the codec handles layout 2; the payload verifier requires the trusted snapshot hash inside the leaf.
+- **Holds unchanged:** no signing, chain or network access.
+
 ## 2026-10-21, late night (simulation cycle pipeline; claim lookup; C# cross-stack check)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
