@@ -122,7 +122,7 @@ Trust boundaries: **browser ↔ API** (untrusted input), **provider ↔ webhook 
 ## Also covered
 
 - **Transport and headers:** helmet on the API (CSP `default-src 'none'`), nonce-based CSP and frame-ancestors `none` on the web app, HSTS when deployed, `no-store` on API responses.
-- **Abuse:** per-IP rate limiting. `RATE_LIMIT_STORE=redis` shares the counters across API replicas (keys under `QUEUE_PREFIX:rate-limit:`); the default `memory` store counts per process, so with N replicas a client gets up to N times the budget. The Redis store fails open: if Redis is unreachable, requests are served without limits and a warning is logged once per outage. Tests: `apps/api/src/rate-limit.int.test.ts`.
+- **Abuse:** per-IP rate limiting. `RATE_LIMIT_STORE=redis` shares the counters across API replicas (keys under `QUEUE_PREFIX:rate-limit:`); the default `memory` store counts per process, so with N replicas a client gets up to N times the budget. The Redis store fails open: while Redis is unreachable, including the moments before its connection is first ready after the API starts, requests are served without limits, and a warning is logged once per outage. Tests: `apps/api/src/rate-limit.int.test.ts`.
 - **Logging:** pino redaction of authorization headers, cookies, secrets, signatures and emails; IP addresses are salted hashes in audit records.
 
 ## Harvest registry signer key
