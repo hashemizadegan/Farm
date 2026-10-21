@@ -3,6 +3,25 @@
 The latest entry is on top. Each entry records what was completed (with the exact verification), what
 is blocked and why, and the next action. Scope and statuses are in [`plan.md`](plan.md).
 
+## 2026-10-21, 13:14 local (readiness for review; activity paused)
+
+- **#59 approved to stay a draft** (owner). The EVM tables and data are kept: no drops, no changes.
+- **Readiness document:** `docs/delivery/readiness.md`. It covers:
+  - the status table;
+  - the linear merge order of #40–#59 (verified ancestry; merge commits, not squash);
+  - the breaking-change matrix: #59 is the only PR that removes operations, and #55 changes RWA list
+    paging. All four migrations are additive; 0019 only widens a CHECK;
+  - the devnet runbook for J7 and J8;
+  - 14 security invariants, with evidence;
+  - one recorded gap: the J7 sources do not check the endpoint's genesis hash, so the runbook does it
+    manually.
+- **Holds confirmed:**
+  - J7 and J8 live validation wait for the deployment stack;
+  - Unity Editor and IL2CPP wait for the engine host;
+  - Token-2022 wiring is blocked by the RWA execution hold;
+  - `RWA_SOLANA_SIGNER_SECRET` and `RWA_MAINNET_ENABLED` are off, and TRON execution is off.
+- **Next action:** owner review in the order of `readiness.md`, section 2. No further work is scheduled.
+
 ## 2026-10-21, afternoon (owner decisions on wallets, Token-2022/TRON and metrics)
 
 ### Draft PR stack (all drafts, none merged)

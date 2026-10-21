@@ -3,6 +3,9 @@
 Living document. Update it in the same PR as the work it describes. The handoff record for the next
 session is [`handoff.md`](handoff.md).
 
+**Merge order, breaking changes, the devnet runbook for J7 and J8, and the security invariants:**
+[`readiness.md`](readiness.md).
+
 ## Product and sources of scope
 
 A separate 3D farm client (Unity 6, URP) on the existing Farm platform. **Ownership** comes from the
