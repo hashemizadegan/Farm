@@ -9,3 +9,4 @@ export * from "./gates";
 export * from "./evidence";
 export * from "./attestation";
 export * from "./quorum";
+export * from "./attesters";
