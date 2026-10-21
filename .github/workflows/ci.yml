@@ -198,6 +198,9 @@ jobs:
       NEXT_PUBLIC_API_URL: http://localhost:4000
       # Every browser in the run shares one client IP; the production per-IP limit would throttle the suite.
       RATE_LIMIT_MAX: "10000"
+      # J8 is off by default everywhere; the e2e stack turns it on to test the account page's linking flow.
+      PLAYER_WALLETS_ENABLED: "true"
+      NEXT_PUBLIC_PLAYER_WALLETS_ENABLED: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
