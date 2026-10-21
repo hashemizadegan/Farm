@@ -21,3 +21,4 @@ export * from "./claim-tree";
 export * from "./evidence-store";
 export * from "./pipeline";
 export * from "./claim-lookup";
+export * from "./ownership-snapshot";
