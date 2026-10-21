@@ -1,6 +1,6 @@
 # Real yield distribution layer: plan
 
-**Status: proposal for review, revision 3. Nothing here is approved, implemented, migrated or
+**Status: proposal for review, revision 4. Nothing here is approved, implemented, migrated or
 deployed.** This plan authorises no implementation, execution, deployment, signing or chain
 connection. Every recommendation is provisional until the owner approves it, and nothing here is a
 legal conclusion.
@@ -13,7 +13,9 @@ legal conclusion.
 Revision 2 corrected the issues raised in the repository review of revision 1 (`485a6e0`). Revision 3
 (from `6f28a3f`) aligns decision timing with the first operation that needs each decision (§11, §12),
 separates safeguards from open policies (§0.3), adds the disclosure-governance decision D-39, and
-qualifies statements flagged in the decision briefing (§13).
+qualifies statements flagged in the decision briefing (§13). Revision 4 (from `a80fc90`) applies the
+revision-3 review: consistent gates for D-3, D-11, D-13, D-14, D-17, D-18 and D-24, a read-only Y15,
+the D-19 coverage gap, and the open questions in §13.2.
 
 **Labels used throughout:**
 
@@ -231,12 +233,19 @@ reachable.
 any terminal state, including `cancelled` or `abandoned` before publication.
 
 **Non-simulation cycles fail closed.** Each step refuses unless the approved records it needs exist:
-- `lock` needs an approved entitlement instrument (D-1) and an approved policy record (D-2…D-10,
-  D-21);
-- `calculate` needs an approved holding model (D-12) and a verified ownership source (D-16);
+- registering real evidence needs approved storage and retention (D-24);
+- `lock` needs an approved entitlement instrument (D-1), an approved policy record (D-2…D-10,
+  D-21), an approved settlement unit (D-3), and an approved asset class (D-20), with D-18 for
+  compressed-NFT cycles and D-19 for equipment;
+- `calculate` needs an approved holding model (D-12), a verified ownership source (D-16), and an
+  approved payout wallet for every allocated party (D-14). What happens when a party has none is an
+  open question (§13.2): refuse the whole cycle, or record that party's amount as withheld with no
+  leaf. Until it is answered, `calculate` of a non-simulation cycle does not complete for such a
+  party;
 - `approve` needs an approved attestation quorum for the asset class (D-23);
 - `publish` needs a named dispute authority (D-22) and, if the public summary is enabled, an approved
-  public-exposure rule (D-30).
+  public-exposure rule (D-30);
+- `fund` is refused in the current phase, and always for simulation cycles.
 
 Simulation cycles may use simulation-labelled records only, and can never be funded (§12.1).
 
@@ -249,7 +258,7 @@ Simulation cycles may use simulation-labelled records only, and can never be fun
 | calculated → under_review | `submit`: preparer | — | — |
 | under_review → inputs_locked | `reject`: reviewer | reason recorded; the artifact set is invalidated | — |
 | under_review → approved | `approve`: reviewer ≠ preparer (`yield:approve`) | attestation quorum on the **artifact-set hashes**, from an **approved** quorum record for the asset class (D-23; none → refused); no open dispute; compliance snapshot recorded (§4.4) | same person as preparer (four-eyes, as `rwa_orders_four_eyes`); quorum missing; the set changed since attestation |
-| approved → published | `publish`: approver | approved artifact set unchanged | any hash mismatch |
+| approved → published | `publish`: approver | approved artifact set unchanged; for non-simulation cycles, a named dispute authority (D-22) | any hash mismatch; no dispute authority (non-simulation) |
 | any pre-publication state → cancelled | `cancel`: approver | reason | — |
 | any pre-publication state → abandoned | system, after the inactivity deadline (D-10) | — | — |
 | published → closed | `close`: approver | reason `no_distribution` (NDY = 0), `loss`, `simulation`, or `unfunded` (a decision not to fund) | open dispute |
@@ -1071,18 +1080,18 @@ These are verified for the files named, and no further. Y3 onwards depends on dr
 | Y1 | Vocabulary, state machine, invariants (types and docs) | none | — | main (`packages/domain`) | the whole PR; no policy values | transition-table tests; invalid transitions refused | — | owner authorisation |
 | Y2 | Configurable calculation library: F1–F4, conversion rules, rounding variants, u64 bound, artifact hash | none | D-1, D-2, D-4, D-5, D-6, D-7, D-8, D-9, D-10, D-21 (via approved policy records) | Y1; main `canonicalJson` | the whole library; **no exported economic defaults**; a missing parameter is an error; examples A–G as `simulation` fixtures | examples A–G exact under each alternative; overflow is deterministic; same inputs give the same hash | the policy records are approved | owner authorisation |
 | Y3 | Evidence and attestation model (manifest, types, signature *verification*) | none | D-23 (methods allowed for real attestations), D-24 (retention classes) | Y1; **PR #40** (`commitments.ts`) | the model supports all three attestation methods as types; real attestations refused without an approved method list | hash vectors; manifest reproducible | D-23 and D-24 approved | owner authorisation |
-| Y4 | Evidence storage wiring (private object storage) | none for the private-storage wiring; **D-24** before any public-storage option (IPFS, Arweave) is built | D-24 (real evidence, retention) | Y3; **PR #41** (interface); **PR #43** (`@metafarm/storage`) | private storage, plus an in-memory store for tests; non-simulation evidence registration refused until D-24 | bytes and hashes match; integrity errors refused | D-24 approved | owner authorisation; data-protection review [Legal] |
-| Y5 | Allocation from verified ownership events; fixture exclusion; unattributed and withheld recording | **D-12 (slots or elapsed time)**, D-17 (enforcement layers), D-18 (single compressed NFT only, unless pools are approved) | D-12 (model selection), D-13 (disposition) | **Y0**, Y2; #52 | snapshot and slot-weighted models; one asset per cycle; unattributed and withheld amounts recorded, never redistributed or disposed | weights match fixtures; fixture data in a non-simulation cycle refused; unknown ownership refused | D-12 and D-13 approved; Y0 operational | owner authorisation |
+| Y4 | Evidence storage wiring (private object storage) | none for the private-storage wiring; **D-24** before any public-storage option (IPFS, Arweave) is built | D-24 (real evidence, retention) | Y3; **PR #41** (interface); **PR #43** (`@metafarm/storage`) | private storage, plus an in-memory store for tests; non-simulation evidence registration refused until D-24. Y4 does not select a D-24 option: the private adapter sits behind the content-store interface, and stays limited to tests and simulation if D-24 chooses otherwise | bytes and hashes match; integrity errors refused | D-24 approved | owner authorisation; data-protection review [Legal] |
+| Y5 | Allocation from verified ownership events; fixture exclusion; unattributed and withheld recording | **D-12 (slots or elapsed time)**, D-17 (enforcement layers). D-18 only if a pool model is to be built; single-asset scope needs no D-18 | D-12 (model selection), D-13 (disposition) | **Y0**, Y2; #52 | snapshot and slot-weighted models; one asset per cycle; unattributed and withheld amounts recorded, never redistributed or disposed | weights match fixtures; fixture data in a non-simulation cycle refused; unknown ownership refused | D-12 approved; Y0 operational. (D-13 blocks only the disposition of unattributed or withheld amounts, which stay recorded and unpaid until it is approved.) | owner authorisation |
 | Y6 | Canonical leaves and proofs (TS and C#), u64 | **D-26** (hash function) | — | Y5; PR #40 (C# verifier) | — | the same leaf bytes in TS and C#; proofs verify; overflow refused | — | owner authorisation + D-26 (T) |
-| Y7 | Schema, append-only triggers, RLS (§7.2) | **D-31** (audit storage) | — | Y0–Y6; PR #40 (`data_commitments`); migrations after 0022 (#57) | simulation-label constraints included | constraint and trigger tests; simulation records can't be referenced by non-simulation cycles | — | owner authorisation + D-31 (T, L); **proposed** S sign-off (RLS) |
+| Y7 | Schema, append-only triggers, RLS (§7.2) | **D-31** (audit storage), **D-17** (database enforcement of fixture exclusion) | — | Y0–Y6; PR #40 (`data_commitments`); migrations after 0022 (#57) | simulation-label constraints included | constraint and trigger tests; simulation records can't be referenced by non-simulation cycles | — | owner authorisation + D-31 (T, L); **proposed** S sign-off (RLS) |
 | Y8 | Operator read API; public summary | **D-28** (roles and permissions) | **D-30** (public summary) | Y7; #54, #55 | operator read API; the `/v1/public/...` route is **not registered** until D-30 | contract and authorisation tests; nothing sensitive public | D-30 approved for the public route | owner authorisation + D-28 (T, P) |
-| Y9 | Preparer and reviewer workflow (`lock` … `publish`, `close`); preview against `calculate` | **D-11** (freeze timing) | D-1, D-2…D-10, D-21 (lock); D-12 (calculate); D-23 (approve); D-22 (publish) | Y8 | the full workflow for **simulation** cycles; non-simulation cycles fail closed at each gate (§2.1); without D-21, no estimates (unknown material cost blocks `lock`) | four-eyes enforced; preview changes nothing; gates refuse without approved records | each listed decision is approved | owner authorisation + D-11 (P, T) |
+| Y9 | Preparer and reviewer workflow (`lock` … `publish`, `close`); preview against `calculate` | **D-11** (confirm the freeze is implemented at `calculate`) | D-1, D-2…D-10, D-21, D-3, D-20 (with D-18 / D-19 for those classes) (lock); D-12, D-14 (calculate); D-23 (approve); D-22 (publish) | Y8 | the full workflow for **simulation** cycles; non-simulation cycles fail closed at each gate (§2.1); without D-21, no estimates (unknown material cost blocks `lock`) | four-eyes enforced; preview changes nothing; gates refuse without approved records | each listed decision is approved | owner authorisation + D-11 confirmation (P, T) |
 | Y10 | Web read-only pages | none for internal (staff) pages behind a flag that is off by default | **D-39** (disclosure version) before any non-staff audience; D-30 for public pages | Y8 | internal pages show "not an approved disclosure"; the flag can't be enabled in deployed environments without an approved disclosure version | Playwright and axe; approved disclosure present; prohibited wording absent (technical checks only, §10) | D-39 approved for that audience | owner authorisation |
 | Y11 | Unity read models | none | D-39 before user-facing text | Y8; PR #40 (C# core) | DTOs only; GET only | C# and reflection tests | **Unity 6 validation**; D-39 | owner authorisation |
 | Y12 | Login-to-party link (explicit, consented, authorised, revocable, audited) | **D-29** | — | Y8 | — | a link never creates or derives a party; revocation and audit tests | D-29; [Legal] consent wording (D-39) | owner authorisation + D-29 (L, P, T); **proposed** S sign-off |
 | Y13 | Holder-facing allocations, proofs, **unsigned** claim intents | — | D-15 (screening details) before any non-simulation intent; D-25 before any intent tied to a payout rail; D-27 before claims expire; D-39 holder disclosures | **Y12**, Y6, Y9 | simulation-labelled, unsigned intents over leaf data only; no rail-specific payout fields; no expiry action; compliance checkpoint 1 runs | intents deterministic; nothing signed or submitted; compliance refusals recorded | D-15, D-25, D-27 and D-39 approved | owner authorisation |
 | Y14 | Simulation and reconciliation tools | none | — | Y9, Y13 | simulation only | reports reconcile | — | owner authorisation |
-| Y15 | Devnet-only verification | — | D-3 and D-14 (only if devnet settlement is exercised); D-24; D-22, D-23 for devnet cycles | Y0, Y14; the **deploy hold lifted** | read-only devnet checks | matches the explorer | — | **separate devnet approval** by the owner; **proposed** S and O sign-off |
+| Y15 | Devnet-only, **read-only** verification: snapshots and allocations computed from a live devnet index (with Y0 verification) and compared with the explorer. **No settlement, payout, funding or claim is exercised in Y15.** | — | Whether devnet cycles are simulation-labelled is **open** (§13.2). If simulation-labelled: none beyond the simulation records. If non-simulation: every Real gate of §2.1 applies (including D-1, D-3, D-14, D-22, D-23, D-24). **D-3 and D-14 are not otherwise required for Y15.** Any devnet settlement or claim exercise is a separate, separately approved scope, gated by D-3, D-14, D-25 (design) and D-27. | Y0, Y14; the **deploy hold lifted** | read-only devnet checks only | matches the explorer | — | **separate devnet approval** by the owner; **proposed** S and O sign-off |
 | Y16 | Solana program / on-chain anchoring | D-25 (design), D-26, D-27 | — | separate approval | — | program audit [Ext] | — | **separate approval**; L, T, P; **proposed** S and O sign-off |
 | Y17 | Live claim or settlement | all production decisions (§12.2, group 8) | — | separate approval | — | — | — | **legal, security, operations and deployment approval**; this plan authorises none |
 
@@ -1095,6 +1104,10 @@ The register uses L, P and T only. Several milestones need sign-offs that the mo
 **Proposal, for the owner to accept or reject:** add explicit milestone sign-offs, **S** (security
 review) and **O** (operations readiness), at the PRs marked above. This plan does not name who holds
 them.
+
+**Coverage gap:** D-19 (linking assets to equipment, contract records, revenue evidence, telemetry
+provenance) has no PR in Y0–Y17. Supporting the equipment class would need an additional, separately
+approved PR. Until then the equipment class stays unsupported (§2.3).
 
 Rollback for Y0–Y14 is a revert. Additive migrations have down migrations, which are blocked in
 deployed environments (`downMigrationBlocked`, main).
@@ -1124,10 +1137,10 @@ sign-offs are in §11.2. Recommendations marked *provisional* are **not** approv
 | D-8 | Loss carry-forward | on / off / with expiry | on, no expiry, pending counsel | P, L | Real | policy incomplete; `lock` refused |
 | D-9 | Remainder rule; dust threshold | allocate / carry; threshold value | largest remainder; dust carried per party (§3.2) | P, T | Real | policy incomplete; `lock` refused |
 | D-10 | Corrections; overpayment netting or recovery; abandonment deadline | §2.4 | §2.4 | P, L | Real | corrections allowed only for simulation cycles |
-| D-11 | When the snapshot and allocation freeze | at `calculate` / at publication | at `calculate` (consistent with the freeze **safeguard**, §0.3; freezing at publication would conflict with it) | P, T | **Build** (Y9) | Y9 can't be written |
+| D-11 | Confirm how the freeze is implemented: the freeze point is `calculate` (a **safeguard**, §0.3) | freeze at `calculate` (the only option consistent with §0.3; freezing at publication would conflict with it) | at `calculate` | P, T | **Build** (Y9) | Y9 can't be written |
 | D-12 | Holding model; slots or elapsed time | §4.1 | time-weighted by slots | P, T, L | **Build** (slots or time, which sets Y5's scope); **Real** (model selection) | Y5 scope undefined / real allocation refused |
 | D-13 | Disposition of unattributed and withheld shares | hold / release / exclude from the denominator | hold, with expiry per D-27. Recording without redistribution is a **safeguard**; only the *disposition* is open | P, L | Real | amounts stay recorded and unpaid |
-| D-14 | Payout-wallet designation; lost wallets | — | per party, four-eyes, cooling-off | P, L | Dev (if devnet settlement is exercised); Prod | no payout destination |
+| D-14 | Payout-wallet designation; lost wallets | — | per party, four-eyes, cooling-off | P, L | **Real** (designation, before `calculate` of a non-simulation cycle, because each leaf names the party's payout wallet, §6.2); **Dev** (re-designation, only within a separately approved devnet settlement scope, not Y15); **Prod** (lost-wallet recovery) | `calculate` of a non-simulation cycle does not complete for a party without an approved payout wallet (refuse the cycle or withhold without a leaf: open, §13.2) |
 | D-15 | **Implementation details** of the three compliance checks (providers, freshness windows, case handling). The three checks themselves are a **safeguard** | — | adopt the existing pattern (main) | L, T | Real (before any non-simulation intent) | non-simulation intents refused |
 | D-16 | Cluster identifier, storage and binding (provenance is a **safeguard**) | genesis hash / another approved identifier; separate table / cursor columns | genesis hash per source (Y0) | T | **Build** (Y0) | Y0 can't be written; Y5 onwards blocked |
 | D-17 | Enforcement layers for fixture exclusion (exclusion is a **safeguard**) | DB / service / tests | all three | T | **Build** (Y5, Y7) | Y5 and Y7 can't be written |
@@ -1196,11 +1209,11 @@ sign-offs are in §11.2. Recommendations marked *provisional* are **not** approv
 | --- | --- | --- | --- | --- | --- |
 | **1. Technical foundations** | D-16, D-17, D-26, D-28, D-31, D-11, D-12 (slots or time) | T (D-11, D-12, D-28: + P; D-12: + L; D-31: + L); proposed S for D-16 and D-31 | writing Y0, Y5, Y6, Y7, Y8, Y9 | real cycles, devnet, enabling J7 or any deployment | Y0 design note; RPC cluster-identity behaviour [Ext]; schema and RLS review; on-chain hash cost [Ext] |
 | **2. Initial asset class and legal entitlement** | D-1, D-20, D-18, D-19; D-34 (scoping) | L, P, T | asset-class-specific work; real cycles for that class can `lock` (with group 3) | publication to the public, payouts, launch | executed or draft entitlement instruments; counsel's classification view; asset–equipment link design (if equipment) |
-| **3. Calculation and economic policy** | D-2, D-4, D-5, D-6, D-7, D-8, D-9, D-10, D-21, D-33 | P, L (D-4, D-9: + T; D-33: T, L) | approved policy records, so real cycles can `lock` and `calculate` | funding or payouts; the fee or reserve terms as legal terms (those come from D-1) | modelled scenarios (A–G and variants); counsel on reserves and losses; approved FX source terms |
-| **4. Ownership and eligibility** | D-12 (model), D-13, D-15 (details), D-14 | P, L, T | real allocations; non-simulation intents (D-15) | payouts; holder access | simulations over devnet event data (when permitted); screening-provider terms |
+| **3. Calculation and economic policy** | D-2, D-3 (real settlement unit), D-4, D-5, D-6, D-7, D-8, D-9, D-10, D-21, D-33 | P, L (D-4, D-9: + T; D-33: T, L) | approved policy records, so real cycles can `lock` and `calculate` | funding or payouts; the fee or reserve terms as legal terms (those come from D-1) | modelled scenarios (A–G and variants); counsel on reserves and losses; approved FX source terms |
+| **4. Ownership and eligibility** | D-12 (model), D-13 (disposition), D-15 (details), D-14 (payout-wallet designation, needed at `calculate`) | P, L, T | real allocations; non-simulation intents (D-15) | payouts; holder access | simulations over devnet event data (when permitted); screening-provider terms |
 | **5. Evidence, approval, disputes and audit** | D-22, D-23, D-24, D-32 | P, T, L | approving and publishing real cycles; registering real evidence | public exposure (D-30); payouts | data classification; retention advice [Legal]; attester identity requirements |
 | **6. Holder access and disclosures** | D-29, D-30, D-39 | L, P, T | Y12, Y13 and Y10/Y11 beyond staff; the public summary route | claims, funding or payments | consent and linking design; approved disclosure texts and translations [Legal] |
-| **7. Devnet** | D-3 (devnet), D-24, D-22/D-23 (devnet cycles), D-27 (if exercised), D-25 design (if exercised) | P, T, L; proposed S, O | Y15, given separate devnet approval and the deploy hold lifted | mainnet, production, live settlement | Y0 operational; a full-history RPC confirmed [Ext]; devnet runbook |
+| **7. Devnet** | D-24, D-22/D-23 (if devnet cycles are non-simulation, open in §13.2); D-3, D-14, D-25 design and D-27 only for a separately approved devnet settlement scope (not Y15) | P, T, L; proposed S, O | Y15, given separate devnet approval and the deploy hold lifted | mainnet, production, live settlement | Y0 operational; a full-history RPC confirmed [Ext]; devnet runbook |
 | **8. Production custody and settlement** | D-25 (use), D-3 (prod), D-14, D-27, D-32, D-34, D-35, D-36, D-37, D-38, D-39 (live) | L, P, T; proposed S, O | consideration of Y16 and Y17 | live payouts on its own: those still need deployment and execution approval | custody and segregation analysis [Legal]; signing governance design; incident-recovery plan; audit of any program [Ext] |
 
 ### 12.3 Renumbering history
@@ -1240,7 +1253,9 @@ Revision 2 renumbered revision 1's decisions as follows:
 | D-27 (platform token) | D-38 |
 | D-28 (initial class) | D-20 |
 
-## 13. Clarifications (revision 3)
+## 13. Clarifications and open questions
+
+### 13.1 Clarifications (revision 3)
 
 1. **Publication is supported, not required.** A phase-1 cycle may end `cancelled` or `abandoned`
    without publishing (§2.1).
@@ -1254,3 +1269,25 @@ Revision 2 renumbered revision 1's decisions as follows:
 5. **FX (D-4) and non-FX data (D-33) are separate decisions.** Neither is a source of revenue (§3.2).
 6. **Browser and accessibility tests** check presence, prohibited wording and accessibility. They do
    **not** establish legal adequacy, which needs counsel under D-39 (§10).
+
+### 13.2 Open questions (revision 4)
+
+These are unresolved. Nothing in this plan answers them, and none has a provisional recommendation
+unless stated.
+
+1. **Are devnet (Y15) cycles always simulation-labelled, or may they be non-simulation?** The answer
+   decides which Real gates apply to Y15 (§11.1). Owner decision (2026-10-21): left open.
+2. **What does `calculate` do for an allocated party with no approved payout wallet (D-14)?**
+   - (a) refuse the whole cycle (fail closed);
+   - (b) produce no leaf for that party and record its amount as withheld, not redistributed
+     (consistent with §4.3).
+
+   Owner decision (2026-10-21): left open.
+3. **What does `close` with reason `unfunded` mean for allocations and claims?** Voided, deferred,
+   or carried forward. Under the legal-precedence safeguard (§0.1), closing must not be read as
+   extinguishing holder entitlements. [Legal]
+4. **Does designing the Y16 program need D-27 at build time?** Y16 lists D-27 under "decisions to
+   build", while §12.1 needs D-27 only at stages (c) and (d).
+5. **Should a leaf's recipient be a payout wallet at all,** or a party-scoped identifier resolved
+   to a wallet at payout? The identifier would remove the Real gate on D-14, but change the claim
+   design (D-25, D-26). §6.2 currently assumes a wallet.
