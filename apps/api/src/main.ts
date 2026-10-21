@@ -1,8 +1,8 @@
 import { apiDocsEnabled, apiEnvSchema, loadEnv } from "@metafarm/config";
-import { createPool } from "@metafarm/db";
+import { createPool, readOwnershipIndex } from "@metafarm/db";
 import { createLogger, installGracefulShutdown } from "@metafarm/observability";
 import { recoverMessageAddress } from "viem";
-import { httpSolanaRpc, httpTron } from "@metafarm/chain";
+import { IndexOwnershipReader, httpSolanaRpc, httpTron } from "@metafarm/chain";
 import { buildApp } from "./app";
 import { createDevProvider } from "./auth/dev";
 import { createOidcProvider } from "./auth/oidc";
@@ -50,6 +50,8 @@ const app = await buildApp({
       env.CHAIN_RPC_URL && env.HARVEST_REGISTRY_ADDRESS ? createHarvestChainReader(env.CHAIN_RPC_URL, env.HARVEST_REGISTRY_ADDRESS) : undefined,
     tron: env.RWA_TRON_API_URL ? httpTron(env.RWA_TRON_API_URL, { apiKey: env.RWA_TRON_API_KEY }) : undefined,
     solanaRpc: env.RWA_SOLANA_RPC_URL ? httpSolanaRpc(env.RWA_SOLANA_RPC_URL) : undefined,
+    // Ownership from the platform's index (read-only, off by default): without it, ownership reads `not_indexed`.
+    ownershipReader: env.TWIN_OWNERSHIP_INDEX_ENABLED ? new IndexOwnershipReader((asset) => readOwnershipIndex(pool, asset)) : undefined,
     solanaCluster: env.RWA_SOLANA_RPC_URL ? solanaClusterCheck(() => ({ url: env.RWA_SOLANA_RPC_URL!, network: env.RWA_SOLANA_NETWORK })) : undefined,
   },
   isDraining: () => shutdown.isShuttingDown,

@@ -25,6 +25,7 @@ const schedules = buildSchedules({
   contracts,
   twinSnapshotCron: env.TWIN_SNAPSHOT_CRON,
   twinSnapshotBatchCron: env.TWIN_SNAPSHOT_BATCH_CRON,
+  ownershipIndexCron: env.TWIN_OWNERSHIP_INDEX_CRON,
 });
 
 const queues = new Map<string, Queue>();
@@ -48,6 +49,7 @@ for (const s of schedules) {
 for (const [cron, queue, id, setting] of [
   [env.TWIN_SNAPSHOT_CRON, QUEUES.twinSnapshots, "twin-snapshots-sweep", "TWIN_SNAPSHOT_CRON"],
   [env.TWIN_SNAPSHOT_BATCH_CRON, QUEUES.twinSnapshotBatches, "twin-snapshot-batches-sweep", "TWIN_SNAPSHOT_BATCH_CRON"],
+  [env.TWIN_OWNERSHIP_INDEX_CRON, QUEUES.ownershipIndex, "ownership-index-sweep", "TWIN_OWNERSHIP_INDEX_CRON"],
 ] as const) {
   if (cron) continue;
   const q = queues.get(queue) ?? new Queue(queue, { connection, prefix: env.QUEUE_PREFIX });
