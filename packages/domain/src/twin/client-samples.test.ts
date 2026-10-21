@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { checkStorageRef, merkleLeaf, verifyMerkleInclusion } from "./commitments";
 import { twinAssetDetailSchema, twinLayerOf, twinSceneSchema } from "./model";
-import { reconstructFarmSnapshot } from "./snapshot";
+import { reconstructFarmSnapshot, serializeFarmSnapshot } from "./snapshot";
 import { planAnchor } from "./anchor";
 
 const samples = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../clients/unity-starter/Samples");
@@ -58,5 +59,28 @@ describe("client starter samples", () => {
     expect(batch.plan).toEqual(
       planAnchor({ carrier: "bubblegum_v1_leaf", network: "solana-devnet", subject: "batch", root: proof.root, label: proof.dataset, documentBaseUrl: "https://metadata.example.test", mainnetEnabled: false }),
     );
+  });
+
+  it("the snapshot chain samples link exact bytes -> commitment -> batch root -> anchor plan", async () => {
+    const bytes = readFileSync(path.join(samples, "snapshot-content.sample.json"));
+    const sha = createHash("sha256").update(bytes).digest("hex");
+    // The content sample is exactly the platform's serialisation of the snapshot sample, and verifies.
+    const { snapshot, check } = await reconstructFarmSnapshot(readFileSync(path.join(samples, "farm-snapshot.sample.json"), "utf8"));
+    expect(check.ok).toBe(true);
+    expect(bytes.toString("utf8")).toBe(serializeFarmSnapshot(snapshot));
+
+    const doc = load("snapshot-proof.sample.json") as {
+      commitment: { schema: string; subjectId: string; contentSha256: string; byteSize: number; storageRef: string; batch: { id: string; leafIndex: number } };
+      proof: { batchId: string; dataset: string; leaf: string; leafIndex: number; size: number; path: string[]; root: string };
+    };
+    expect(doc.commitment).toMatchObject({ schema: "metafarm.farm-snapshot", subjectId: snapshot.farmId, contentSha256: sha, byteSize: bytes.length, storageRef: `sha256:${sha}` });
+    expect(checkStorageRef(doc.commitment.storageRef, sha)).toEqual({ kind: "hash" });
+    expect(doc.proof.leaf).toBe(await merkleLeaf(sha));
+    expect(doc.commitment.batch).toEqual({ id: doc.proof.batchId, leafIndex: doc.proof.leafIndex });
+    expect(await verifyMerkleInclusion({ leaf: doc.proof.leaf, index: doc.proof.leafIndex, size: doc.proof.size, path: doc.proof.path, root: doc.proof.root })).toBe(true);
+
+    const plan = load("snapshot-batch-anchor-plan.sample.json") as { batchId: string; plan: unknown };
+    expect(plan.batchId).toBe(doc.proof.batchId);
+    expect(plan.plan).toEqual(planAnchor({ carrier: "token2022_metadata", network: "solana-devnet", subject: "batch", root: doc.proof.root, label: doc.proof.dataset, mainnetEnabled: false }));
   });
 });

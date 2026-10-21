@@ -2859,6 +2859,32 @@ paths:
         "409": { $ref: "#/components/responses/BadRequest" }
         "422": { $ref: "#/components/responses/BadRequest" }
 
+  /v1/tenants/{tenantId}/twin/snapshots/{commitmentId}/content:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: commitmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [twin]
+      summary: The exact stored bytes of a snapshot
+      description: |
+        The canonical JSON exactly as stored, re-hashed on read. SHA-256 of the body equals the
+        commitment's contentSha256 (also sent as ETag and X-Content-SHA256), so a client can tie the
+        snapshot it renders to the commitment, its batch inclusion proof and an anchor plan
+        without trusting the API's own check. Read-only.
+      operationId: getFarmSnapshotContent
+      responses:
+        "200":
+          description: The snapshot's canonical JSON bytes
+          headers:
+            ETag: { schema: { type: string }, description: The quoted contentSha256 }
+            X-Content-SHA256: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+
   /v1/tenants/{tenantId}/twin/snapshots/{commitmentId}/anchor-plan:
     parameters:
       - { $ref: "#/components/parameters/TenantId" }

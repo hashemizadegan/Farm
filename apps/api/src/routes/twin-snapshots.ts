@@ -6,7 +6,7 @@
  *
  * Read and verify only: nothing here is anchored on-chain, signed or submitted.
  */
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { farmSnapshotEntities, findDataCommitmentByRequest, getDataCommitment, getFarm, insertDataCommitment, listDataCommitments } from "@metafarm/db";
 import { ContentIntegrityError, buildFarmSnapshot, reconstructFarmSnapshot, serializeFarmSnapshot, SNAPSHOT_COMMITMENT_SCHEMA, type FarmSnapshot } from "@metafarm/domain";
 import { z } from "zod";
@@ -93,8 +93,8 @@ export async function twinSnapshotRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/v1/tenants/:tenantId/twin/snapshots/:commitmentId", async (req, reply) => {
-    const { tenantId, commitmentId } = parse(snapshotParams, req.params);
+  /** A snapshot commitment and its stored bytes, re-hashed on read (409 if they changed, 404 if gone). */
+  async function readSnapshot(req: FastifyRequest, tenantId: string, commitmentId: string) {
     const c = await app.inTenant(req, "rwa:read", (tx) => getDataCommitment(tx, commitmentId));
     if (!c || c.data_schema !== SNAPSHOT_COMMITMENT_SCHEMA) throw notFound("snapshot");
     let bytes: Uint8Array | null;
@@ -105,9 +105,32 @@ export async function twinSnapshotRoutes(app: FastifyInstance) {
       throw err;
     }
     if (!bytes) throw new HttpError(404, "snapshot_content_missing", "the snapshot's bytes are not in storage");
+    return { c, bytes };
+  }
+
+  app.get("/v1/tenants/:tenantId/twin/snapshots/:commitmentId", async (req, reply) => {
+    const { tenantId, commitmentId } = parse(snapshotParams, req.params);
+    const { c, bytes } = await readSnapshot(req, tenantId, commitmentId);
     const { snapshot, check } = await reconstructFarmSnapshot(new TextDecoder().decode(bytes));
     reply.header("etag", `"${snapshot.snapshotId}"`);
     return { commitment: toCommitment(c), check, snapshot };
+  });
+
+  /**
+   * The exact stored bytes of a snapshot (canonical JSON), so a client can hash them itself and
+   * compare with the commitment's contentSha256: the first link from what it renders to the batch
+   * root and an anchor plan. Content-addressed: the bytes for a commitment never change (the
+   * security hook still sends cache-control: no-store, like every API response).
+   */
+  app.get("/v1/tenants/:tenantId/twin/snapshots/:commitmentId/content", async (req, reply) => {
+    const { tenantId, commitmentId } = parse(snapshotParams, req.params);
+    const { c, bytes } = await readSnapshot(req, tenantId, commitmentId);
+    return reply
+      .type("application/json; charset=utf-8")
+      .header("etag", `"${c.content_sha256}"`)
+      .header("x-content-sha256", c.content_sha256)
+      .header("x-content-type-options", "nosniff")
+      .send(Buffer.from(bytes));
   });
 
   /** For an idempotent replay: the snapshot's header, read back from storage. */

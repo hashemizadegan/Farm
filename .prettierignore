@@ -1,0 +1,2 @@
+# Exact canonical bytes: their SHA-256 is part of a test vector. Never reformat.
+clients/unity-starter/Samples/snapshot-content.sample.json
