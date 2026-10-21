@@ -1,0 +1,230 @@
+{
+  "scheme": "metafarm-yield-ownership-fixture/1",
+  "simulation": true,
+  "snapshot": {
+    "snapshotId": "09f1fd9d-03f0-49b4-9532-74161bbf8475",
+    "assetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "networkId": "simulation",
+    "reference": {
+      "kind": "slot",
+      "value": "250000000",
+      "observedAt": "2026-09-30T23:59:59Z"
+    },
+    "entries": [
+      {
+        "partyId": "holder-000001",
+        "payoutAddress": "000000015d5bca4696b343b370d29b6c7d22528d0bf2b716f99154755eb7f92b",
+        "rawShares": "1"
+      },
+      {
+        "partyId": "holder-000002",
+        "payoutAddress": "000000021289a69805c125b1daa27fb8dacb9e733ed08d59cb3f472758a5f17b",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000003",
+        "payoutAddress": "0000000322af6aeaa88e8dcc2d2bae64640abfb9ad0e83a710231b079d30ff21",
+        "rawShares": "18446744073709550799"
+      },
+      {
+        "partyId": "holder-000004",
+        "payoutAddress": "0000000447e1dbe249cb520bbbea42bd69484adcc33e61bc6ef9e4c4752cd583",
+        "rawShares": "18446744073709550820"
+      },
+      {
+        "partyId": "holder-000005",
+        "payoutAddress": "0000000510bf7972f379031e974041d15ad75c38ff9b273f422863872601349f",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000006",
+        "payoutAddress": "000000062663e5e9dcbcbabaa8bb872e52c6235ce1774d56b0dc91ac8634930f",
+        "rawShares": "18446744073709550673"
+      },
+      {
+        "partyId": "holder-000007",
+        "payoutAddress": null,
+        "rawShares": "1"
+      },
+      {
+        "partyId": "holder-000008",
+        "payoutAddress": "00000008626c1ef331f85c1801457b862cc7b3c93825403df6f9ad71272c78c4",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000009",
+        "payoutAddress": "000000091467a1289e64eb8900eb8b8a36b5b98df2443b542bf81344278641ca",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000010",
+        "payoutAddress": "0000000a2c58daa06446969a79559ff0f9d269764a127fe7aac0fffdbca48838",
+        "rawShares": "1"
+      },
+      {
+        "partyId": "holder-000011",
+        "payoutAddress": "0000000b0d1d73ce3f48b12d78e74b9eb7b50e87eb26c664ba822e65ef794a8d",
+        "rawShares": "1732539916618161734"
+      },
+      {
+        "partyId": "holder-000012",
+        "payoutAddress": "0000000cbe1b67d3e6055f336fbe6fba62ce02c81fbf7b87b4f36bc8f2cf4b80",
+        "rawShares": "11234410618691852933"
+      },
+      {
+        "partyId": "holder-000013",
+        "payoutAddress": "0000000d760d091192ea9c40ada4aecc5d14a11a00e9f0d36844e2b338c7a37c",
+        "rawShares": "18446744073709550957"
+      },
+      {
+        "partyId": "holder-000014",
+        "payoutAddress": null,
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000015",
+        "payoutAddress": "0000000f8f03a4098fa3ef762ce286c208bcb62c865b472b215e12f8688d0534",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000016",
+        "payoutAddress": "00000010ce95ee53fb935dd300e424b1d5f19619d772c7af84cf53350aa2ce72",
+        "rawShares": "1"
+      },
+      {
+        "partyId": "holder-000017",
+        "payoutAddress": "0000001140fbef7e9e83ad0fe3855e095dae01254986b0b2c99e17b50e65fffe",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000018",
+        "payoutAddress": "00000012921759fe689367e31a372f66937b43c576bb48b22ce2dbfb1f6bb18e",
+        "rawShares": "15649850000086528741"
+      },
+      {
+        "partyId": "holder-000019",
+        "payoutAddress": "000000136da665476722c6719ab02bfe1a8c65e1dcf0bf6e8b69b1d5e8a427e1",
+        "rawShares": "1"
+      },
+      {
+        "partyId": "holder-000020",
+        "payoutAddress": "00000014ba8354fbcadebb989d8344cb7e40ed487699eb261deb4fab080563da",
+        "rawShares": "11810728508767196455"
+      },
+      {
+        "partyId": "holder-000021",
+        "payoutAddress": null,
+        "rawShares": "2505743254808259108"
+      },
+      {
+        "partyId": "holder-000022",
+        "payoutAddress": "000000166c4c1dd3ff95abeb211ca5b5e150df5624dbee67256266eecc313251",
+        "rawShares": "1"
+      },
+      {
+        "partyId": "holder-000023",
+        "payoutAddress": "00000017b617378ade461dab293da4449f6c74c32225acf69cba1807f2073587",
+        "rawShares": "1036264666215216685"
+      },
+      {
+        "partyId": "holder-000024",
+        "payoutAddress": "00000018c3d5fcec3bbe5ea683c7f7bd2e5c934690c69d7223ea8ed75cf76325",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000025",
+        "payoutAddress": "0000001922ec4ed9c591e6ecfdd4307c25d8447216afc3874e873db80b1f8057",
+        "rawShares": "4913149112207538097"
+      },
+      {
+        "partyId": "holder-000026",
+        "payoutAddress": "0000001ae5bf32611b73f58487ea22ca1ccf382cd55fa4d5cd43431a8e3844e6",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000027",
+        "payoutAddress": "0000001b10a30f7df284457704d5408e9446445fadd41442e4f4a13152fb365a",
+        "rawShares": "969620358379696739"
+      },
+      {
+        "partyId": "holder-000028",
+        "payoutAddress": null,
+        "rawShares": "13460180797941602075"
+      },
+      {
+        "partyId": "holder-000029",
+        "payoutAddress": "0000001d7540a1386e088cd42911bb79f8a053df720c02268b9cbcb6c9fb7f90",
+        "rawShares": "2568251650023756066"
+      },
+      {
+        "partyId": "holder-000030",
+        "payoutAddress": "0000001e29a9cf7a34107fc69ec3430830afcd67f70485a1c3abb87f5a6dcd60",
+        "rawShares": "1"
+      },
+      {
+        "partyId": "holder-000031",
+        "payoutAddress": "0000001f18a95c4f248015ce2973f1743545b2ab814f2e2ab2ee98c05ebc5bc3",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000032",
+        "payoutAddress": "00000020154c1555448baef0d74f143f4ff38eb9f1e716f315588536aa01f222",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000033",
+        "payoutAddress": "000000211b3077a45b478b9a80b40f48d11706158a8c61b1ec7cc2205e80f08d",
+        "rawShares": "365731947859761128"
+      },
+      {
+        "partyId": "holder-000034",
+        "payoutAddress": "0000002279db70b15fee847158a4e09032c9e3c5fb54b9b57b8975013e11f04b",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000035",
+        "payoutAddress": null,
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000036",
+        "payoutAddress": "000000247338b005045f16ac1eaa36120431976038ca43393fb1a952e1468dc1",
+        "rawShares": "18446744073709550642"
+      },
+      {
+        "partyId": "holder-000037",
+        "payoutAddress": "00000025238f58297d65e959d5118e851fa7460aa23ee154ba8fe35489c7e5a1",
+        "rawShares": "242971545354371003"
+      },
+      {
+        "partyId": "holder-000038",
+        "payoutAddress": "00000026cb5a6535a38546121c2ef7b7c3bdda5c4fc0259a84a3a4cfac0b2df5",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000039",
+        "payoutAddress": "00000027cc97a9c13da76300da6699383b7b84f13d032cc4b81ab9cf8bccd7f5",
+        "rawShares": "18446744073709551615"
+      },
+      {
+        "partyId": "holder-000040",
+        "payoutAddress": "00000028d0efaab54ae2e7f03091be24ae7fa1371f68c7896ad9db7e55e9338c",
+        "rawShares": "1"
+      }
+    ],
+    "unattributed": [
+      {
+        "holderKey": "unattributed-000001",
+        "rawShares": "18446744073709551262"
+      },
+      {
+        "holderKey": "unattributed-000002",
+        "rawShares": "18446744073709550804"
+      },
+      {
+        "holderKey": "unattributed-000003",
+        "rawShares": "18446744073709551615"
+      }
+    ]
+  }
+}
