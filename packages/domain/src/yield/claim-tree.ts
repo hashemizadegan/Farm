@@ -269,6 +269,8 @@ export async function decodeClaimLeaf(bytes: Uint8Array): Promise<ClaimLeafField
   if (!(CLAIM_LEAF_LAYOUT_VERSIONS as readonly number[]).includes(f.leafLayoutVersion)) throw new ClaimTreeError("invalid_input", `unknown leaf layout ${f.leafLayoutVersion}`);
   if (bytes.length !== leafLength(f.leafLayoutVersion)) throw new ClaimTreeError("invalid_input", `a layout ${f.leafLayoutVersion} leaf is ${leafLength(f.leafLayoutVersion)} bytes`);
   if (f.leafLayoutVersion === CLAIM_LEAF_LAYOUT_VERSION_SNAPSHOT_BOUND) f.ownershipSnapshotHash = slice(201, 32);
+  // A zero-amount claim is never valid (zero-allocation policy): refused on decode as on encode.
+  if (f.amount === 0n) throw new ClaimTreeError("invalid_input", "a leaf amount must be greater than zero");
   return f;
 }
 

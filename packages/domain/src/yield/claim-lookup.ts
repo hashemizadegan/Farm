@@ -16,6 +16,7 @@
  */
 import { canonicalJson } from "../harvest";
 import { type ClaimTreeHasher, decodeClaimLeaf, decodeKey32, uuidBytes, verifyClaimLeafProof } from "./claim-tree";
+import type { DistributionDeferredReason } from "./distribution";
 import { type CycleDistributionArtifact, cycleArtifactProblems } from "./pipeline";
 
 export const CLAIM_PAYLOAD_SCHEME = "metafarm-yield-claim/1";
@@ -56,7 +57,9 @@ export interface PublishedClaimTree {
 export type ClaimLookupResult =
   | { status: "claim"; claim: ClaimPayloadDto }
   /** The holder is in the cycle but has no leaf: dust deferred to a later cycle, or withheld. */
-  | { status: "no_leaf"; reason: "deferred" | "withheld" }
+  | { status: "no_leaf"; reason: "withheld" }
+  /** Deferred: a zero amount (never a 0 claim) or dust below the threshold, carried to a later cycle. */
+  | { status: "no_leaf"; reason: "deferred"; deferredReason: DistributionDeferredReason }
   /** An unattributed holding (no party): recorded, never paid until D-13. */
   | { status: "unattributed" }
   | { status: "not_in_cycle" };
@@ -115,8 +118,10 @@ export async function createClaimLookup(artifact: CycleDistributionArtifact, art
   const resultFor = (claim: ClaimPayloadDto | undefined, partyId: string | null): ClaimLookupResult => {
     if (claim) return { status: "claim", claim };
     const e = partyId === null ? undefined : entries.find((x) => x.partyId === partyId);
-    if (e?.state === "deferred" || e?.state === "withheld") return { status: "no_leaf", reason: e.state };
-    if (partyId !== null && artifact.distribution.plan.ledgerOut.deferred.some((d) => d.partyId === partyId)) return { status: "no_leaf", reason: "deferred" };
+    if (e?.state === "withheld") return { status: "no_leaf", reason: "withheld" };
+    if (e?.state === "deferred") return { status: "no_leaf", reason: "deferred", deferredReason: e.deferredReason ?? "below_dust_threshold" };
+    // Dust carried from earlier cycles for a party with no share this cycle (positive, so below the threshold then).
+    if (partyId !== null && artifact.distribution.plan.ledgerOut.deferred.some((d) => d.partyId === partyId)) return { status: "no_leaf", reason: "deferred", deferredReason: "below_dust_threshold" };
     return { status: "not_in_cycle" };
   };
 

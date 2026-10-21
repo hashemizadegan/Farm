@@ -11,6 +11,11 @@
  * - unattributed and withheld amounts are recorded and never redistributed: they stay in the denominator;
  * - dust stays allocated to its party; its payment is deferred and accumulated per party;
  * - every payable amount fits u64; a larger one fails with `amount_out_of_range`;
+ * - **a payable entry never has amount 0** (zero-allocation policy, option B, approved 2026-10-22): a party
+ *   whose amount (allocation plus deferred dust) is 0 is `deferred` with `deferredReason: "zero_amount"`,
+ *   whatever the dust threshold, so `dustThreshold: 0n` stays valid and no zero claim leaf can be built.
+ *   A zero amount carries nothing forward (the ledger keeps positive deferred amounts only), so
+ *   conservation is unaffected. Precedence: zero amount, then the dust threshold;
  * - a real cycle uses only an `approved` distribution policy; the simulation defaults below are refused.
  *
  * Pending decisions are fields of the policy record, never assumed by the engine:
@@ -82,6 +87,24 @@ export interface DistributionEntry {
   /** allocated + deferredIn. */
   amount: bigint;
   state: "payable" | "deferred" | "withheld" | "unattributed";
+  /** Why a `deferred` entry is not payable; null for every other state. Auditable in the plan. */
+  deferredReason: DistributionDeferredReason | null;
+}
+
+/** Why a party's entry is deferred rather than payable. */
+export const DISTRIBUTION_DEFERRED_REASONS = ["zero_amount", "below_dust_threshold"] as const;
+export type DistributionDeferredReason = (typeof DISTRIBUTION_DEFERRED_REASONS)[number];
+
+/**
+ * The state of a party entry, from its payout wallet, amount and the dust threshold. Fixed rule, shared by
+ * the planner and by `distributionPlanProblems`: no wallet → withheld; amount 0 → deferred (zero_amount);
+ * amount below the threshold → deferred (below_dust_threshold); otherwise payable.
+ */
+export function partyEntryState(payoutWallet: string | null, amount: bigint, dustThreshold: bigint): { state: "payable" | "deferred" | "withheld"; deferredReason: DistributionDeferredReason | null } {
+  if (payoutWallet === null) return { state: "withheld", deferredReason: null };
+  if (amount === 0n) return { state: "deferred", deferredReason: "zero_amount" };
+  if (amount < dustThreshold) return { state: "deferred", deferredReason: "below_dust_threshold" };
+  return { state: "payable", deferredReason: null };
 }
 
 export interface DistributionPlan {
@@ -211,16 +234,13 @@ export function planDistribution(input: {
   const entries: DistributionEntry[] = keyed.map(({ key, share }) => {
     const allocated = allocatedByHex.get(hexOf(key))!;
     if (share.kind === "unattributed") {
-      return { kind: "unattributed", partyId: null, holderKey: share.holderKey, payoutWallet: null, weight: share.weight, allocated, deferredIn: 0n, amount: allocated, state: "unattributed" };
+      return { kind: "unattributed", partyId: null, holderKey: share.holderKey, payoutWallet: null, weight: share.weight, allocated, deferredIn: 0n, amount: allocated, state: "unattributed", deferredReason: null };
     }
     const din = deferredIn.get(share.partyId) ?? 0n;
     const amount = allocated + din;
-    let state: DistributionEntry["state"];
-    if (share.payoutWallet === null) state = "withheld";
-    else if (amount < policy.dustThreshold) state = "deferred";
-    else state = "payable";
+    const { state, deferredReason } = partyEntryState(share.payoutWallet, amount, policy.dustThreshold);
     if (state === "payable") assertU64(`payable amount of ${share.partyId}`, amount);
-    return { kind: "party", partyId: share.partyId, holderKey: null, payoutWallet: share.payoutWallet, weight: share.weight, allocated, deferredIn: din, amount, state };
+    return { kind: "party", partyId: share.partyId, holderKey: null, payoutWallet: share.payoutWallet, weight: share.weight, allocated, deferredIn: din, amount, state, deferredReason };
   });
 
   // Deferred dust of parties with no share this cycle stays theirs and is carried unchanged.
@@ -254,6 +274,27 @@ export function planDistribution(input: {
     totals,
     ledgerOut: { carriedRemainder: split.remainder, deferred: deferredOut },
   };
+}
+
+/**
+ * Re-checks a plan's entries against the fixed state rule (e.g. a plan embedded in an artifact): every
+ * amount is allocation plus deferred dust, every state and deferred reason follows `partyEntryState`, and
+ * no payable entry has amount 0. Returns the problems found.
+ */
+export function distributionPlanProblems(plan: DistributionPlan): string[] {
+  const out: string[] = [];
+  for (const e of plan?.entries ?? []) {
+    const name = e.partyId ?? e.holderKey ?? "?";
+    if (e.amount !== e.allocated + e.deferredIn) out.push(`entry ${name}: amount is not allocation plus deferred dust`);
+    if (e.kind === "unattributed") {
+      if (e.state !== "unattributed" || e.deferredReason !== null || e.deferredIn !== 0n) out.push(`entry ${name}: an unattributed holding must be unattributed, with no deferred reason`);
+      continue;
+    }
+    const want = partyEntryState(e.payoutWallet, e.amount, plan.policy.dustThreshold);
+    if (e.state !== want.state || e.deferredReason !== want.deferredReason) out.push(`entry ${name}: state ${e.state}/${String(e.deferredReason)} should be ${want.state}/${String(want.deferredReason)}`);
+    if (e.state === "payable" && e.amount === 0n) out.push(`entry ${name}: a payable entry has amount 0`);
+  }
+  return out;
 }
 
 /** Canonical JSON of a plan (bigints as decimal strings, keys sorted). */
