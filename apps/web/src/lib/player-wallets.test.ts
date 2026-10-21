@@ -4,7 +4,7 @@ import { CONNECT, SIGN_MESSAGE, USED_FEATURES, WalletLinkError, canLink, discove
 const ADDRESS = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
 
 /** A fake Wallet Standard wallet that records which features were called. */
-function fakeWallet(opts: { tamper?: boolean; refuse?: boolean; chains?: string[]; features?: string[] } = {}) {
+function fakeWallet(opts: { tamper?: boolean; refuse?: boolean; chains?: readonly string[]; features?: readonly string[] } = {}) {
   const calls: string[] = [];
   const account: WalletAccount = { address: ADDRESS, publicKey: new Uint8Array(32), chains: ["solana:devnet"], features: [SIGN_MESSAGE] };
   const all: Record<string, unknown> = {
