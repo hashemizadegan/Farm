@@ -4,6 +4,9 @@
 //   keyed asset:<id> exactly like GET …/farms/{id}/scene's twinObjectId.
 // - Everything else (equipment register, crop seasons, stock) is farm state without a scene object
 //   and is listed in StateChanges for panels and labels.
+// - Each scene object appears in at most one operation. An asset whose kind changed (say parcel to
+//   building) is a different entity type with the same id, so the diff removes one and adds the other;
+//   both map to the same scene object, and the plan collapses them into one Refresh.
 // - Operations are ordered Remove, then Refresh, then Place; within each, in the diff's (type, id) order.
 using System;
 using System.Collections.Generic;
@@ -68,6 +71,17 @@ namespace Metafarm.Twin.Core.Scene
                 if (id != null) place.Add(new SceneOperation(SceneOperationKind.Place, id, e));
                 else state.Add(new StateChange(StateChangeKind.Added, e));
             }
+
+            // Same scene object removed (old entity) and placed (new entity): one Refresh with the new state.
+            var removedIds = new HashSet<string>(remove.Select(op => op.SceneObjectId), StringComparer.Ordinal);
+            var replaced = place.Where(op => removedIds.Contains(op.SceneObjectId)).ToList();
+            foreach (var moved in replaced)
+            {
+                place.Remove(moved);
+                refresh.Add(new SceneOperation(SceneOperationKind.Refresh, moved.SceneObjectId, moved.Entity));
+            }
+            var replacedIds = new HashSet<string>(replaced.Select(op => op.SceneObjectId), StringComparer.Ordinal);
+            remove.RemoveAll(op => replacedIds.Contains(op.SceneObjectId));
 
             var operations = Ordered(remove).Concat(Ordered(refresh)).Concat(Ordered(place)).ToList();
             var stateChanges = state.OrderBy(s => SnapshotDiff.Key(s.EntityType, s.EntityId), StringComparer.Ordinal).ToList();
