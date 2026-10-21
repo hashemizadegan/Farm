@@ -21,7 +21,7 @@ This records the decision only; the plan document is not changed. The code on #7
 owner's "byte-identical" holds in every byte except offset 195, the layout version itself (1 or 2), which is the byte
 that keeps the layouts apart. One test was added to pin these rules in TypeScript as well as C#: `64187cd` on #75
 (`claim-tree.test.ts`, "keeps layouts 1 and 2 apart"). The yield tests touched by #75 pass locally (claim tree 17,
-snapshot 14, pipeline 21, lookup 6). CI is rerunning on the push.
+snapshot 14, pipeline 21, lookup 6). CI on `64187cd`: 14/14 checks passed, including lint.
 
 Where each point is enforced:
 
