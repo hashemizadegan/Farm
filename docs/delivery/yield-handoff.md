@@ -21,8 +21,8 @@ Stacked PRs are kept current by merging the parent into the child, never by reba
 | --- | --- | --- | --- | --- |
 | #60 Y1: cycle model, record usability, gates | `feature/yield-y1-cycle-model` | `2bbc68e` | 39610916939 | 13/13 passed |
 | #61 Y2: calculation library | `feature/yield-y2-calculation` | `04e7cc6` | 39619194031 | 13/13 passed |
-| #62 yield stack base | `feature/yield-stack-base` | `e709cf8` | 39619248296 | 13 of 14 passed; Dependency audit still running at the time of writing (the run reported success while that job was in progress) |
-| #63 Y3: evidence and attestation model | `feature/yield-y3-evidence` | `6bd2ad4` | 39619589979 | Install, Lint, Typecheck, Unit, Integration, Contract, Audit, Build, Unity core passed; Docker images and Playwright still running at the time of writing |
+| #62 yield stack base | `feature/yield-stack-base` | `e709cf8` | 39619248296 | 13 of 14 passed; the Dependency audit job stayed `in_progress` after the run reported success (a GitHub reporting fault). The package manifests are identical to #63's head, whose audit passed |
+| #63 Y3: evidence and attestation model | `feature/yield-y3-evidence` | `6bd2ad4` | 39619589979 | 14/14 passed (13 plus Unity starter core, C#) |
 
 Earlier validated heads, for reference: #60 `2bbc68e` (run 39610916939, 13/13); #61 `6f3dd20`
 (run 39610918668, 13/13), superseded by `04e7cc6` (one fix, below).
