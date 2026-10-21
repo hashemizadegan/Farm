@@ -232,6 +232,32 @@ requested → policy_approved → prepared → submitted → observed → confir
   `chain_operation_transitions`, never deletes operations, fixes their identity and transaction
   reference, and allows one live attempt per intent.
 
+## Reconciling an expired share-token attempt (offline; not wired)
+
+`decideToken2022Retry(intent, lastAttempt, evidence)` is a pure function. It is tested against the named
+fixtures in `token2022-reconciliation.test.ts`, and is not called by the engine. It reads nothing and
+never submits, signs or retries.
+
+The evidence it takes:
+- the attempt's signature status at `finalized` (with history search);
+- the mint's finalized supply, and the target account's finalized balance (mint, burn) or frozen state
+  (freeze, thaw). Each is paired with the value the platform's own confirmed records expect before this
+  action.
+
+| Situation | Decision |
+| --- | --- |
+| Last attempt `submitted` or `observed` | `wait` (outcome unknown) |
+| Last attempt not `expired` (anything else) | `not_applicable` |
+| Blockhash not past `lastValidBlockHeight` at finalized, or never prepared | `wait` (could still land) |
+| Another unsettled operation on the same mint | `wait` (effects cannot be told apart) |
+| Signature or state unreadable | `wait` (evidence unavailable) |
+| Signature not found or failed, and supply and balance (or frozen state) unchanged | `retry` |
+| The state changed by exactly this action (signature succeeded, or not found because pruned) | `landed`: no retry; a person reconciles (`orphan_chain_tx`, as for compressed NFTs) |
+| Any other change (partial, someone else's, the holder burned meanwhile), or success with no change | `reconcile`: hold the intent and open a case |
+
+A retry is allowed only when every piece of evidence says the action did not happen. A test checks
+this across combinations of supply and balance changes.
+
 ## Adapters (`packages/chain`)
 
 - **No Solana SDK at runtime.** `@solana/web3.js` 1.x and `@solana/spl-token` pull in `bigint-buffer`,
@@ -292,8 +318,12 @@ requested → policy_approved → prepared → submitted → observed → confir
    provider; until then mainnets stay locked.
 4. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
 5. Reconcile share-token mints (Token-2022) and TRON payouts against chain state before a new
-   attempt after `expired`, as compressed NFTs already do (holder balance or mint supply; payee
-   transfer history); until then a signature pruned from RPC history could lead to a second mint
-   or payout.
+   attempt after `expired`, as compressed NFTs already do; until then a signature pruned from RPC
+   history could lead to a second mint or payout.
+   - **Token-2022: decision logic done offline, not wired.** `decideToken2022Retry`
+     (`packages/domain/src/rwa/token2022-reconciliation.ts`) is described under "Reconciling an expired
+     share-token attempt" below. Wiring it into the engine needs finalized chain reads and changes the
+     retry path, so it waits until the holds on RWA execution are lifted.
+   - **TRON: not started**, and out of scope under the current holds (owner decision, 2026-10-21).
 
 Keys for minting and settlement belong in a KMS/HSM set up by the operator; the app never stores them.

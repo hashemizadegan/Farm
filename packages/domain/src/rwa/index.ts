@@ -6,3 +6,4 @@ export * from "./compliance";
 export * from "./orders";
 export * from "./requests";
 export * from "./cnft";
+export * from "./token2022-reconciliation";
