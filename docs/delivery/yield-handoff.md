@@ -6,6 +6,28 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-21, late night (C# claim-leaf and proof parity)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #71 | C# claim leaf codec and proof verifier, TS-generated vectors | `feature/yield-claim-csharp` | `d8df413` | #70 | 39645297546 | 14/14 passed; C# tests 77 passed, 0 failed (65 on #70; +12 parity tests) |
+
+- **C# (`clients/unity-starter/Runtime/Core/Yield`):**
+  - Built as netstandard2.1 with C# 9 and warnings as errors; verification only.
+  - `ClaimLeafCodec` encodes and decodes the plan's §6.2 201-byte leaf exactly as `claim-tree.ts` does. UUIDs use
+    RFC 4122 byte order, not `System.Guid`'s.
+  - `ClaimTreeVerifier` covers leaf hashes, RFC 9162 roots and proofs, and `VerifyClaimLeafProof`, which binds the
+    trusted root, size and leaf index.
+- **Vectors:** `clients/unity-starter/Samples/claim-tree-vectors.json` is generated from TypeScript
+  (`claim-tree.vectors.test-support.ts`).
+  - Trees of 1, 3, 5, 7 and 8 leaves (24 proofs), plus an edge leaf with every integer field at its maximum.
+  - A vitest test fails if the committed file differs from what TypeScript produces.
+  - The vectors were checked once with an independent Python implementation.
+  - How to regenerate: see the starter README ("Claim-tree vectors").
+- **Not run locally:** the C# could not be built in the sandbox (the .NET download is blocked); CI is the first and
+  only C# run.
+- **Simulation only** (D-26 open). No signing, chain or network access.
+
 ## 2026-10-21, night (Y4 evidence storage model; pluggable claim tree)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
