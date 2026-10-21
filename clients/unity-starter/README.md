@@ -62,6 +62,11 @@ Nothing else: no Solana SDK, no wallet adapter, no Cesium. Those come with later
   `zero_amount`; below the threshold: deferred, `below_dust_threshold`; otherwise payable). It requires the
   platform's entries and claims to match exactly, checks conservation, and checks that a zero-amount leaf is
   refused on encode, decode and verification.
+- **Large tree (`LargeTreeCrossStackTests`)**: `Samples/claim-payloads.large-tree.sample.json` holds 64 seeded
+  holders of a 4,096-holder cycle (about 3,000 leaves, proofs up to 12 deep). The client verifies every claim,
+  computes the same RFC 9162 path lengths, refuses any altered path entry or index, and agrees that holders
+  allocated 0 (`zero_amount`) have no claim. The platform side (`large-holder-envelope.test.ts`) also checks
+  deterministic cost and size envelopes at 4,096 and 16,384 holders.
 - **Vitest (`packages/domain/src/twin/client-samples.test.ts`)**: the sample payloads parse with the
   API's own schemas, and the sample proof verifies with the platform's verifier.
 - **Not checked in CI**: `Runtime/Unity` needs the Unity editor. Open it in Unity 6 and fix anything
@@ -143,6 +148,8 @@ the committed file to match exactly; regenerate by writing `await claimPayloadSa
 `Samples/claim-payloads.tiny-holders.sample.json` is generated the same way by
 `packages/domain/src/yield/zero-allocation.sample.test-support.ts` and checked by `zero-allocation.test.ts`
 (regenerate with `await tinyHoldersSampleText()`).
+`Samples/claim-payloads.large-tree.sample.json` comes from `packages/domain/src/yield/large-holder.test-support.ts`
+and is checked by `large-holder-envelope.test.ts` (regenerate with `await largeTreeSampleText()`).
 
 A claim for 0 is never valid: the platform never makes a zero amount payable (it is deferred with
 `deferredReason: "zero_amount"`), and `ClaimLeafCodec` refuses a zero amount when encoding and when decoding,
