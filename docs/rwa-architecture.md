@@ -316,7 +316,7 @@ this across combinations of supply and balance changes.
    retention paths are tested; verify and close the chunk-privilege risk above.
 3. A KMS/HSM signer (Ed25519 and secp256k1) and a `CompliancePort` adapter for a KYC/sanctions
    provider; until then mainnets stay locked.
-4. Retire the collectibles and Ethereum wallet sign-in; move harvest anchoring behind a port.
+4. Retire the collectibles; move harvest anchoring behind a port. (The Ethereum wallet link is retired, replaced by Solana player wallets: `docs/player-wallets.md`.)
 5. Reconcile share-token mints (Token-2022) and TRON payouts against chain state before a new
    attempt after `expired`, as compressed NFTs already do; until then a signature pruned from RPC
    history could lead to a second mint or payout.

@@ -54,7 +54,7 @@ Full list with local defaults: `.env.example`. Required when deployed:
 | `CORS_ORIGINS` | api | The web origin(s), e.g. `https://app.example.com` |
 | `STORAGE_DRIVER`, `S3_*` | api, worker | `s3`; bucket must be private and allow browser `PUT` from the web origin via CORS |
 | `WEBHOOK_SIGNING_SECRETS` | api | Comma-separated; two during rotation |
-| `WALLET_AUTH_DOMAIN`, `WALLET_AUTH_URI`, `WALLET_ALLOWED_CHAIN_IDS` | api | Must match the public web origin |
+| `WALLET_AUTH_DOMAIN`, `WALLET_AUTH_URI` | api | Must match the public web origin (named in the player-wallet link message). `WALLET_ALLOWED_CHAIN_IDS` is no longer read since the EVM wallet link was retired. |
 | `AUDIT_IP_SALT` | api | Random string |
 | `API_DOCS_ENABLED` | api (optional) | Swagger UI at `/docs`. Unset: off in staging and production, on in development. Set `true` only deliberately. |
 | `NEXT_PUBLIC_API_URL` | web (**build time**) | The API's **public** URL; browsers cannot reach `*.railway.internal` |

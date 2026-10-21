@@ -91,7 +91,10 @@ These holds block J9 and J10 entirely, and block J8 and J7 at deployment.
 4. **J7 live validation:** needs an owner-configured devnet RPC endpoint and a deploy (on hold).
 5. **J1 and J5 Unity validation:** `clients/unity-starter/Validation/README.md` in Unity 6 (Editor, then IL2CPP). **Blocked: no Unity environment is available to this work.**
 6. **J11:** the signed-in `/rwa` check, once the owner opens the page.
-7. **Roadmap item 7** (retire the EVM wallet sign-in): follows J8 being validated with a real wallet.
+7. **Roadmap item 7 (retire the EVM wallet sign-in): done on a draft (#59).**
+   - Removed: the `/v1/wallet/nonce` and `/v1/wallet/verify` routes, EIP-4361 verification, the `recoverMessageAddress` dependency, `WALLET_ALLOWED_CHAIN_IDS` and `NEXT_PUBLIC_WALLET_CHAIN_ID`.
+   - Kept: the `wallet_links` and `wallet_nonces` tables (dropping them needs the owner), and `.railway/railway.ts`, untouched (it still preserves the now-unused variable).
+   - The web app never used the EVM link; J8 replaces it.
 
 ## Owner decisions (2026-10-21)
 

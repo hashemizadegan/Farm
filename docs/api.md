@@ -116,14 +116,15 @@ curl -s "${H[@]}" -X POST $API/v1/tenants/$TENANT/farms/$FARM/boundaries/<bounda
 curl -s "${H[@]}" "$API/v1/tenants/$TENANT/audit-events?limit=20"   # admin/owner only
 ```
 
-## Wallet linking
+## Player wallets (Solana, J8; off unless PLAYER_WALLETS_ENABLED)
 
 ```bash
-curl -s "${H[@]}" -X POST $API/v1/wallet/nonce -d '{"address":"0xYourAddress","chainId":31337}'
-# → {"nonce":"…","message":"localhost:3000 wants you to sign in…","expiresAt":"…"}
-# Sign `message` with the wallet (personal_sign), then:
-curl -s "${H[@]}" -X POST $API/v1/wallet/verify -d '{"message":"<exact message>","signature":"0x…"}'
-# Replaying the same message/signature fails: the nonce is single-use.
+curl -s "${H[@]}" -X POST $API/v1/me/player-wallets/challenge -d '{"address":"<base58 address>"}'
+# → {"address":"…","message":"localhost:3000 wants you to sign in with your Solana account:…","expiresAt":"…"}
+# Sign the exact message bytes with the wallet (signMessage), then send the base64 signature:
+curl -s "${H[@]}" -X POST $API/v1/me/player-wallets -d '{"address":"<base58 address>","signature":"<base64>"}'
+# The challenge is single-use. See docs/player-wallets.md. The EVM wallet link (/v1/wallet/nonce,
+# /v1/wallet/verify) has been retired.
 ```
 
 ## NFT metadata validation

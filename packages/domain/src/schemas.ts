@@ -157,11 +157,6 @@ export const createUploadSchema = z.object({
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
 });
 
-export const walletVerifySchema = z.object({
-  message: z.string().min(1).max(2_000),
-  signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/),
-});
-
 export const nftMetadataSchema = z
   .object({
     schema_version: z.literal(NFT_METADATA_SCHEMA_VERSION),

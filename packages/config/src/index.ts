@@ -68,9 +68,9 @@ const auth = {
 };
 
 const chain = {
+  /** The domain and origin named in the player-wallet link message (J8), and its lifetime. */
   WALLET_AUTH_DOMAIN: z.string().min(1).default("localhost:3000"),
   WALLET_AUTH_URI: z.string().url().default("http://localhost:3000"),
-  WALLET_ALLOWED_CHAIN_IDS: csv.pipe(z.array(z.coerce.number().int().positive())).default("31337"),
   WALLET_NONCE_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
   CHAIN_RPC_URL: z.string().url().optional(),
   CHAIN_ID: z.coerce.number().int().positive().default(31337),
@@ -312,7 +312,6 @@ export const webPublicEnvSchema = z.object({
   NEXT_PUBLIC_MAP_STYLE_URL: z.string().optional(),
   NEXT_PUBLIC_MAP_ATTRIBUTION: z.string().optional(),
   NEXT_PUBLIC_CESIUM_ENABLED: bool.default("false"),
-  NEXT_PUBLIC_WALLET_CHAIN_ID: z.coerce.number().int().positive().default(31337),
   /** J8: show player-wallet linking on the account page (needs PLAYER_WALLETS_ENABLED on the API). */
   NEXT_PUBLIC_PLAYER_WALLETS_ENABLED: bool.default("false"),
 });

@@ -19,7 +19,6 @@ export function testEnv(overrides: Record<string, string> = {}) {
     WEBHOOK_SIGNING_SECRETS: "whsec_test",
     WALLET_AUTH_DOMAIN: "localhost:3000",
     WALLET_AUTH_URI: "http://localhost:3000",
-    WALLET_ALLOWED_CHAIN_IDS: "31337",
     ...overrides,
   });
 }
@@ -43,7 +42,6 @@ export async function buildTestApp(opts: { pool: Pool; env?: Record<string, stri
       jobs,
       storage,
       auth: createDevProvider(DEV_SECRET),
-      recoverMessageAddress: async () => "0x0000000000000000000000000000000000000000",
       now: () => new Date(),
       ...opts.deps,
     },
