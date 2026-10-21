@@ -4,7 +4,7 @@
  * decisions (D-4): the caller supplies the rate, with its source and timestamp, and this module only
  * applies it. Rounds down, and returns the dropped fraction so nothing is silently lost.
  */
-import { YieldAmountError, assertNonNegative } from "./amounts";
+import { YieldAmountError, assertExactKeys, assertNonNegative } from "./amounts";
 
 export interface RationalRate {
   /** Units of the target currency per unit of the source currency = num / den. */
@@ -21,6 +21,7 @@ const MAX_EXPONENT = 30;
 
 export function assertRationalRate(r: RationalRate): void {
   if (!r || typeof r !== "object") throw new YieldAmountError("invalid_parameter", "a rate is required");
+  assertExactKeys("rate", r, ["num", "den", "source", "observedAt"]);
   if (typeof r.num !== "bigint" || typeof r.den !== "bigint" || r.num <= 0n || r.den <= 0n) throw new YieldAmountError("invalid_parameter", "a rate needs positive bigint num and den");
   if (typeof r.source !== "string" || r.source.trim() === "") throw new YieldAmountError("invalid_parameter", "a rate needs its source");
   if (typeof r.observedAt !== "string" || !RFC3339.test(r.observedAt) || Number.isNaN(Date.parse(r.observedAt))) throw new YieldAmountError("invalid_parameter", "a rate needs an RFC 3339 observation time with an offset");

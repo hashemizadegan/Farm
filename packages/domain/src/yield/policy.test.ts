@@ -30,6 +30,18 @@ describe("calculation policy validation", () => {
     ]);
   });
 
+  it("refuses unsupported keys at every level instead of ignoring them", () => {
+    const p = simulationPolicy(F3_ILLUSTRATION) as unknown as Record<string, unknown>;
+    expect(yieldPolicyProblems({ ...p, feeAlternative: "F1" })).toEqual(["policy has unsupported keys: feeAlternative"]);
+    // F2 has no loss-cycle switch: supplying one must not look as if it took effect.
+    expect(yieldPolicyProblems({ ...p, fee: { alternative: "F2", basisPoints: 1000n, chargeInLossCycle: true, minimum: null, maximum: null } })).toEqual(["fee has unsupported keys: chargeInLossCycle"]);
+    expect(yieldPolicyProblems({ ...p, reserves: { maintenanceBasisPoints: 0n, maintenanceCap: null, riskBasisPoints: 0n, riskCap: null, climateBasisPoints: 1n } })).toEqual(["reserves has unsupported keys: climateBasisPoints"]);
+    expect(yieldPolicyProblems({ ...p, lossCarryForward: { enabled: true, expiresAfterCycles: 3 } })).toEqual(["lossCarryForward has unsupported keys: expiresAfterCycles"]);
+    expect(
+      yieldPolicyProblems({ ...p, fee: { alternative: "F4", schedule: { kind: "fixed", amount: 1n, currency: "USD" }, capBasisPointsOfNetRevenue: null, chargeInLossCycle: false, minimum: null, maximum: null } }),
+    ).toEqual(["fee.schedule has unsupported keys: currency"]);
+  });
+
   it("refuses out-of-range and inconsistent values, and numbers where bigints are required", () => {
     const p = simulationPolicy(F3_ILLUSTRATION);
     expect(yieldPolicyProblems({ ...p, reserves: { ...p.reserves, maintenanceBasisPoints: 10_001n } })).toHaveLength(1);

@@ -152,6 +152,12 @@ describe("refusals: nothing is assumed, defaulted or absorbed", () => {
     expect(() => calculateYieldWaterfall(sim, base, { ...ok, expenses: [{ id: "x", amount: 1.5 as never, completeness: "known" }] })).toThrow(YieldAmountError);
   });
 
+  it("refuses unsupported input keys and cost-line keys instead of ignoring them", () => {
+    // A misspelt or unmodelled field would otherwise silently drop money from the waterfall.
+    expect(() => calculateYieldWaterfall(sim, base, { ...ok, bankFees: 2_170n } as never)).toThrow(/unsupported keys: bankFees/);
+    expect(() => calculateYieldWaterfall(sim, base, { ...ok, expenses: [{ id: "x", amount: 1n, completeness: "known", currency: "EUR" }] as never })).toThrow(/unsupported keys: currency/);
+  });
+
   it("uses only policies whose status fits the cycle", () => {
     expect(() => calculateYieldWaterfall({ simulation: false }, base, ok)).toThrow(YieldRecordError);
     expect(() => calculateYieldWaterfall(sim, { ...base, status: "approved" }, ok)).toThrow(YieldRecordError);

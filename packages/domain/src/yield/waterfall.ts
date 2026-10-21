@@ -13,10 +13,11 @@
  * What the plan leaves open is reported, not decided:
  * - `loss` is max(−OR, 0). Whether a fee charged in a loss cycle adds to the carried loss is not decided
  *   here: the fee and any `shortfall` are reported separately.
- * - `shortfall` is the part of fee and reserves that the result does not cover; it is never absorbed.
+ * - `shortfall` is the part of the fee that the result does not cover (reserve additions never exceed
+ *   OR′, so they are always covered); it is reported, never absorbed, and its treatment is not decided.
  * - Reserve releases (REL) in a loss cycle are refused: whether reserves may cover losses is D-7.
  */
-import { YieldAmountError, applyBasisPoints, assertNonNegative } from "./amounts";
+import { YieldAmountError, applyBasisPoints, assertExactKeys, assertNonNegative } from "./amounts";
 import { assertYieldPolicy, type FeePolicy, type YieldCalculationPolicy } from "./policy";
 import { assertYieldRecordUsable } from "./records";
 
@@ -76,6 +77,9 @@ export class YieldCalculationError extends Error {
   }
 }
 
+const COST_LINE_KEYS = ["id", "amount", "completeness"] as const;
+const INPUT_KEYS = ["grossRevenue", "refunds", "chargebacks", "rebates", "taxesCollected", "expenses", "lossCarriedForward", "approvedReserveReleases"] as const;
+
 const min = (a: bigint, b: bigint) => (a < b ? a : b);
 const max = (a: bigint, b: bigint) => (a > b ? a : b);
 const cap = (v: bigint, c: bigint | null) => (c === null ? v : min(v, c));
@@ -86,7 +90,8 @@ function operatingExpenses(lines: readonly CostLine[], allowEstimated: boolean):
   let total = 0n;
   const estimated: string[] = [];
   for (const l of lines) {
-    if (!l || typeof l.id !== "string" || l.id === "") throw new YieldCalculationError("invalid_cost_line", "every cost line needs an id");
+    assertExactKeys("cost line", l, COST_LINE_KEYS);
+    if (typeof l.id !== "string" || l.id === "") throw new YieldCalculationError("invalid_cost_line", "every cost line needs an id");
     if (ids.has(l.id)) throw new YieldCalculationError("duplicate_cost_line", `cost line ${l.id} appears twice`);
     ids.add(l.id);
     switch (l.completeness) {
@@ -168,6 +173,7 @@ function feeFor(f: FeePolicy, r: { netRevenue: bigint; operatingResult: bigint; 
 export function calculateYieldWaterfall(cycle: { simulation: boolean }, policy: YieldCalculationPolicy, inputs: WaterfallInputs): WaterfallResult {
   assertYieldPolicy(policy);
   assertYieldRecordUsable(cycle, { status: policy.status, kind: "calculation policy" });
+  assertExactKeys("inputs", inputs, INPUT_KEYS);
   for (const k of ["grossRevenue", "refunds", "chargebacks", "rebates", "taxesCollected", "lossCarriedForward", "approvedReserveReleases"] as const) assertNonNegative(k, inputs?.[k]);
 
   const netRevenue = inputs.grossRevenue - inputs.refunds - inputs.chargebacks - inputs.rebates - inputs.taxesCollected;

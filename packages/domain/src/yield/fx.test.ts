@@ -34,5 +34,6 @@ describe("conversion", () => {
     bad(() => convertAmount(1n, -1, 2, rate(1n, 1n)));
     bad(() => convertAmount(-1n, 2, 2, rate(1n, 1n)));
     bad(() => convertAmount(1.5 as never, 2, 2, rate(1n, 1n)));
+    bad(() => convertAmount(1n, 2, 2, { ...rate(1n, 1n), spread: 1n } as never));
   });
 });

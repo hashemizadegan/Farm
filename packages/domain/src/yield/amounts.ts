@@ -43,6 +43,16 @@ export function assertBasisPoints(name: string, v: unknown): asserts v is bigint
   if (v < 0n || v > BASIS_POINTS) throw new YieldAmountError("invalid_parameter", `${name} must be between 0 and 10000 basis points`);
 }
 
+/**
+ * A plain object with no keys outside `allowed`. An unsupported key is refused rather than ignored, so a
+ * misspelt or unsupported parameter can never be silently dropped.
+ */
+export function assertExactKeys(name: string, v: unknown, allowed: readonly string[]): asserts v is Record<string, unknown> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) throw new YieldAmountError("invalid_parameter", `${name} must be an object`);
+  const extra = Object.keys(v).filter((k) => !allowed.includes(k));
+  if (extra.length) throw new YieldAmountError("invalid_parameter", `${name} has unsupported keys: ${extra.sort().join(", ")}`);
+}
+
 /** floor(amount × bps / 10000) for amount ≥ 0, with the dropped remainder of the division. */
 export function applyBasisPoints(amount: bigint, bps: bigint): { value: bigint; droppedNumerator: bigint } {
   if (amount < 0n) throw new YieldAmountError("negative", "basis points apply to a non-negative amount");

@@ -11,7 +11,7 @@
  *   `deferred` (its payment is deferred). It never flows back into the remainder or to anyone else.
  * - Every allocation must fit u64; otherwise the split fails with `amount_out_of_range`.
  */
-import { YieldAmountError, assertNonNegative, assertU64 } from "./amounts";
+import { YieldAmountError, assertExactKeys, assertNonNegative, assertU64 } from "./amounts";
 
 export const REMAINDER_RULES = ["largest_remainder", "carry"] as const;
 export type RemainderRule = (typeof REMAINDER_RULES)[number];
@@ -56,6 +56,7 @@ export function compareRecipientBytes(a: string, b: string): number {
 
 export function splitProportionally(total: bigint, weights: readonly SplitWeight[], policy: SplitPolicy): SplitResult {
   assertNonNegative("total", total);
+  if (policy && typeof policy === "object") assertExactKeys("split policy", policy, ["remainder", "dustThreshold"]);
   if (!policy || !(REMAINDER_RULES as readonly string[]).includes(policy.remainder)) throw new YieldAmountError("invalid_parameter", "the remainder rule must be given explicitly");
   assertNonNegative("dustThreshold", policy.dustThreshold);
   if (!Array.isArray(weights) || weights.length === 0) throw new YieldAmountError("invalid_parameter", "at least one weight is required");
@@ -63,7 +64,8 @@ export function splitProportionally(total: bigint, weights: readonly SplitWeight
   const seen = new Set<string>();
   let sum = 0n;
   for (const w of weights) {
-    if (typeof w?.recipient !== "string" || !HEX.test(w.recipient)) throw new YieldAmountError("invalid_parameter", "a recipient must be lowercase hex bytes");
+    assertExactKeys("weight", w, ["recipient", "weight"]);
+    if (typeof w.recipient !== "string" || !HEX.test(w.recipient)) throw new YieldAmountError("invalid_parameter", "a recipient must be lowercase hex bytes");
     if (seen.has(w.recipient)) throw new YieldAmountError("invalid_parameter", `recipient ${w.recipient} appears twice`);
     seen.add(w.recipient);
     assertNonNegative(`weight of ${w.recipient}`, w.weight);

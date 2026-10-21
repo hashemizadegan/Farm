@@ -80,5 +80,8 @@ describe("proportional split", () => {
     expect(code(() => splitProportionally(1n, [], largest))).toBe("invalid_parameter");
     expect(code(() => splitProportionally(1 as never, w, largest))).toBe("not_integer");
     expect(code(() => splitProportionally(1n, [{ recipient: "01", weight: -1n }], largest))).toBe("negative");
+    // Unsupported keys are refused, not ignored.
+    expect(code(() => splitProportionally(1n, w, { ...largest, minimumPayout: 5n } as never))).toBe("invalid_parameter");
+    expect(code(() => splitProportionally(1n, [{ recipient: "01", weight: 1n, wallet: "x" }] as never, largest))).toBe("invalid_parameter");
   });
 });

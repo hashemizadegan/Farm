@@ -66,6 +66,14 @@ export class YieldPolicyError extends Error {
   }
 }
 
+const POLICY_KEYS = ["id", "version", "status", "formulaVersion", "entitlement", "accountingCurrency", "conversionDateRule", "recognitionBasis", "lossCarryForward", "reserves", "fee", "allowEstimatedCosts"] as const;
+const FEE_KEYS: Record<FeePolicy["alternative"], readonly string[]> = {
+  F1: ["alternative", "basisPoints", "chargeInLossCycle", "minimum", "maximum"],
+  F2: ["alternative", "basisPoints", "minimum", "maximum"],
+  F3: ["alternative", "basisPoints", "minimum", "maximum"],
+  F4: ["alternative", "schedule", "capBasisPointsOfNetRevenue", "chargeInLossCycle", "minimum", "maximum"],
+};
+
 const has = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
 /** Every problem with a policy, or an empty list. Nothing is filled in. */
@@ -83,6 +91,12 @@ export function yieldPolicyProblems(p: unknown): string[] {
   };
   const bool = (path: string, v: unknown) => (typeof v === "boolean" ? true : (out.push(`${path} must be true or false`), false));
   const oneOf = (path: string, v: unknown, allowed: readonly string[]) => (typeof v === "string" && allowed.includes(v) ? true : (out.push(`${path} must be one of ${allowed.join(", ")}`), false));
+  // Unsupported keys are refused, never ignored: a misspelt or unsupported parameter must not vanish.
+  const only = (path: string, obj: Record<string, unknown>, allowed: readonly string[]) => {
+    const extra = Object.keys(obj).filter((k) => !allowed.includes(k));
+    if (extra.length) out.push(`${path} has unsupported keys: ${extra.sort().join(", ")}`);
+  };
+  only("policy", o, POLICY_KEYS);
 
   str("id", o.id);
   if (typeof o.version !== "number" || !Number.isInteger(o.version) || o.version < 1) out.push("version must be an integer ≥ 1");
@@ -91,6 +105,7 @@ export function yieldPolicyProblems(p: unknown): string[] {
   const ent = o.entitlement as Record<string, unknown> | undefined;
   if (!ent || typeof ent !== "object") out.push("entitlement is required");
   else {
+    only("entitlement", ent, ["id", "version", "sha256"]);
     str("entitlement.id", ent.id);
     str("entitlement.version", ent.version);
     if (typeof ent.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(ent.sha256)) out.push("entitlement.sha256 must be 64 lowercase hex characters");
@@ -98,6 +113,7 @@ export function yieldPolicyProblems(p: unknown): string[] {
   const cur = o.accountingCurrency as Record<string, unknown> | undefined;
   if (!cur || typeof cur !== "object") out.push("accountingCurrency is required");
   else {
+    only("accountingCurrency", cur, ["code", "exponent"]);
     if (typeof cur.code !== "string" || !/^[A-Z]{3}$/.test(cur.code)) out.push("accountingCurrency.code must be an ISO 4217 code");
     try {
       assertExponent("accountingCurrency.exponent", cur.exponent);
@@ -109,10 +125,14 @@ export function yieldPolicyProblems(p: unknown): string[] {
   oneOf("recognitionBasis", o.recognitionBasis, RECOGNITION_BASES);
   const lcf = o.lossCarryForward as Record<string, unknown> | undefined;
   if (!lcf || typeof lcf !== "object") out.push("lossCarryForward is required");
-  else bool("lossCarryForward.enabled", lcf.enabled);
+  else {
+    only("lossCarryForward", lcf, ["enabled"]);
+    bool("lossCarryForward.enabled", lcf.enabled);
+  }
   const r = o.reserves as Record<string, unknown> | undefined;
   if (!r || typeof r !== "object") out.push("reserves is required");
   else {
+    only("reserves", r, ["maintenanceBasisPoints", "maintenanceCap", "riskBasisPoints", "riskCap"]);
     const okM = bps("reserves.maintenanceBasisPoints", r.maintenanceBasisPoints);
     const okI = bps("reserves.riskBasisPoints", r.riskBasisPoints);
     nullableBig(r, "maintenanceCap", "reserves.maintenanceCap");
@@ -126,6 +146,7 @@ export function yieldPolicyProblems(p: unknown): string[] {
   else if (!oneOf("fee.alternative", f.alternative, ["F1", "F2", "F3", "F4"])) {
     /* reported */
   } else {
+    only("fee", f, FEE_KEYS[f.alternative as FeePolicy["alternative"]]);
     nullableBig(f, "minimum", "fee.minimum");
     nullableBig(f, "maximum", "fee.maximum");
     if (typeof f.minimum === "bigint" && typeof f.maximum === "bigint" && f.minimum > f.maximum) out.push("fee.minimum must not exceed fee.maximum");
@@ -136,13 +157,17 @@ export function yieldPolicyProblems(p: unknown): string[] {
       else if (f.capBasisPointsOfNetRevenue !== null) bps("fee.capBasisPointsOfNetRevenue", f.capBasisPointsOfNetRevenue);
       const s = f.schedule as Record<string, unknown> | undefined;
       if (!s || typeof s !== "object") out.push("fee.schedule is required");
-      else if (s.kind === "fixed") big("fee.schedule.amount", s.amount);
-      else if (s.kind === "tiered") {
+      else if (s.kind === "fixed") {
+        only("fee.schedule", s, ["kind", "amount"]);
+        big("fee.schedule.amount", s.amount);
+      } else if (s.kind === "tiered") {
+        only("fee.schedule", s, ["kind", "tiers"]);
         const tiers = s.tiers;
         if (!Array.isArray(tiers) || tiers.length === 0) out.push("fee.schedule.tiers must be a non-empty list");
         else {
           let prev: bigint | null = null;
           tiers.forEach((t: Record<string, unknown>, i: number) => {
+            if (t && typeof t === "object") only(`fee.schedule.tiers[${i}]`, t, ["fromNetRevenue", "amount"]);
             big(`fee.schedule.tiers[${i}].amount`, t?.amount);
             if (typeof t?.fromNetRevenue !== "bigint") out.push(`fee.schedule.tiers[${i}].fromNetRevenue must be a bigint`);
             else {
