@@ -165,9 +165,38 @@ function bytes(hex: string) {
   return out;
 }
 
+const ED25519_P = (1n << 255n) - 19n;
+/**
+ * Encodings (sign bit cleared) of the Ed25519 points of small order, as listed by libsodium. Web Crypto
+ * (OpenSSL) verifies signatures under such keys: with the identity point as public key, R = identity and
+ * S = 0 verifies for **every** message, so a "signature" could be made without any secret.
+ */
+const ED25519_SMALL_ORDER = new Set([
+  "0000000000000000000000000000000000000000000000000000000000000000",
+  "0100000000000000000000000000000000000000000000000000000000000000",
+  "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+  "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+  "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+]);
+
+/**
+ * Refuses Ed25519 public keys that are non-canonical (y ≥ p, RFC 8032 §5.1.3) or of small order, whatever
+ * the sign bit. Both are refused as `malformed_key` before Web Crypto sees them.
+ */
+function assertEd25519PublicKeyUsable(publicKeyHex: string): void {
+  const masked = publicKeyHex.slice(0, 62) + (parseInt(publicKeyHex.slice(62, 64), 16) & 0x7f).toString(16).padStart(2, "0");
+  const y = BigInt("0x" + (masked.match(/../g) ?? []).reverse().join(""));
+  if (y >= ED25519_P) throw new YieldAttestationError("malformed_key", "the ed25519 public key is not canonically encoded");
+  if (ED25519_SMALL_ORDER.has(masked)) throw new YieldAttestationError("malformed_key", "the ed25519 public key is a point of small order");
+}
+
 /**
  * Verifies a signature with Web Crypto. Returns false for a well-formed signature that does not verify;
- * throws for an unsupported algorithm or a key or signature of the wrong shape.
+ * throws for an unsupported algorithm or a key or signature of the wrong shape, and for Ed25519 keys that
+ * are non-canonical or of small order.
+ *
+ * A valid signature proves only that the holder of `publicKeyHex` signed. Binding an attester's identity to
+ * an approved key is not done here: it is part of the attester identity requirements (D-23).
  */
 export async function verifyKeySignature(algorithm: KeySignatureAlgorithm, publicKeyHex: string, message: Uint8Array, signatureHex: string): Promise<boolean> {
   if (!(KEY_SIGNATURE_ALGORITHMS as readonly unknown[]).includes(algorithm)) throw new YieldAttestationError("unsupported_algorithm", `unsupported key algorithm ${String(algorithm)}`);
@@ -176,6 +205,7 @@ export async function verifyKeySignature(algorithm: KeySignatureAlgorithm, publi
   if (algorithm === "ecdsa_p256_sha256" && !publicKeyHex.startsWith("04")) throw new YieldAttestationError("malformed_key", "a P-256 public key must be uncompressed (04‖x‖y)");
   if (typeof signatureHex !== "string" || !HEX.test(signatureHex) || signatureHex.length !== size.signature * 2) throw new YieldAttestationError("malformed_signature", `a ${algorithm} signature is ${size.signature} bytes of lowercase hex`);
   if (!(message instanceof Uint8Array)) throw new YieldAttestationError("invalid_attestation", "the message must be bytes");
+  if (algorithm === "ed25519") assertEd25519PublicKeyUsable(publicKeyHex);
 
   const subtle = globalThis.crypto.subtle;
   const params = algorithm === "ed25519" ? { name: "Ed25519" } : { name: "ECDSA", namedCurve: "P-256" };

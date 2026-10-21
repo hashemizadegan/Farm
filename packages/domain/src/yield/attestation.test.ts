@@ -151,3 +151,148 @@ describe("acceptance under a D-23 method list", () => {
     expect(attestationMethodListProblems({})).toHaveLength(5);
   });
 });
+
+describe("negative vectors: Ed25519", () => {
+  const flip = (hexStr: string, byte: number, mask = 0x01) => hexStr.slice(0, byte * 2) + (parseInt(hexStr.slice(byte * 2, byte * 2 + 2), 16) ^ mask).toString(16).padStart(2, "0") + hexStr.slice(byte * 2 + 2);
+  const ID = "01" + "00".repeat(31);
+
+  it("refuses small-order public keys, which would otherwise verify any message (regression)", async () => {
+    // With the identity as key, R = identity and S = 0 verifies for every message under Web Crypto.
+    for (const msg of [new Uint8Array(), new TextEncoder().encode("forged"), attestationSignedMessage(keyed)])
+      expect(await code(() => verifyKeySignature("ed25519", ID, msg, ID + "00".repeat(32)))).toBe("malformed_key");
+    for (const k of [
+      "00".repeat(32),
+      "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+      "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+      "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      // the same points with the sign bit set
+      "01" + "00".repeat(30) + "80",
+      "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85",
+      "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa",
+    ])
+      expect(await code(() => verifyKeySignature("ed25519", k, new Uint8Array(), ID + "00".repeat(32))), k).toBe("malformed_key");
+    // An attestation using such a key is refused, not accepted.
+    const forged: Attestation = { ...keyed, proof: { method: "key_signature", algorithm: "ed25519", publicKey: ID, signature: ID + "00".repeat(32) } };
+    expect(await code(() => assertAttestationAccepted({ simulation: true }, list("simulation", ["key_signature"], ["ed25519"]), forged))).toBe("malformed_key");
+  });
+
+  it("refuses non-canonical key encodings (y ≥ p)", async () => {
+    for (const k of ["edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f", "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f", "ff".repeat(31) + "7f", "ff".repeat(32)])
+      expect(await code(() => verifyKeySignature("ed25519", k, RFC8032_T1.message, RFC8032_T1.signature)), k).toBe("malformed_key");
+  });
+
+  it("rejects every single-bit change to R, S or the key's low bytes", async () => {
+    for (const byte of [0, 15, 31, 32, 47, 63]) expect(await verifyKeySignature("ed25519", RFC8032_T2.publicKey, RFC8032_T2.message, flip(RFC8032_T2.signature, byte)), `signature byte ${byte}`).toBe(false);
+    for (const byte of [0, 15, 30]) {
+      const r = await code(async () => {
+        if (await verifyKeySignature("ed25519", flip(RFC8032_T2.publicKey, byte), RFC8032_T2.message, RFC8032_T2.signature)) throw new Error("verified");
+      });
+      // Either the changed key is not a valid point (malformed_key) or the signature does not verify.
+      expect(["no error", "malformed_key"], `key byte ${byte}`).toContain(r);
+    }
+  });
+
+  it("rejects a non-canonical S (S + L), which encodes the same scalar", async () => {
+    const L = (1n << 252n) + 27742317777372353535851937790883648493n;
+    const le = (h: string) => BigInt("0x" + h.match(/../g)!.reverse().join(""));
+    const toLe = (n: bigint) => Array.from({ length: 32 }, (_, i) => ((n >> BigInt(8 * i)) & 0xffn).toString(16).padStart(2, "0")).join("");
+    const s = le(RFC8032_T1.signature.slice(64));
+    expect(await verifyKeySignature("ed25519", RFC8032_T1.publicKey, RFC8032_T1.message, RFC8032_T1.signature.slice(0, 64) + toLe(s + L))).toBe(false);
+  });
+
+  it("refuses trailing or missing bytes, odd lengths, prefixes and non-hex characters", async () => {
+    const bad = [RFC8032_T1.signature + "00", RFC8032_T1.signature.slice(2), RFC8032_T1.signature.slice(1), "0x" + RFC8032_T1.signature.slice(2), RFC8032_T1.signature.slice(0, 126) + "zz", ""];
+    for (const sig of bad) expect(await code(() => verifyKeySignature("ed25519", RFC8032_T1.publicKey, RFC8032_T1.message, sig)), sig.slice(0, 8)).toBe("malformed_signature");
+    for (const key of [RFC8032_T1.publicKey + "00", RFC8032_T1.publicKey.slice(1), " " + RFC8032_T1.publicKey.slice(1), 42 as never])
+      expect(await code(() => verifyKeySignature("ed25519", key, RFC8032_T1.message, RFC8032_T1.signature))).toBe("malformed_key");
+    expect(await code(() => verifyKeySignature("ed25519", RFC8032_T1.publicKey, "" as never, RFC8032_T1.signature))).toBe("invalid_attestation");
+  });
+
+  it("does not verify a signature under another algorithm's key shape", async () => {
+    expect(await code(() => verifyKeySignature("ecdsa_p256_sha256", RFC8032_T1.publicKey, RFC8032_T1.message, RFC8032_T1.signature))).toBe("malformed_key");
+    expect(await code(() => verifyKeySignature("ed25519", RFC6979_P256.publicKey, RFC6979_P256.message, RFC6979_P256.signature))).toBe("malformed_key");
+  });
+});
+
+describe("negative vectors: ECDSA P-256", () => {
+  const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+  const p = 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffffn;
+  const h64 = (x: bigint) => x.toString(16).padStart(64, "0");
+  const r = RFC6979_P256.signature.slice(0, 64);
+  const s = RFC6979_P256.signature.slice(64);
+  const x = RFC6979_P256.publicKey.slice(2, 66);
+  const y = RFC6979_P256.publicKey.slice(66);
+  const verify = (key: string, sig: string, msg = RFC6979_P256.message) => verifyKeySignature("ecdsa_p256_sha256", key, msg, sig);
+
+  it("rejects r or s equal to 0 or n, and r or s out of range", async () => {
+    for (const sig of [h64(0n) + s, r + h64(0n), h64(n) + s, r + h64(n), "ff".repeat(32) + s, r + "ff".repeat(32), h64(0n) + h64(0n)]) expect(await verify(RFC6979_P256.publicKey, sig), sig.slice(0, 8)).toBe(false);
+  });
+
+  it("accepts both S forms (n − s also verifies); attestation hashes cover the signature bytes as given", async () => {
+    expect(await verify(RFC6979_P256.publicKey, r + h64(n - BigInt("0x" + s)))).toBe(true);
+  });
+
+  it("refuses keys off the curve or with coordinates ≥ p, and does not verify under the negated point", async () => {
+    expect(await code(() => verify("04" + x + h64(BigInt("0x" + y) + 1n), RFC6979_P256.signature))).toBe("malformed_key");
+    expect(await code(() => verify("04" + "ff".repeat(32) + y, RFC6979_P256.signature))).toBe("malformed_key");
+    expect(await code(() => verify("04" + x + h64(BigInt("0x" + y) + p), RFC6979_P256.signature))).not.toBe("no error");
+    expect(await verify("04" + x + h64(p - BigInt("0x" + y)), RFC6979_P256.signature)).toBe(false);
+    expect(await code(() => verify("04" + "00".repeat(64), RFC6979_P256.signature))).toBe("malformed_key");
+  });
+
+  it("refuses compressed, hybrid and point-at-infinity encodings, DER signatures and trailing bytes", async () => {
+    for (const prefix of ["02", "03", "06", "07", "00"]) expect(await code(() => verify(prefix + x + y, RFC6979_P256.signature)), prefix).toBe("malformed_key");
+    expect(await code(() => verify("00", RFC6979_P256.signature))).toBe("malformed_key");
+    // DER: SEQUENCE { INTEGER r, INTEGER s } with r and s both having the high bit set (each 33 bytes).
+    const der = "3046" + "022100" + r + "022100" + s;
+    expect(await code(() => verify(RFC6979_P256.publicKey, der))).toBe("malformed_signature");
+    expect(await code(() => verify(RFC6979_P256.publicKey, RFC6979_P256.signature + "00"))).toBe("malformed_signature");
+    expect(await code(() => verify(RFC6979_P256.publicKey + "00", RFC6979_P256.signature))).toBe("malformed_key");
+  });
+
+  it("rejects the signature when any bit of the message, r or s changes", async () => {
+    const msg = new TextEncoder().encode("samplf");
+    expect(await verify(RFC6979_P256.publicKey, RFC6979_P256.signature, msg)).toBe(false);
+    expect(await verify(RFC6979_P256.publicKey, RFC6979_P256.signature, new TextEncoder().encode("sample\n"))).toBe(false);
+    expect(await verify(RFC6979_P256.publicKey, h64(BigInt("0x" + r) ^ 1n) + s)).toBe(false);
+    expect(await verify(RFC6979_P256.publicKey, r + h64(BigInt("0x" + s) ^ 1n))).toBe(false);
+  });
+});
+
+describe("domain separation of the signed message", () => {
+  const text = (a: Attestation) => new TextDecoder().decode(attestationSignedMessage(a));
+  const withProof = (patch: Partial<Extract<Attestation["proof"], { method: "key_signature" }>>): Attestation => ({ ...keyed, proof: { ...(keyed.proof as Extract<Attestation["proof"], { method: "key_signature" }>), ...patch } });
+
+  it("changes the signed bytes when any signed field changes", () => {
+    const base0 = text(keyed);
+    const variants: Attestation[] = [
+      { ...keyed, attester: "auditor-2" },
+      { ...keyed, role: "agronomist" },
+      { ...keyed, statement: "I examined these items" },
+      { ...keyed, subjectHashes: [SUBJECTS[0]!] },
+      { ...keyed, issuedAt: "2026-10-02T09:00:01Z" },
+      { ...keyed, revokes: SUBJECTS[0]! },
+      withProof({ algorithm: "ecdsa_p256_sha256", publicKey: RFC6979_P256.publicKey }),
+      withProof({ publicKey: RFC8032_T2.publicKey }),
+    ];
+    const all = new Set([base0, ...variants.map(text)]);
+    expect(all.size).toBe(variants.length + 1);
+  });
+
+  it("does not sign the signature itself, and the separator cannot be overridden by the caller", () => {
+    expect(text(withProof({ signature: "00".repeat(64) }))).toBe(text(keyed));
+    expect(text(keyed)).toContain('"scheme":"metafarm-yield-attestation/1"');
+    expect(attestationProblems({ ...keyed, scheme: "metafarm-yield-evidence/1" })).toEqual(["attestation has unsupported keys: scheme"]);
+  });
+
+  it("never signs bytes that parse as an evidence manifest, a calculation artifact or another scheme", () => {
+    const parsed = JSON.parse(text(keyed)) as Record<string, unknown>;
+    expect(parsed.scheme).toBe("metafarm-yield-attestation/1");
+    expect(Object.keys(parsed)).not.toContain("items");
+    expect(Object.keys(parsed).sort()).toEqual(Object.keys(parsed));
+  });
+
+  it("keeps a statement's characters exactly (no Unicode normalisation)", () => {
+    expect(text({ ...keyed, statement: "é" })).not.toBe(text({ ...keyed, statement: "é" }));
+  });
+});
