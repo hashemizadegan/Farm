@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { rebuildOwnership, type ChainAssetRef } from "@metafarm/domain";
 import { base58Encode } from "../solana/base58";
 import { TOKEN_2022_PROGRAM } from "../solana/keys";
-import { httpSolanaHistoryRpc, type HistoryTransaction, type SolanaHistoryRpc, type TokenBalance } from "./solana-history-rpc";
+import { executedInstructions, httpSolanaHistoryRpc, type HistoryTransaction, type SolanaHistoryRpc, type TokenBalance } from "./solana-history-rpc";
 import { OwnershipHistoryError, createToken2022OwnershipSource, ownershipEventsFromBalances } from "./token2022-ownership-source";
 
 const key = (b: number) => base58Encode(new Uint8Array(32).fill(b));
@@ -49,7 +49,7 @@ describe("ownershipEventsFromBalances", () => {
 /** A fake node: signatures newest first, transactions by signature. */
 function node(finalized: bigint, entries: { s: number; slot: bigint; err?: unknown; pre: TokenBalance[]; post: TokenBalance[] }[]): SolanaHistoryRpc & { pages: number } {
   const newestFirst = [...entries].sort((a, b) => (a.slot === b.slot ? b.s - a.s : a.slot < b.slot ? 1 : -1));
-  const txs = new Map<string, HistoryTransaction>(entries.map((e) => [sig(e.s), { slot: e.slot, err: e.err ?? null, preTokenBalances: e.pre, postTokenBalances: e.post }]));
+  const txs = new Map<string, HistoryTransaction>(entries.map((e) => [sig(e.s), { slot: e.slot, err: e.err ?? null, preTokenBalances: e.pre, postTokenBalances: e.post, instructions: [] }]));
   const rpc = {
     pages: 0,
     async getFinalizedSlot() {
@@ -121,6 +121,7 @@ describe("httpSolanaHistoryRpc", () => {
       getTransaction: {
         slot: 100,
         meta: { err: null, preTokenBalances: [], postTokenBalances: [{ accountIndex: 1, mint: MINT, owner: A, programId: TOKEN_2022_PROGRAM, uiTokenAmount: { amount: "5", decimals: 0, uiAmount: 5, uiAmountString: "5" } }] },
+        transaction: { message: { accountKeys: [], instructions: [] }, signatures: [sig(1)] },
       },
     };
     const fetchImpl = async (_url: string, init: { body: string }) => {
@@ -132,11 +133,29 @@ describe("httpSolanaHistoryRpc", () => {
     expect(Object.keys(rpc).sort()).toEqual(["getFinalizedSlot", "getSignaturesForAddress", "getTransaction"]);
     expect(await rpc.getFinalizedSlot()).toBe(1_234n);
     expect(await rpc.getSignaturesForAddress(MINT, { limit: 10, before: sig(2) })).toEqual([{ signature: sig(1), slot: 100n, err: null }]);
-    expect(await rpc.getTransaction(sig(1))).toEqual({ slot: 100n, err: null, preTokenBalances: [], postTokenBalances: [{ accountIndex: 1, mint: MINT, owner: A, programId: TOKEN_2022_PROGRAM, amount: "5" }] });
+    expect(await rpc.getTransaction(sig(1))).toEqual({ slot: 100n, err: null, preTokenBalances: [], postTokenBalances: [{ accountIndex: 1, mint: MINT, owner: A, programId: TOKEN_2022_PROGRAM, amount: "5" }], instructions: [] });
     expect(calls).toEqual([
       { method: "getSlot", params: [{ commitment: "finalized" }] },
       { method: "getSignaturesForAddress", params: [MINT, { commitment: "finalized", limit: 10, before: sig(2) }] },
       { method: "getTransaction", params: [sig(1), { commitment: "finalized", encoding: "json", maxSupportedTransactionVersion: 0 }] },
     ]);
+  });
+});
+
+describe("executedInstructions", () => {
+  it("resolves lookup-table accounts and runs each instruction's inner instructions right after it", () => {
+    const [p1, p2, p3, x, y, z] = [key(1), key(2), key(3), key(4), key(5), key(6)] as const;
+    const out = executedInstructions({
+      slot: 1,
+      meta: { err: null, innerInstructions: [{ index: 0, instructions: [{ programIdIndex: 4, accounts: [5], data: "2g" }] }], loadedAddresses: { writable: [y], readonly: [z] } },
+      transaction: { message: { accountKeys: [p1, p2, p3, x], instructions: [{ programIdIndex: 0, accounts: [3, 4], data: "" }, { programIdIndex: 1, accounts: [], data: "" }] } },
+    });
+    expect(out.map((i) => [i.programId, i.accounts])).toEqual([
+      [p1, [x, y]],
+      [y, [z]],
+      [p2, []],
+    ]);
+    expect(Array.from(out[1]!.data)).toEqual([0x6f]);
+    expect(() => executedInstructions({ slot: 1, meta: null, transaction: { message: { accountKeys: [p1], instructions: [{ programIdIndex: 3, accounts: [], data: "" }] } } })).toThrow(/outside/);
   });
 });

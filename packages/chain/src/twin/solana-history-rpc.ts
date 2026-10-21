@@ -2,6 +2,7 @@
  * Read-only Solana history calls for the ownership index, at `finalized` commitment. Deliberately a
  * separate interface from SolanaRpc: it has no way to send anything.
  */
+import { base58Decode } from "../solana/base58";
 import { SolanaRpcError } from "../solana/rpc";
 
 export interface HistorySignature {
@@ -20,11 +21,20 @@ export interface TokenBalance {
   amount: string;
 }
 
+/** One instruction as executed, with its accounts resolved (including address lookup tables). */
+export interface ExecutedInstruction {
+  programId: string;
+  accounts: string[];
+  data: Uint8Array;
+}
+
 export interface HistoryTransaction {
   slot: bigint;
   err: unknown;
   preTokenBalances: TokenBalance[];
   postTokenBalances: TokenBalance[];
+  /** Every instruction in execution order: each top-level instruction followed by the instructions it invoked. */
+  instructions: ExecutedInstruction[];
 }
 
 export interface SolanaHistoryRpc {
@@ -35,6 +45,44 @@ export interface SolanaHistoryRpc {
 }
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+
+export interface RawInstruction {
+  programIdIndex: number;
+  accounts: number[];
+  data: string;
+}
+
+/** A getTransaction result (encoding "json"), as far as these readers use it. */
+export interface RawHistoryTransaction {
+  slot: number;
+  meta: {
+    err: unknown;
+    preTokenBalances?: RawBalance[];
+    postTokenBalances?: RawBalance[];
+    innerInstructions?: { index: number; instructions: RawInstruction[] }[] | null;
+    loadedAddresses?: { writable: string[]; readonly: string[] } | null;
+  } | null;
+  transaction: { message: { accountKeys: string[]; instructions: RawInstruction[] } };
+}
+
+/** Resolves account indexes (static keys, then lookup-table writable, then readonly) and orders inner instructions after their parent. */
+export function executedInstructions(raw: RawHistoryTransaction): ExecutedInstruction[] {
+  const keys = [...raw.transaction.message.accountKeys, ...(raw.meta?.loadedAddresses?.writable ?? []), ...(raw.meta?.loadedAddresses?.readonly ?? [])];
+  const key = (i: number) => {
+    const k = keys[i];
+    if (k === undefined) throw new Error(`account index ${i} is outside the transaction's ${keys.length} accounts`);
+    return k;
+  };
+  const resolve = (ix: RawInstruction): ExecutedInstruction => ({ programId: key(ix.programIdIndex), accounts: ix.accounts.map(key), data: base58Decode(ix.data) });
+  const inner = new Map<number, RawInstruction[]>();
+  for (const group of raw.meta?.innerInstructions ?? []) inner.set(group.index, group.instructions);
+  const out: ExecutedInstruction[] = [];
+  raw.transaction.message.instructions.forEach((ix, i) => {
+    out.push(resolve(ix));
+    for (const child of inner.get(i) ?? []) out.push(resolve(child));
+  });
+  return out;
+}
 
 interface RawBalance {
   accountIndex: number;
@@ -67,12 +115,18 @@ export function httpSolanaHistoryRpc(url: string, fetchImpl: Fetch = fetch as un
       return r.map((s) => ({ signature: s.signature, slot: BigInt(s.slot), err: s.err ?? null }));
     },
     async getTransaction(signature) {
-      const r = await call<{ slot: number; meta: { err: unknown; preTokenBalances?: RawBalance[]; postTokenBalances?: RawBalance[] } | null } | null>("getTransaction", [
+      const r = await call<RawHistoryTransaction | null>("getTransaction", [
         signature,
         { commitment: "finalized", encoding: "json", maxSupportedTransactionVersion: 0 },
       ]);
       if (!r) return null;
-      return { slot: BigInt(r.slot), err: r.meta?.err ?? null, preTokenBalances: balances(r.meta?.preTokenBalances), postTokenBalances: balances(r.meta?.postTokenBalances) };
+      return {
+        slot: BigInt(r.slot),
+        err: r.meta?.err ?? null,
+        preTokenBalances: balances(r.meta?.preTokenBalances),
+        postTokenBalances: balances(r.meta?.postTokenBalances),
+        instructions: executedInstructions(r),
+      };
     },
   };
 }
