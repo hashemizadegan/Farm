@@ -6,6 +6,33 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 00:27 local (owner decision: leaf layout 2 approved)
+
+The owner approved claim leaf layout 2 in these terms:
+
+- Layout 2 binds claims to a verified ownership snapshot without breaking layout 1.
+- It is byte-identical to layout 1 for the first 201 bytes and appends a 32-byte SHA-256 `snapshot_hash`: 233 bytes.
+- Layout 1 stays supported; its existing parity vectors stay authoritative.
+- The pipeline and new artifacts may require layout 2; verification fails closed on layout confusion or a snapshot
+  mismatch.
+- Snapshot normalisation refuses non-canonical (unsorted) input; it does not re-sort silently.
+
+This records the decision only; the plan document is not changed. The code on #75 already met every point. The
+owner's "byte-identical" holds in every byte except offset 195, the layout version itself (1 or 2), which is the byte
+that keeps the layouts apart. One test was added to pin these rules in TypeScript as well as C#: `64187cd` on #75
+(`claim-tree.test.ts`, "keeps layouts 1 and 2 apart"). The yield tests touched by #75 pass locally (claim tree 17,
+snapshot 14, pipeline 21, lookup 6). CI is rerunning on the push.
+
+Where each point is enforced:
+
+| Point | TypeScript | C# |
+| --- | --- | --- |
+| 201-byte prefix + 32-byte hash | `encodeClaimLeaf`, `claim-tree.test.ts` | `ClaimLeafCodec`, `TheCodecKeepsLayoutsApart` |
+| Layout 1 vectors authoritative | `claim-tree.vectors.test.ts` (unchanged) | `ClaimTreeParityTests` |
+| Pipeline requires layout 2 | `pipeline.ts` (`ownership_unbound`) | — |
+| Fail closed on confusion or mismatch | `decodeClaimLeaf`, `verifyClaimPayload` | `ClaimLeafCodec.Decode`, `ClaimPayloadVerification` |
+| No silent re-sort | `ownership-snapshot.ts` (`not_canonical_order`) | — |
+
 ## 2026-10-21, night (ownership snapshot verifier; leaf layout 2)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
@@ -27,7 +54,7 @@ belongs to the frozen #40–#59 stack.
     plan's shares and addresses to match it.
   - A one-unit share change or an address change fails verification, even with the snapshot and artifact hashes
     recomputed.
-- **Needs owner acknowledgement:** leaf layout 2 is an addition to the plan's §6.2 table, which defines layout 1
+- **Needs owner acknowledgement (approved 2026-10-22, see above):** leaf layout 2 is an addition to the plan's §6.2 table, which defines layout 1
   only. The plan document is not changed. Layout 1 and its parity vectors are untouched.
 - **C#:** the codec handles layout 2; the payload verifier requires the trusted snapshot hash inside the leaf.
 - **Holds unchanged:** no signing, chain or network access.
