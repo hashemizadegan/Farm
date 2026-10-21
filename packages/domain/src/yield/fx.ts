@@ -27,7 +27,9 @@ function isRfc3339WithOffset(v: unknown): boolean {
   const m = RFC3339.exec(v);
   if (!m) return false;
   const [y, mo, d, h, mi, sec] = m.slice(1, 7).map(Number) as [number, number, number, number, number, number];
-  const daysInMonth = mo >= 1 && mo <= 12 ? new Date(Date.UTC(y, mo, 0)).getUTCDate() : 0;
+  // Proleptic Gregorian, computed directly: Date.UTC maps years 0–99 to 1900–1999.
+  const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+  const daysInMonth = mo >= 1 && mo <= 12 ? ([31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1] as number) : 0;
   if (d < 1 || d > daysInMonth || h > 23 || mi > 59 || sec > 59) return false;
   if (m[8] !== undefined && (Number(m[8]) > 23 || Number(m[9]) > 59)) return false;
   return !Number.isNaN(Date.parse(v));
