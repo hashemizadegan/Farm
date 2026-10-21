@@ -19,3 +19,4 @@ export * from "./aggregation";
 export * from "./distribution";
 export * from "./claim-tree";
 export * from "./evidence-store";
+export * from "./pipeline";
