@@ -22,3 +22,5 @@ export * from "./evidence-store";
 export * from "./pipeline";
 export * from "./claim-lookup";
 export * from "./ownership-snapshot";
+export * from "./ownership-synthetic";
+export * from "./ownership-source";
