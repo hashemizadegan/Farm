@@ -39,11 +39,14 @@ export function rfc9162PathLength(i: number, n: number): number {
   return 1 + (i < k ? rfc9162PathLength(i, k) : rfc9162PathLength(i - k, n - k));
 }
 
-/** Runs a seeded extreme-profile cycle (dust threshold 0, so zero_amount deferrals occur). */
-export async function largeHolderCycle(holders: number, seed: bigint, hasher: ClaimTreeHasher = SHA256_RFC9162_HASHER) {
+/**
+ * Runs a seeded extreme-profile cycle. With the default dust threshold 0, zero_amount deferrals occur; a positive
+ * threshold also produces below_dust_threshold deferrals.
+ */
+export async function largeHolderCycle(holders: number, seed: bigint, hasher: ClaimTreeHasher = SHA256_RFC9162_HASHER, dustThreshold = 0n) {
   const ownership = await loadVerifiedOwnershipSnapshot(new MockOwnershipAdapter({ seed, holders, profile: "extreme", withheldEvery: 97, unattributed: 3, observedAt: "2026-09-30T23:59:59Z" }), LARGE_REQUEST);
   const base = await input();
-  const result = await calculateSimulationCycle({ ...base, ownership, hasher, distributionPolicy: { ...SIMULATION_DISTRIBUTION_POLICY, dustThreshold: 0n, missingPayoutWallet: "withhold" } });
+  const result = await calculateSimulationCycle({ ...base, ownership, hasher, distributionPolicy: { ...SIMULATION_DISTRIBUTION_POLICY, dustThreshold, missingPayoutWallet: "withhold" } });
   return { ownership, input: base, ...result };
 }
 
