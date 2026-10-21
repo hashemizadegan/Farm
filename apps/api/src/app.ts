@@ -52,7 +52,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
     maxParamLength: 200,
   });
 
-  await app.register(securityPlugin, { env: deps.env });
+  await app.register(securityPlugin, { env: deps.env, rateLimitRedis: deps.rateLimitRedis });
   await app.register(contextPlugin, { deps });
   await app.register(healthRoutes, { isDraining });
 

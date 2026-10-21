@@ -3,6 +3,7 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import type { FastifyInstance } from "fastify";
 import fp from "fastify-plugin";
+import type { Redis } from "ioredis";
 import type { ApiEnv } from "@metafarm/config";
 import { HttpError, sendError } from "../lib/http";
 
@@ -10,11 +11,14 @@ import { HttpError, sendError } from "../lib/http";
  * Security middleware:
  *  - strict security headers (API only serves JSON; CSP denies everything),
  *  - CORS limited to configured origins, credentials off (bearer tokens only),
- *  - per-IP rate limiting with a stricter bucket for auth-sensitive routes,
+ *  - per-IP rate limiting with a stricter bucket for auth-sensitive routes, counted per process or,
+ *    with RATE_LIMIT_STORE=redis, in Redis shared by all replicas (fail open if Redis is unreachable),
  *  - uniform error responses that never leak stack traces.
  * Body-size limits are set on the Fastify instance (bodyLimit).
  */
-export const securityPlugin = fp(async (app: FastifyInstance, opts: { env: ApiEnv }) => {
+export const securityPlugin = fp(async (app: FastifyInstance, opts: { env: ApiEnv; rateLimitRedis?: Redis }) => {
+  const shared = opts.env.RATE_LIMIT_STORE === "redis";
+  if (shared && !opts.rateLimitRedis) throw new Error("RATE_LIMIT_STORE=redis needs a Redis client for rate limits");
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"], baseUri: ["'none'"], formAction: ["'none'"] },
@@ -41,7 +45,14 @@ export const securityPlugin = fp(async (app: FastifyInstance, opts: { env: ApiEn
     global: true,
     max: opts.env.RATE_LIMIT_MAX,
     timeWindow: opts.env.RATE_LIMIT_WINDOW,
-    // TODO(provider-config): back this with Redis (`redis` option) when running more than one API replica.
+    ...(shared
+      ? {
+          redis: opts.rateLimitRedis,
+          nameSpace: `${opts.env.QUEUE_PREFIX}:rate-limit:`,
+          // A Redis outage must not take the API down: requests are served unlimited and the error is logged.
+          skipOnError: true,
+        }
+      : {}),
     keyGenerator: (req) => req.ip,
     allowList: (req) => req.url === "/healthz" || req.url === "/readyz",
     errorResponseBuilder: (_req, ctx) => ({

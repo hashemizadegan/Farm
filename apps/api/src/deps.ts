@@ -6,6 +6,7 @@ import type { Logger } from "@metafarm/observability";
 import type { AuthProvider } from "./auth/provider";
 import type { SolanaClusterCheck } from "./lib/solana-cluster";
 import type { ObjectStorage } from "@metafarm/storage";
+import type { Redis } from "ioredis";
 
 export interface JobProducer {
   enqueue<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloads[Q]): Promise<void>;
@@ -41,4 +42,6 @@ export interface Deps {
    * ownership as `not_indexed` and never substitutes its own records.
    */
   ownershipReader?: OwnershipReader;
+  /** Shared rate-limit counters; required when RATE_LIMIT_STORE is `redis`, ignored otherwise. */
+  rateLimitRedis?: Redis;
 }

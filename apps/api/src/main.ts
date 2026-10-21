@@ -11,6 +11,7 @@ import { createHarvestChainReader } from "./lib/harvest-chain";
 import { createBullProducer } from "./queue/producer";
 import { createStorageFromEnv } from "@metafarm/storage";
 import { solanaClusterCheck } from "./lib/solana-cluster";
+import { createRateLimitRedis } from "./lib/rate-limit-redis";
 
 const env = loadEnv(apiEnvSchema);
 const logger = createLogger({
@@ -34,6 +35,7 @@ const storage = () => createStorageFromEnv(env);
 
 const pool = createPool({ connectionString: env.DATABASE_URL, max: env.DATABASE_POOL_MAX, ssl: env.DATABASE_SSL, applicationName: "metafarm-api" });
 const jobs = createBullProducer(env.REDIS_URL, env.QUEUE_PREFIX);
+const rateLimitRedis = env.RATE_LIMIT_STORE === "redis" ? createRateLimitRedis(env.REDIS_URL, logger) : undefined;
 const shutdown = installGracefulShutdown(logger, env.SHUTDOWN_GRACE_MS);
 
 const app = await buildApp({
@@ -52,6 +54,7 @@ const app = await buildApp({
     solanaRpc: env.RWA_SOLANA_RPC_URL ? httpSolanaRpc(env.RWA_SOLANA_RPC_URL) : undefined,
     // Ownership from the platform's index (read-only, off by default): without it, ownership reads `not_indexed`.
     ownershipReader: env.TWIN_OWNERSHIP_INDEX_ENABLED ? new IndexOwnershipReader((asset) => readOwnershipIndex(pool, asset)) : undefined,
+    rateLimitRedis,
     solanaCluster: env.RWA_SOLANA_RPC_URL ? solanaClusterCheck(() => ({ url: env.RWA_SOLANA_RPC_URL!, network: env.RWA_SOLANA_NETWORK })) : undefined,
   },
   isDraining: () => shutdown.isShuttingDown,
@@ -61,6 +64,7 @@ const app = await buildApp({
 // Close order (reverse of registration): HTTP server first, then queue, then DB.
 shutdown.register({ name: "postgres", close: () => pool.end() });
 shutdown.register({ name: "queue", close: () => jobs.close() });
+if (rateLimitRedis) shutdown.register({ name: "rate-limit-redis", close: async () => void (await rateLimitRedis.quit()) });
 shutdown.register({ name: "http", close: () => app.close() });
 
 await app.listen({ port: env.PORT, host: env.HOST });
