@@ -76,6 +76,28 @@ Two settings, both unset or false by default, so deploying this changes nothing:
   type `job`.
 - Storage is the same S3-compatible store and the same content-addressed keys as the API.
 
+## Scheduled snapshot batches (worker, off by default)
+
+| Setting | Service | Effect |
+| --- | --- | --- |
+| `TWIN_SNAPSHOT_BATCH_CRON` | scheduler | Registers `twin-snapshot-batches-sweep` (queue `twin-snapshot-batches`). When unset the scheduler removes it. |
+| `TWIN_SNAPSHOT_BATCHES_ENABLED` | worker | Lets the worker run the jobs. When false, every job finishes as `skipped`. |
+
+- The sweep lists the workspaces that have snapshot commitments in no batch yet and enqueues one job
+  per workspace, keyed `twin-snapshot-batch:<tenant>:<hour bucket>`.
+- The job takes up to 4096 of those commitments, oldest first and across all the workspace's farms,
+  and fixes them into one RFC 9162 batch named `snapshots/YYYYMMDDHH` (leaf = SHA-256(0x00 ‖ content
+  hash), as for `POST …/data-commitments/batches`). One root therefore covers many farms' snapshots,
+  each provable on its own with `GET …/data-commitments/{id}/proof`. Anything left over is picked up by
+  the next run.
+- Batches are per workspace, never across workspaces: commitments are under row-level security, and
+  a proof in a shared tree would reveal other workspaces' leaf hashes.
+- A batch made by the job has `created_by` null and an audit entry `twin.snapshot.batched` (actor
+  type `job`). If a person's batch takes one of the commitments at the same moment, the job records
+  nothing and the next run continues.
+- The batch's anchor plan (below) works unchanged; the dataset name keeps the Token-2022 key at 29
+  bytes. Nothing is anchored.
+
 ## Anchor plans (read-only)
 
 - `GET /v1/tenants/{t}/twin/data-commitments/batches/{batchId}/anchor-plan?carrier=&network=`
@@ -88,6 +110,10 @@ Token-2022 keys stay within 32 bytes; a longer key is refused (422 `anchor_plan_
 truncated. `network` defaults to `solana-devnet`; `solana-mainnet` is refused unless
 `RWA_MAINNET_ENABLED`. The Bubblegum carrier needs `RWA_CNFT_METADATA_BASE_URL` (409 `not_configured`
 otherwise) and an https base (422 otherwise).
+
+The C# starter reads both endpoints (`TwinReadClient.GetSnapshotAnchorPlanAsync`,
+`GetBatchAnchorPlanAsync`) into `AnchorModels.cs`, and `AnchorPlanReview` shows a plan only if it is
+plan-only (`executable: false`) and names the root the client verified itself.
 
 ## Reserved anchor formats (`anchor.ts`, scheme `metafarm-anchor/1`)
 
