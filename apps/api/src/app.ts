@@ -5,6 +5,7 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import type { Deps } from "./deps";
 import { contextPlugin } from "./plugins/context";
 import { idempotencyPlugin } from "./plugins/idempotency";
+import { metricsPlugin } from "./plugins/metrics";
 import { securityPlugin } from "./plugins/security";
 import { chainRoutes } from "./routes/chain";
 import { farmRoutes } from "./routes/farms";
@@ -54,6 +55,8 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   });
 
   await app.register(securityPlugin, { env: deps.env, rateLimitRedis: deps.rateLimitRedis });
+  // Before every route, so that every response is counted.
+  await app.register(metricsPlugin, { token: deps.env.METRICS_TOKEN });
   await app.register(contextPlugin, { deps });
   await app.register(idempotencyPlugin);
   await app.register(healthRoutes, { isDraining });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NonRetryableJobError } from "@metafarm/domain";
-import { createLogger } from "@metafarm/observability";
+import { MetricsRegistry, createJobMetrics, createLogger } from "@metafarm/observability";
 import { wrapHandler, type DeadLetterSink, type JobRunStore } from "./runner";
 
 function memoryStore(): JobRunStore & { runs: Map<string, string> } {
@@ -90,5 +90,30 @@ describe("wrapHandler", () => {
     await expect(run(job({}, 0))).rejects.toThrow();
     expect(await run(job({}, 1))).toBe("ok");
     expect(store.runs.get("k1")).toBe("completed");
+  });
+
+  it("counts outcomes per queue and times attempts", async () => {
+    const registry = new MetricsRegistry();
+    const metrics = createJobMetrics(registry);
+    const store = memoryStore();
+    let n = 0;
+    const run = wrapHandler("ownership-index", async () => {
+      if (++n === 1) throw new Error("once");
+      return "ok";
+    }, { store, deadLetter: dlq(), logger, metrics });
+    await expect(run(job({}, 0, 3))).rejects.toThrow();
+    await run(job({}, 1, 3));
+    await run(job({}, 2, 3)); // already completed
+    const last = wrapHandler("other", async () => {
+      throw new Error("no");
+    }, { store: memoryStore(), deadLetter: dlq(), logger, metrics });
+    await expect(last(job({}, 0, 1))).rejects.toThrow();
+    const text = await registry.render();
+    expect(text).toContain('metafarm_jobs_total{queue="ownership-index",outcome="failed"} 1\n');
+    expect(text).toContain('metafarm_jobs_total{queue="ownership-index",outcome="completed"} 1\n');
+    expect(text).toContain('metafarm_jobs_total{queue="ownership-index",outcome="skipped"} 1\n');
+    expect(text).toContain('metafarm_jobs_total{queue="other",outcome="failed"} 1\n');
+    expect(text).toContain('metafarm_jobs_total{queue="other",outcome="dead_lettered"} 1\n');
+    expect(text).toContain('metafarm_job_duration_seconds_count{queue="ownership-index"} 2\n');
   });
 });

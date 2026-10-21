@@ -131,6 +131,11 @@ export const apiEnvSchema = z
      * reached, requests are served without limiting (fail open) and the error is logged.
      */
     RATE_LIMIT_STORE: z.enum(["memory", "redis"]).default("memory"),
+    /**
+     * Bearer token for GET /metrics (Prometheus text). Unset (default): the endpoint answers 404 and
+     * nothing is exposed. A platform secret; never commit it or put it in a URL.
+     */
+    METRICS_TOKEN: z.string().min(32).optional(),
     TRUST_PROXY: bool.default("true"),
     WEBHOOK_SIGNING_SECRETS: csv.default(""),
     /** Let a signed-in user with no workspace create one and become its owner. */
@@ -171,6 +176,11 @@ export const workerEnvSchema = z
     /** Seconds to wait for a registration transaction before retrying later. */
     CHAIN_TX_TIMEOUT_SECONDS: z.coerce.number().int().min(10).max(900).default(120),
     HEALTH_PORT: z.coerce.number().int().min(1).max(65535).default(4100),
+    /**
+     * Bearer token for GET /metrics on HEALTH_PORT (Prometheus text). Unset (default): the endpoint answers 404 and
+     * nothing is exposed. A platform secret; never commit it or put it in a URL.
+     */
+    METRICS_TOKEN: z.string().min(32).optional(),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(30_000),
     /** MQTT broker for sensor telemetry (mqtts:// or wss://). Unset: no MQTT consumer. */
     MQTT_URL: z.string().url().optional(),

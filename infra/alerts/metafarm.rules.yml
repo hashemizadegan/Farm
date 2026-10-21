@@ -1,0 +1,86 @@
+# Prometheus alerting rules for the platform's metrics (docs/observability.md).
+# The thresholds are starting points, not tuned against real traffic: adjust them once staging has
+# produced data. `job` labels assume scrape jobs named metafarm-api and metafarm-worker.
+groups:
+  - name: metafarm-api
+    rules:
+      - alert: MetafarmApiDown
+        expr: up{job="metafarm-api"} == 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: The API has not answered a metrics scrape for 5 minutes.
+      - alert: MetafarmApiErrorRate
+        expr: |
+          sum(rate(metafarm_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(metafarm_http_requests_total[5m])) > 0.05
+          and sum(rate(metafarm_http_requests_total[5m])) > 0.1
+        for: 10m
+        labels: { severity: page }
+        annotations:
+          summary: More than 5% of API requests failed with a 5xx for 10 minutes.
+      - alert: MetafarmApiSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(metafarm_http_request_duration_seconds_bucket{route!~"/healthz|/readyz"}[5m]))
+          ) > 1
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: The 95th percentile of API request time has been above 1 second for 15 minutes.
+      - alert: MetafarmApiRateLimited
+        expr: sum(rate(metafarm_http_requests_total{status="429"}[10m])) > 1
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: Clients have been rate limited for 15 minutes (more than one 429 per second).
+
+  - name: metafarm-worker
+    rules:
+      - alert: MetafarmWorkerDown
+        expr: up{job="metafarm-worker"} == 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: The worker has not answered a metrics scrape for 5 minutes.
+      - alert: MetafarmJobsDeadLettered
+        expr: sum by (queue) (increase(metafarm_jobs_total{outcome="dead_lettered"}[15m])) > 0
+        labels: { severity: ticket }
+        annotations:
+          summary: Jobs in {{ $labels.queue }} failed for the last time and went to the dead-letter queue.
+      - alert: MetafarmJobFailureRate
+        expr: |
+          sum by (queue) (rate(metafarm_jobs_total{outcome="failed"}[15m]))
+            / sum by (queue) (rate(metafarm_jobs_total{outcome=~"completed|failed"}[15m])) > 0.2
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: More than 20% of attempts in {{ $labels.queue }} have failed for 15 minutes.
+      - alert: MetafarmQueueBacklog
+        expr: metafarm_queue_jobs{state="waiting"} > 500
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: More than 500 jobs have been waiting in {{ $labels.queue }} for 15 minutes.
+      - alert: MetafarmQueueStalled
+        expr: |
+          metafarm_queue_jobs{state="waiting"} > 0
+          unless on (queue) sum by (queue) (increase(metafarm_jobs_total{outcome=~"completed|failed|skipped"}[15m])) > 0
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: Jobs are waiting in {{ $labels.queue }} but none has run for 15 minutes.
+
+  - name: metafarm-metrics
+    rules:
+      - alert: MetafarmMetricsDropped
+        expr: sum by (metric) (increase(metafarm_metrics_series_dropped_total[1h])) > 0
+        labels: { severity: ticket }
+        annotations:
+          summary: Samples of {{ $labels.metric }} were dropped (wrong labels or too many series). This is a bug.
+      - alert: MetafarmMetricsCollectFailing
+        expr: sum by (metric) (increase(metafarm_metrics_collect_errors_total[15m])) > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: Collecting {{ $labels.metric }} has failed for 15 minutes (for queue depth, usually Redis).
