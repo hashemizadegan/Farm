@@ -1,0 +1,14 @@
+{
+  "commitmentId": "99999999-9999-4999-8999-999999999999",
+  "snapshotId": "54a9b85ea4cd2f5f292d66deef768018055eadfb7f8fd17a1b3d87fc87005eac",
+  "plan": {
+    "scheme": "metafarm-anchor/1",
+    "carrier": "token2022_metadata",
+    "network": "solana-devnet",
+    "subject": "snapshot",
+    "root": "609fb30445a023b7e4a83ec941b50e7f230c4d0db811218957185aa4f774bf89",
+    "metadataField": { "key": "mf:snapshot:farm-6b0c6f4e8d1a4c", "value": "metafarm-farm-snapshot/1:609fb30445a023b7e4a83ec941b50e7f230c4d0db811218957185aa4f774bf89" },
+    "executable": false,
+    "reason": "anchoring_not_enabled"
+  }
+}
