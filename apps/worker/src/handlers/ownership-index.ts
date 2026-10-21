@@ -27,7 +27,7 @@ export function ownershipIndexSweepHandler(pool: Pool, enqueue: Enqueue): Handle
 
 export type OwnershipIndexOutcome =
   | { status: "indexed"; inserted: number; indexedThroughSlot: string }
-  | { status: "skipped"; reason: "source_behind_cursor" };
+  | { status: "skipped"; reason: "source_behind_cursor" | "not_covered" };
 
 export class OwnershipSourceError extends Error {
   constructor(message: string) {
@@ -39,6 +39,7 @@ export class OwnershipSourceError extends Error {
 export function ownershipIndexHandler(pool: Pool, source: OwnershipEventSource): Handler<OwnershipIndexJob> {
   return async (job, { log }): Promise<OwnershipIndexOutcome> => {
     const asset: ChainAssetRef = { network: job.network, rail: job.rail, id: job.assetId };
+    if (!source.covers(asset)) return { status: "skipped", reason: "not_covered" };
     const cursor = await withSystem(pool, (tx) => ownershipCursorOf(tx, asset));
     const { events, throughSlot } = await source.eventsAfter(asset, cursor);
     if (cursor !== null && throughSlot < cursor) {

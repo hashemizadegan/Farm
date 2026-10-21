@@ -84,9 +84,9 @@ d("ownership index jobs", () => {
 
   it("refuses events of another asset or outside the window, storing nothing", async () => {
     const other: ChainAssetRef = { ...asset, id: b58(32) };
-    const wrongAsset = { name: "fixture" as const, eventsAfter: async () => ({ events: [ev("mint", null, wallets.custodian, 1n, 1_100n, other)], throughSlot: 1_200n }) };
+    const wrongAsset = { name: "fixture" as const, covers: () => true, eventsAfter: async () => ({ events: [ev("mint", null, wallets.custodian, 1n, 1_100n, other)], throughSlot: 1_200n }) };
     await expect(ownershipIndexHandler(pool, wrongAsset)(job, ctx)).rejects.toBeInstanceOf(OwnershipSourceError);
-    const outside = { name: "fixture" as const, eventsAfter: async () => ({ events: [ev("burn", wallets.investor, null, 1n, 1_500n)], throughSlot: 1_200n }) };
+    const outside = { name: "fixture" as const, covers: () => true, eventsAfter: async () => ({ events: [ev("burn", wallets.investor, null, 1n, 1_500n)], throughSlot: 1_200n }) };
     await expect(ownershipIndexHandler(pool, outside)(job, ctx)).rejects.toBeInstanceOf(OwnershipSourceError);
     expect((await readOwnershipIndex(pool, asset))!.indexedThroughSlot).toBe(1_000n);
     expect((await readOwnershipIndex(pool, asset))!.events).toHaveLength(2);

@@ -4,3 +4,5 @@ export * from "./submitter";
 export * from "./fixtures";
 export * from "./index-ownership";
 export * from "./fixture-event-source";
+export * from "./solana-history-rpc";
+export * from "./token2022-ownership-source";
