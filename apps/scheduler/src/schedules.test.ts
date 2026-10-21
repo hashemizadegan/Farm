@@ -26,4 +26,11 @@ describe("buildSchedules", () => {
     const s = buildSchedules({ ...base, twinSnapshotCron: "0 2 * * *" });
     expect(s.find((x) => x.id === "twin-snapshots-sweep")).toEqual({ id: "twin-snapshots-sweep", queue: "twin-snapshots", jobName: "sweep", pattern: "0 2 * * *", data: {} });
   });
+
+  it("schedules snapshot batching only when its own cron is set", () => {
+    const base = { alertCron: "*/5 * * * *", chainCron: "* * * * *", chainId: 1, contracts: [], twinSnapshotCron: "0 2 * * *" };
+    expect(buildSchedules(base).map((x) => x.id)).not.toContain("twin-snapshot-batches-sweep");
+    const s = buildSchedules({ ...base, twinSnapshotBatchCron: "30 3 * * *" });
+    expect(s.find((x) => x.id === "twin-snapshot-batches-sweep")).toEqual({ id: "twin-snapshot-batches-sweep", queue: "twin-snapshot-batches", jobName: "sweep", pattern: "30 3 * * *", data: {} });
+  });
 });

@@ -17,6 +17,7 @@ import { wrapHandler, type DeadLetterSink, type JobRunStore } from "./runner";
 import { startTelemetryConsumer } from "./telemetry/consumer";
 import { startRwaEngine } from "./rwa/start";
 import { twinSnapshotHandler, twinSnapshotSweepHandler } from "./handlers/twin-snapshots";
+import { twinSnapshotBatchHandler, twinSnapshotBatchSweepHandler } from "./handlers/twin-snapshot-batches";
 import { createObjectContentStore, createStorageFromEnv } from "@metafarm/storage";
 
 // On Railway the platform assigns PORT; the health server uses it unless HEALTH_PORT is set.
@@ -111,6 +112,17 @@ const processors: Record<string, Processor> = {
       return wrapHandler("twin-snapshots-sweep", twinSnapshotSweepHandler(pool, enqueue), deps)(view);
     }
     return wrapHandler(QUEUES.twinSnapshots, twinSnapshotHandler(pool, (tenantId) => createObjectContentStore(objectStorage, tenantId)), deps)(job);
+  }) as Processor,
+  [QUEUES.twinSnapshotBatches]: (async (job) => {
+    // Opt-in: without TWIN_SNAPSHOT_BATCHES_ENABLED the job completes without reading or writing anything.
+    // Batches are data only; nothing is anchored or written on-chain.
+    if (!env.TWIN_SNAPSHOT_BATCHES_ENABLED) return { skipped: "twin snapshot batches are disabled" };
+    if (job.name === "sweep") {
+      const bucket: string = job.data.bucket ?? timeBucket(new Date(), 60);
+      const view = { id: job.id, name: job.name, attemptsMade: job.attemptsMade, opts: job.opts, discard: () => job.discard(), data: { bucket, idempotencyKey: `twin-snapshot-batches-sweep:${bucket}` } };
+      return wrapHandler("twin-snapshot-batches-sweep", twinSnapshotBatchSweepHandler(pool, enqueue), deps)(view);
+    }
+    return wrapHandler(QUEUES.twinSnapshotBatches, twinSnapshotBatchHandler(pool), deps)(job);
   }) as Processor,
   [QUEUES.chain]: (async (job) => {
     if (!chainReader) {
