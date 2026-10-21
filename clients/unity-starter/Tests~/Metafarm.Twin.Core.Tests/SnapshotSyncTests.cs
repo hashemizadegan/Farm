@@ -55,7 +55,9 @@ namespace Metafarm.Twin.Core.Tests
             Assert.Equal(SnapshotSyncOutcome.Initial, r.Outcome);
             Assert.True(r.Accepted);
             Assert.Equal(Id("a"), state.CommitmentId);
-            Assert.Same(r.Snapshot, state.Snapshot);
+            Assert.Equal(r.Snapshot.SnapshotId, state.Snapshot.SnapshotId);
+            Assert.NotSame(r.Snapshot, state.Snapshot);
+            Assert.Equal((string)Records["a"]["contentSha256"], state.ContentSha256);
             Assert.Equal(new[] { "animal/7777", "crop/6666", "inventory/4444", "machine/2222", "plot/1111", "structure/3333" }, Keys(r.Diff.Added));
             Assert.Empty(r.Diff.Removed);
             Assert.Empty(r.Diff.Changed);
@@ -90,6 +92,62 @@ namespace Metafarm.Twin.Core.Tests
         }
 
         [Fact]
+        public async Task AMatchingRecordIdAloneDoesNotSkipVerification()
+        {
+            // Same id as the held record but another content hash: the bytes are fetched and checked.
+            var state = await Holding("a");
+            var record = (JObject)Records["a"].DeepClone();
+            record["contentSha256"] = new string('f', 64);
+            var t = Serving("a", record: record);
+            var r = await Sync(t, state);
+            Assert.Equal(SnapshotSyncOutcome.VerificationFailed, r.Outcome);
+            Assert.Equal(SnapshotFailure.ContentMismatch, r.Failure);
+            Assert.Equal(2, t.Requests.Count);
+            Assert.Equal((string)Records["a"]["contentSha256"], state.ContentSha256);
+        }
+
+        [Fact]
+        public void BeforeTheFirstSyncNothingIsHeld()
+        {
+            var state = new FarmSnapshotState(SampleIds.FarmId);
+            Assert.False(state.HasSnapshot);
+            Assert.Null(state.Snapshot);
+            Assert.Null(state.CommitmentId);
+            Assert.Null(state.ContentSha256);
+        }
+
+        [Fact]
+        public async Task ChangingWhatTheCallerReceivedNeverChangesTheHeldBaseline()
+        {
+            var state = new FarmSnapshotState(SampleIds.FarmId);
+            var first = await Sync(Serving("a"), state);
+            // Tamper with everything handed out: the result's snapshot, the diff's entities, a copy of the state.
+            first.Snapshot.Entities.Clear();
+            first.Snapshot.TakenAt = "2099-01-01T00:00:00.000Z";
+            first.Diff.Added[0].Data["name"] = "edited";
+            first.Diff.Added[0].Sha256 = new string('0', 64);
+            var copy = state.Snapshot;
+            copy.TakenAt = "2099-01-01T00:00:00.000Z";
+            copy.Entities.RemoveAt(0);
+
+            Assert.Equal("2026-10-21T06:00:00.000Z", state.Snapshot.TakenAt);
+            Assert.Equal(6, state.Snapshot.Entities.Count);
+            Assert.Empty(SnapshotVerifier.CheckStructure(state.Snapshot));
+
+            // The next sync still compares against the verified A: same mixed diff as without tampering.
+            var r = await Sync(Serving("b"), state);
+            Assert.Equal(SnapshotSyncOutcome.Updated, r.Outcome);
+            Assert.Equal(new[] { "structure/5555" }, Keys(r.Diff.Added));
+            Assert.Equal(new[] { "structure/3333" }, Keys(r.Diff.Removed));
+            Assert.Equal(2, r.Diff.Changed.Count);
+            Assert.Equal(3, r.Diff.UnchangedCount);
+
+            // And the diff's "before" side is a copy too.
+            r.Diff.Changed[0].Before.Data["hourMeter"] = "0";
+            Assert.Equal(SnapshotSyncOutcome.Rollback, (await Sync(Serving("a"), state)).Outcome);
+        }
+
+        [Fact]
         public async Task TheSameVerifiedSnapshotUnderAnotherRecordIsUnchanged()
         {
             var state = await Holding("a");
@@ -106,13 +164,13 @@ namespace Metafarm.Twin.Core.Tests
         public async Task RejectsAnOlderSnapshotAsRollbackAndKeepsHeldState()
         {
             var state = await Holding("b");
-            var held = state.Snapshot;
+            var held = state.Snapshot.SnapshotId;
             var r = await Sync(Serving("a"), state);
             Assert.Equal(SnapshotSyncOutcome.Rollback, r.Outcome);
             Assert.Null(r.Diff);
             Assert.Null(r.Snapshot);
             Assert.Contains("before the held one", r.Problems.Single());
-            Assert.Same(held, state.Snapshot);
+            Assert.Equal(held, state.Snapshot.SnapshotId);
             Assert.Equal(Id("b"), state.CommitmentId);
         }
 
@@ -120,11 +178,11 @@ namespace Metafarm.Twin.Core.Tests
         public async Task RejectsEqualTimeWithDifferentContentAsConflict()
         {
             var state = await Holding("b");
-            var held = state.Snapshot;
+            var held = state.Snapshot.SnapshotId;
             var r = await Sync(Serving("c"), state);
             Assert.Equal(SnapshotSyncOutcome.Conflict, r.Outcome);
             Assert.Null(r.Diff);
-            Assert.Same(held, state.Snapshot);
+            Assert.Equal(held, state.Snapshot.SnapshotId);
             Assert.Equal(Id("b"), state.CommitmentId);
         }
 
