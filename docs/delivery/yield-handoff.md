@@ -6,6 +6,20 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-21, 19:29 local (D-23 decision brief; no approvals)
+
+- **Added** [`decision-brief-d23-attester-identity.md`](decision-brief-d23-attester-identity.md), marked
+  OPEN — FOR REVIEW ONLY (NO APPROVALS). It covers:
+  - the gap: attester identity is not bound to the signing key;
+  - the threat model;
+  - options A–D, with their analysis;
+  - the artifacts needed from L, S, P and T;
+  - non-goals and blocked scope;
+  - ten next questions.
+- **Unchanged:** no code, tests, migrations, plan document, deployment settings or holds were touched.
+  The PR heads are as in the entry below.
+- **Next action:** owner and approver review of the brief. D-23 stays open.
+
 ## 2026-10-21, late evening (test hardening; two defects fixed)
 
 ### Current heads (all drafts, none merged)
