@@ -74,6 +74,18 @@ starter implements the chain in `SnapshotChain`; the samples `snapshot-content`,
 re-derived in `client-samples.test.ts`. `snapshot-content.sample.json` must keep its exact bytes
 (listed in `.prettierignore` and `.gitattributes`).
 
+## Verified incremental sync (C# starter)
+
+`SnapshotSync.SyncAsync(FarmSnapshotState)` polls with two requests (newest record, its exact
+bytes) and holds a candidate only when the bytes hash to the record, the structure checks out for
+the requested farm (also on the first sync) and it is newer than the held snapshot. Outcomes:
+`NoSnapshot`, `UpToDate` (same record, nothing fetched), `Unchanged` (same snapshot id), `Initial`,
+`Updated`, `VerificationFailed` (with the failure kind), `FarmMismatch`, `Rollback` (earlier
+`takenAt`) and `Conflict` (same `takenAt`, different content). Only `Initial` and `Updated` replace
+the held state and carry a `SnapshotDiff` (added, removed, changed, by committed entity hash, in the
+platform's (type, id) order). `SceneUpdatePlan` turns that diff into scene operations. The fixtures
+`sync-a/b/c` were built with `buildFarmSnapshot` and are re-derived in `client-samples.test.ts`.
+
 ## Scheduled snapshots (worker, off by default)
 
 Two settings, both unset or false by default, so deploying this changes nothing:

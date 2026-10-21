@@ -19,9 +19,10 @@ disabled.
 | `Runtime/Core/Transactions` (`…Core.Transactions`) | none | `ITransferPreviewer` (preparation only) and `DisabledTransferPreviewer`, the default. There is no signing or submission interface. |
 | `Runtime/Core/Verification` (`…Core.Verification`) | none | `ICommitmentVerifier` and `Rfc9162CommitmentVerifier`: checks content hashes and Merkle proofs locally, using the platform's scheme `metafarm-merkle-sha256/1` |
 | `Runtime/Core/Anchoring` (`…Core.Anchoring`) | none | `AnchorPlanReview`: checks an anchor plan (`AnchorModels.cs`) against the root the client verified, refuses any plan that claims to be executable, and words it as "planned only, not anchored" |
-| `Runtime/Core/Sync` (`…Core.Sync`) | none | `SnapshotSync`: compares the newest snapshot commitment with the one held, fetches only when it changed, and accepts it only if the server's check and `SnapshotVerifier` both pass. `SnapshotChain`: verifies one snapshot link by link (exact bytes against the committed hash, structure, batch inclusion, optional anchor plan) and reports each link's state |
+| `Runtime/Core/Sync` (`…Core.Sync`) | none | `SnapshotSync` with `FarmSnapshotState`: verified, incremental sync (list + exact bytes per poll). A candidate replaces the held snapshot only if its bytes hash to the record, its structure checks out for the requested farm, and it is newer than the held one (rollback and equal-time conflicts are refused); the result carries a `SnapshotDiff` by entity. `SnapshotContentVerification` is the content-and-structure check it shares with `SnapshotChain`. `SnapshotChain`: verifies one snapshot link by link (exact bytes against the committed hash, structure, batch inclusion, optional anchor plan) and reports each link's state |
+| `Runtime/Core/Scene` (`…Core.Scene`) | none | `SceneUpdatePlan`: turns a verified diff into ordered scene operations (remove, refresh, place) for asset-registry entities (`asset:<id>`, as in the scene endpoint) and state-only changes for the rest. All decisions are here, so they are unit-tested |
 | `Runtime/Core/Mocks` (`…Core.Mocks`) | none | `SampleTransport` (serves JSON by path, records requests) and `SampleIds` for running without a backend |
-| `Runtime/Unity` (`Metafarm.Twin.Unity`) | Unity | `UnityWebRequestTransport` (https only, bearer token), `LocalFrame` (metres around the farm origin, as in `packages/map-scene`), and the `FarmSceneLoader` MonoBehaviour |
+| `Runtime/Unity` (`Metafarm.Twin.Unity`) | Unity | `UnityWebRequestTransport` (https only, bearer token), `LocalFrame` (metres around the farm origin, as in `packages/map-scene`), and the `FarmSceneLoader` MonoBehaviour (draws the scene; `ApplySnapshotPlan` only executes a `SceneUpdatePlan`) |
 | `Samples/` | none | Mock payloads in the API's shape. The farm, assets and addresses are made up. |
 | `Tests~/` | .NET | Builds `Runtime/Core` outside Unity and runs its tests. Unity ignores folders ending in `~`. |
 
@@ -64,6 +65,30 @@ Nothing else: no Solana SDK, no wallet adapter, no Cesium. Those come with later
    `loader.Load(new TwinReadClient(new UnityWebRequestTransport(apiBaseUrl, tokens), tenantId), farmId)`.
    Take `apiBaseUrl` from configuration; never commit tokens, keys or credentialed URLs.
 
+## Keeping a farm current
+
+```csharp
+var state = new FarmSnapshotState(farmId);            // keep one per farm
+var sync = new SnapshotSync(client);                  // client: ITwinReadApi
+var r = await sync.SyncAsync(state);                  // GET newest record + its exact bytes
+if (r.Accepted) loader.ApplySnapshotPlan(SceneUpdatePlan.From(r.Diff));
+else if (r.Outcome != SnapshotSyncOutcome.UpToDate && r.Outcome != SnapshotSyncOutcome.Unchanged)
+    Debug.LogWarning($"{r.Outcome}: {string.Join("; ", r.Problems)}");   // state is unchanged
+```
+
+What an accepted result proves, and what it does not:
+- the bytes are the ones the record commits to (SHA-256), for the requested farm;
+- the entity hashes in those bytes reproduce the snapshot's Merkle root, and the root its snapshot id,
+  so the diff compares exactly the hashes the snapshot commits to;
+- the client does **not** recompute an entity's hash from its data (that needs the platform's
+  canonical JSON); the platform checks it when it stores and serves a snapshot;
+- ordering is rollback protection relative to the held snapshot (by `takenAt`), not a guarantee that
+  no newer snapshot exists; equal times with different content are a conflict, never ordered by id;
+- batch inclusion and anchor plans are not part of polling: run `SnapshotChain` for those.
+
+A first sync (`Initial`) diffs from nothing, so every entity is added and the scene places every
+asset-registry object. `Unchanged` and `UpToDate` need no scene work.
+
 ## Current limitations
 
 - Placeholders only: outlines and markers, no terrain, models, physics, multiplayer or gameplay.
@@ -71,4 +96,4 @@ Nothing else: no Solana SDK, no wallet adapter, no Cesium. Those come with later
   not exist on the platform either).
 - Ownership is only as good as the platform's ownership reader; the deployed API has none yet, so
   real assets show "Ownership unknown (not indexed)".
-- `Runtime/Unity` is unverified until compiled in Unity.
+- `Runtime/Unity` is unverified until compiled in Unity, including `FarmSceneLoader.ApplySnapshotPlan`.
