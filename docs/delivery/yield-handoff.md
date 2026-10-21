@@ -6,6 +6,38 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-21, night (Y4 evidence storage model; pluggable claim tree)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #68 | Y4: evidence storage model, append-only ledger | `feature/yield-evidence-store` | `bd505e9` | #67 | 39638781162 | 14/14 passed |
+| #69 | claim-tree base (#67 + #64, merge only) | `feature/yield-claim-base` | `fa5bf3e` | #67 | 39638855433 | 14/14 passed |
+| #70 | claim tree: leaves, root, proofs, pluggable hashing | `feature/yield-claim-tree` | `f20da4b` | #69 | 39639488074 | 14/14 passed |
+
+- **Y4 (#68):**
+  - A deeply frozen, append-only evidence ledger. Committing a cycle version records the Y3 manifest hash and
+    closes that version to further evidence.
+  - Corrections are superseding items, with forks refused.
+  - Evidence bytes go through the #41 content-store port and are checked by size and SHA-256 both ways.
+  - `assertEvidenceLedger` re-verifies a loaded ledger.
+  - **D-24 fail-closed:** registration needs a storage policy record, and the default is simulation-only
+    (in-memory). No public storage option is offered.
+  - **Gate recorded:** Y4's approval to begin also lists a [Legal] data-protection review, needed before any
+    real adapter or real evidence.
+- **Claim tree (#70):**
+  - The plan's §6.2 leaves (201 bytes) from #64's payable entries, one leaf per payout wallet,
+    0 < amount ≤ u64.
+  - An RFC 9162 tree over a pluggable hasher, whose default is the plan's SHA-256 construction.
+  - **Checks:** leaf bytes, leaf hash and example F's root match an independent Python vector; the tree matches
+    `twin/commitments` for every size from 1 to 40.
+  - `verifyClaimLeafProof` binds the trusted root and size, and the index inside the leaf, because an RFC 9162
+    path alone does not bind the tree size.
+  - **D-26 fail-closed:** the policy names the hasher, and the default is a simulation record.
+  - **Inputs left to the caller:** the cluster identity (Y0, not built) and the network id (a registry constant
+    not yet defined).
+  - **Not done:** C# parity (Y6).
+- **Holds unchanged:** no merges, deployments, signing or chain access.
+
 ## 2026-10-21, evening (three parallel tracks; provisional defaults are simulation-only)
 
 | PR | Track | Branch | Head | Base | CI run | Checks |
