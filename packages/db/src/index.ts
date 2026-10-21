@@ -22,3 +22,4 @@ export * from "./repositories/rwa-execution";
 export * from "./repositories/cnft";
 export * from "./repositories/twin";
 export * from "./repositories/twin-snapshot";
+export * from "./repositories/ownership-index";

@@ -26,6 +26,7 @@ import {
   TREE_STATUSES,
   RAIL_NETWORKS,
   DATA_SUBJECT_TYPES,
+  OWNERSHIP_EVENT_KINDS,
 } from "@metafarm/domain";
 
 const read = (name: string) => readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), `../migrations/${name}`), "utf8");
@@ -86,5 +87,30 @@ describe("RWA schema matches the domain", () => {
     if (tables.length === 0) return; // nothing new to protect
     const rls = /ARRAY\[([^\]]+)\]/.exec(text.slice(text.indexOf("ENABLE ROW LEVEL SECURITY") - 400))![1]!;
     for (const t of tables) expect(rls).toContain(`'${t}'`);
+  });
+});
+
+describe("ownership index schema (0020) matches the domain", () => {
+  const text = read("0020_ownership_index.up.sql");
+  const list = (table: string, column: string) => {
+    const body = text.slice(text.indexOf(`CREATE TABLE ${table} (`));
+    const m = new RegExp(`\\b${column}\\s+text NOT NULL CHECK \\(${column} IN \\(([^)]*)\\)\\)`).exec(body.slice(0, body.indexOf("\n);")));
+    if (!m) throw new Error(`no CHECK list for ${table}.${column}`);
+    return [...m[1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!);
+  };
+  const solanaRails = RAILS.filter((r) => r.startsWith("SOLANA_"));
+
+  it.each(["chain_ownership_events", "chain_ownership_cursors"])("%s covers exactly the Solana rails and networks", (table) => {
+    expect(list(table, "rail")).toEqual(solanaRails);
+    for (const r of solanaRails) expect(list(table, "network")).toEqual([...RAIL_NETWORKS[r]]);
+  });
+
+  it("records exactly the domain's ownership event kinds", () => {
+    expect(list("chain_ownership_events", "kind")).toEqual([...OWNERSHIP_EVENT_KINDS]);
+  });
+
+  it("lets the application role read and nothing else (public data, written by the system role)", () => {
+    const grants = [...text.matchAll(/^GRANT (.+) ON (.+) TO metafarm_app;/gm)].map((m) => [m[1], m[2]]);
+    expect(grants).toEqual([["SELECT", "chain_ownership_events, chain_ownership_cursors"]]);
   });
 });
