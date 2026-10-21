@@ -6,3 +6,4 @@ export * from "./index-ownership";
 export * from "./fixture-event-source";
 export * from "./solana-history-rpc";
 export * from "./token2022-ownership-source";
+export * from "./bubblegum-ownership-source";
