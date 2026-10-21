@@ -10,10 +10,10 @@ belongs to the frozen #40–#59 stack.
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
 | --- | --- | --- | --- | --- | --- | --- |
-| #79 | claim read model: indexed records, image round trip, C# sample | `feature/yield-claim-read-model` | `ec01ce8` | #78 | 39687437886 | 14/14 passed |
+| #79 | claim read model: indexed records, image round trip, C# sample | `feature/yield-claim-read-model` | `cf10f41` | #78 | 39689244592 | 14/14 passed |
 
 Commits: `8681fb2` (read model; tree-level helpers; claim-lookup indexing), `bde2016` (tests, C# sample), `ec01ce8` (test
-fix after the first CI run).
+fix after the first CI run), `cf10f41` (test strategy revised for CI time; tests only).
 
 - **Interfaces:** `ClaimReadModelStore` (get) and `ClaimReadModelSink` (put; records are immutable). Only an in-memory
   store exists. A durable store would implement the same two interfaces.
@@ -33,6 +33,16 @@ fix after the first CI run).
 - **C#:** `claim-readmodel.sample.json` claims are identical to the #78 large-tree sample's. `ReadModelCrossStackTests`
   decodes every layout 2 leaf exactly and verifies every claim.
 - **Also:** `createClaimLookup` now indexes plan entries once. Behaviour is unchanged; lookups had been quadratic.
+- **Test strategy (`cf10f41`, owner request, tests only):**
+  - 4,096 holders keep the full every-holder cross-check.
+  - 16,384 holders (fixed seed, dust threshold 1,000) check instead:
+    - the pinned image (`4c0ff458…`, 16,412,652 bytes) and its round trip;
+    - exact hash calls: projection L leaf + (Σpath + L − 1) node, and 1 + path per served claim;
+    - a stable seeded subset of 1,024 holders (`splitMix64(0x5b5e7)`, plus the first `below_dust_threshold` holder,
+      which the pick missed), covering claims, withheld, `zero_amount` and `below_dust_threshold`;
+    - read-count bounds;
+    - tamper detection.
+  - The unit job takes 107 s, down from 144 s (73 s on #78).
 - **CI note:** the first run (`bde2016`, run 39686212325) failed in Unit tests. A deep `toEqual` over the ~16 MB image
   enumerates every index in vitest. Fixed by a byte loop. The unit job now takes 144 s (73 s on #78), mostly the
   all-holder check at 16,384 holders.
