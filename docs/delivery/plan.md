@@ -31,17 +31,28 @@ CI success never counts as Env.
 
 | # | Journey (user-visible outcome) | Backend | Client / UI | Impl | Auto | Env | Dep |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| J1 | A player opens a farm and sees its twin scene (boundary, plots, assets) | `GET …/twin/farms/{id}/scene` (#40) | Unity `FarmSceneLoader` (#40) | yes | API, Core: yes | Unity: **pending**. Staging: not deployed | no |
+| J1 | A player opens a farm and sees its twin scene (boundary, plots, assets) | `GET …/twin/farms/{id}/scene` (#40) | Unity `FarmSceneLoader` (#40) | yes | API, Core: yes | Unity Editor and IL2CPP: **pending, blocked** (no Unity environment). Staging: not deployed | no |
 | J2 | A player inspects an asset: lifecycle, data commitments, ownership | `GET …/twin/assets/{id}` (#40) | Core `TwinReadClient`, `OwnershipDisplay` (#40) | yes | yes | pending | no |
 | J3 | Anyone verifies an off-chain data item without trusting the API | commitments, batches, proofs (#40) | Core `Rfc9162CommitmentVerifier` (#40) | yes | yes | pending | no |
 | J4 | The farm's state is captured as verifiable snapshots, manually or on a schedule (off by default) | snapshot API (#42), worker schedule (#43), scheduled batches (#44) | n/a | yes | yes | not on staging | no |
-| J5 | The client keeps a farm current, verified, never rolling back, updating only what changed | content endpoint (#46) | Core `SnapshotSync`, `SnapshotDiff`, `SceneUpdatePlan` (#47); Unity `ApplySnapshotPlan` (#47) | yes | Core: yes (C# 61/61 on #48) | Unity: **pending** (package in #48) | no |
+| J5 | The client keeps a farm current, verified, never rolling back, updating only what changed | content endpoint (#46) | Core `SnapshotSync`, `SnapshotDiff`, `SceneUpdatePlan` (#47); Unity `ApplySnapshotPlan` (#47) | yes | Core: yes (C# 63/63 on #52–#56) | Unity Editor and IL2CPP: **pending, blocked** (no Unity environment; package in #48) | no |
 | J6 | A client proves a snapshot back to its batch root and a plan-only anchor | anchor plans (#43), chain check (#46) | Core `SnapshotChain`, `AnchorPlanReview` (#44, #46) | yes | yes | pending | no |
-| J7 | **Ownership shown from the chain**: who holds an asset, as of which slot | Ownership index (events, cursors, index-backed reader, worker job, API wiring; all off by default): #50. Token-2022 source (#51) and Bubblegum V1 source (#52), both from finalized RPC history | Core `OwnershipDisplay` treats `chain_index` as known ownership | yes | yes (#50, #51, #52: 14/14 each) | **pending**: not run against a live devnet cluster | no |
-| J8 | A player links a Solana wallet and sees "you hold this" | not started | not started | no | no | no | no |
+| J7 | **Ownership shown from the chain**: who holds an asset, as of which slot | Ownership index (events, cursors, index-backed reader, worker job, API wiring; all off by default): #50. Token-2022 source (#51) and Bubblegum V1 source (#52), both from finalized RPC history | Core `OwnershipDisplay` shows `chain_index` as known ownership with its slot; "no current holders" is distinct from "not indexed" (#52) | yes | yes: fixture-tested (constructed events and RPC responses, mpl-bubblegum serializers); #50–#52 14/14. Acceptance check: `docs/ownership-index.md` | **pending**: never run against a live cluster. Unity: pending | no |
+| J8 | A player links a Solana wallet and sees "you hold this" | not started: **decision open** (see below) | not started | no | no | no | no |
 | J9 | Transfer or trade from the client | previews only (#40), unsigned intents (#41) | `DisabledTransferPreviewer` | previews only | yes | no | no |
 | J10 | Batch roots anchored on-chain | plan-only (#43) | plan review (#44) | plan-only | yes | no | no |
-| J11 | Operators see real-world assets in the web app (read-only `/rwa`) | existing RWA API | web `/rwa` (#39) | yes | yes | staging: pages load signed-out; **signed-in check pending** | staging, web only (`c02ae39d`) |
+| J11 | Operators see real-world assets in the web app (read-only `/rwa`) | existing RWA API | web `/rwa` (#39); reads every page of the paged lists (#55, not deployed) | yes | yes | staging (#39 only): pages load signed-out; **signed-in check pending** | #39 only: staging, web only (`c02ae39d`) |
+
+## Platform hardening (PR #40 "Next PRs" 5 and 6)
+
+Not a user journey, but confirmed scope. Each is implemented and tested on a draft PR, and none is deployed.
+
+| Item | PR | Impl | Auto | Env | Dep |
+| --- | --- | --- | --- | --- | --- |
+| Redis-backed rate limits, shared across API replicas (`RATE_LIMIT_STORE=redis`, fail open) | #53 | yes | yes (Redis in the integration job) | no | no |
+| `Idempotency-Key` on every tenant-scoped write (migration 0021) | #54 | yes | yes | no | no |
+| Keyset pages for the RWA lists; web `/rwa` reads every page | #55 | yes | yes | no | no |
+| Metrics (API, worker) and alert rules, off unless `METRICS_TOKEN` is set | #56 | yes | yes (PromQL syntax not checked: no `promtool` in CI) | no metrics backend exists | no |
 
 ## Acceptance criteria (confirmed)
 
@@ -73,14 +84,24 @@ These holds block J9 and J10 entirely, and block J8 and J7 at deployment.
 
 ## Next actionable work (in order)
 
-1. **J7 ownership index:** implemented and automatically tested (#50 index, #51 Token-2022, #52 Bubblegum V1; see `docs/ownership-index.md`). Remaining: validation against a live devnet mint and tree (needs an owner decision on a devnet RPC endpoint, configured by the owner, never committed) and enabling on staging (a deploy, on hold).
-2. **J5 and J1 Unity validation:** run `clients/unity-starter/Validation/README.md` in Unity 6 (Editor, then IL2CPP) and fix any adapter failures. Blocked on a Unity environment.
-3. **J8 wallet linking:** blocked on the product decisions below.
-4. **J11:** finish the signed-in `/rwa` check once the owner opens the page.
-5. **Roadmap items not started (PR #40 "Next PRs" 4–7):** reconcile Token-2022 and TRON attempts against the chain; API hardening (Redis-backed rate limits, idempotency keys on all writes, RWA pagination); metrics and alerts; retire the EVM wallet sign-in.
+Everything that is unblocked and in confirmed scope is implemented on draft PRs (#40–#56). What remains
+waits on the owner, an environment or a hold:
+
+1. **J7 live validation:** run the Token-2022 and Bubblegum sources against a devnet mint and tree. Needs a devnet RPC endpoint configured by the owner (`RWA_SOLANA_RPC_URL`, never committed), then a deploy, which is on hold.
+2. **J1 and J5 Unity validation:** `clients/unity-starter/Validation/README.md` in Unity 6 (Editor, then IL2CPP). **Blocked: no Unity environment is available to this work.**
+3. **J8 wallet linking:** blocked on decision 1 below.
+4. **J11:** the signed-in `/rwa` check, once the owner opens the page.
+5. **Roadmap item 4** (reconcile Token-2022 and TRON attempts against the chain before retrying): it changes the RWA execution engine's retry path and includes TRON, so it touches the RWA execution and TRON holds. Needs decision 2 below.
+6. **Roadmap item 7** (retire the EVM wallet sign-in): retiring it before Solana linking exists would leave no wallet sign-in, so it follows J8.
+7. **Metrics backend and alert routing:** an operations choice (decision 3), then a deploy.
 
 ## Open product decisions
 
-1. **Wallet linking (J8):** should a linked Solana wallet belong to the platform user (the game identity), to an RWA party (`party_wallets`), or to both? Is linking needed in the web app, the Unity client, or both?
-2. **Older open PRs #16, #28, #30:** they are not drafts and predate this work. #30 looks superseded by #31 on `main`. Should they be converted to drafts or closed, or left as they are?
-3. **Unity validation:** who runs it, on which machine and platform? Or should a Unity-capable machine be linked to a session?
+1. **Wallet linking (J8), open:** a platform user's wallet (the game identity, "you hold this") and an RWA party's wallet (`party_wallets`, compliance-screened) are different things and are not to be treated as interchangeable. Which of them, or both, should a linked Solana wallet be? Is linking needed in the web app, the Unity client, or both?
+2. **Roadmap item 4 under the holds:** may the reconciliation be built and tested on a draft branch (fixture-tested, nothing executed), or does it wait until the RWA execution and TRON holds are lifted? Token-2022 only, or both rails?
+3. **Metrics backend:** which system scrapes `/metrics` and routes the alerts (for example, Prometheus with Alertmanager, or a hosted service)?
+
+## Decided
+
+- PRs #16, #28 and #30 stay unchanged (owner, 2026-10-21).
+- Unity validation: recorded as a blocker; independent work continues (owner, 2026-10-21).

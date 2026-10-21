@@ -3,6 +3,54 @@
 The latest entry is on top. Each entry records what was completed (with the exact verification), what
 is blocked and why, and the next action. Scope and statuses are in [`plan.md`](plan.md).
 
+## 2026-10-21, later (session 1, continued)
+
+### Draft PR stack (all drafts, none merged)
+
+`main` ← #40 … #48 ← #49 ← #50 ← #51 ← #52 ← #53 ← #54 ← #55 ← #56
+
+| PR | Branch | Tested tip | CI run on that tip | C# |
+| --- | --- | --- | --- | --- |
+| #52 | `feature/ownership-source-bubblegum` | `de27621` | 39568045306: 14/14 | 63/63 |
+| #53 | `feature/api-rate-limit-redis` | `0c4b096` | 39569203736: 14/14 | 63/63 |
+| #54 | `feature/api-idempotency` | `a279c47` | 39569206824: 14/14 | 63/63 |
+| #55 | `feature/rwa-pagination` | `5ce8aa7` | 39569208447: 14/14 | 63/63 |
+| #56 | `feature/metrics` | `068c008` | 39569242035: 14/14 | 63/63 |
+
+#56's tip moves with this handoff commit, which changes only the two delivery docs. #49–#51 are
+unchanged from the entry below. Fixes are merged forward up the stack.
+
+### Completed
+
+- **J7 acceptance check** (`docs/ownership-index.md`, "Acceptance check"). Two gaps were fixed on #52:
+  - the Unity label now names the slot, and "no current holders" is distinct from "not indexed";
+  - the Token-2022 source refuses a first window without a mint, so missing history can no longer
+    read as "no holders".
+  - J7 is **fixture-tested only**; it has never run against a live cluster.
+- **#53 fixed:** the Redis rate-limit tests sent requests before the connection was ready, so the
+  requests were served unlimited (fail open). The tests now wait for the connection, and the threat
+  model records the startup window.
+- **#55, new:** keyset pages for the four RWA lists; the web `/rwa` page reads every page.
+- **#56, new:** metrics for the API and worker (off unless `METRICS_TOKEN` is set) and alert rules
+  (`docs/observability.md`).
+- Owner decisions recorded in `plan.md`: #16, #28 and #30 unchanged; J8 open; Unity is a blocker.
+
+### Blocked, and why
+
+- **J7 live validation:** needs an owner-configured devnet RPC endpoint and a deploy (on hold).
+- **Unity Editor and IL2CPP:** no Unity environment.
+- **J8:** the wallet-ownership decision (`plan.md`, decision 1).
+- **Roadmap item 4:** RWA execution and TRON holds (decision 2).
+- **Roadmap item 7:** follows J8.
+- **Metrics backend:** decision 3, then a deploy.
+- **Signed-in `/rwa`:** waits for the owner.
+- Staging is unchanged: the holds stay in place and `f14b940d` is untouched.
+
+### Next action
+
+No unblocked item in confirmed scope remains. Resume with whichever of `plan.md` decisions 1–3, J7 live
+validation or Unity access arrives first.
+
 ## 2026-10-21 (session 1 of the delivery-owner mandate)
 
 ### Draft PR stack (all drafts, none merged)
