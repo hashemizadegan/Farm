@@ -51,6 +51,7 @@ All endpoints are in `packages/contracts/openapi.yaml` under the `twin` tag.
 | `GET /farms/{farmId}/snapshots?limit&cursor` | `rwa:read` | A farm's state snapshots (data commitments), newest first: the sync check |
 | `POST /farms/{farmId}/snapshots` | `rwa:operate` | Record a snapshot of the farm's current state (stored content-addressed; nothing on-chain) |
 | `GET /snapshots/{commitmentId}` | `rwa:read` | The stored snapshot, re-verified on read; ETag = snapshotId |
+| `GET /snapshots/{commitmentId}/content` | `rwa:read` | The snapshot's exact stored bytes (canonical JSON); SHA-256 of the body = the commitment's `contentSha256` (also the ETag) |
 | `GET /snapshots/{commitmentId}/anchor-plan?carrier&network` | `rwa:read` | What would anchor the snapshot's root on Solana; data only, `executable: false` |
 | `GET /data-commitments/batches/{batchId}/anchor-plan?carrier&network` | `rwa:read` | The same for a batch root |
 | `GET /sync-status` | `rwa:read` | Whether ownership is indexed and submission available; commitment and batch counts |
@@ -76,6 +77,12 @@ A client that downloads a data item can check it without trusting the API:
 2. With the proof from `GET /data-commitments/{id}/proof`: leaf = SHA-256(0x00 ‖ contentHash bytes),
    then the RFC 9162 §2.1.3.2 audit-path walk with SHA-256(0x01 ‖ left ‖ right) must give `root`.
 3. Once roots are anchored on-chain (later), the root must also match the anchor transaction.
+
+For a farm snapshot the C# starter's `SnapshotChain` does all of this and reports each link:
+content (the bytes from `…/snapshots/{id}/content` hash to the commitment), structure (those same
+bytes parse to a snapshot whose order, root and id check out), inclusion (the proof reaches the
+batch root from that hash's leaf) and, optionally, the batch's anchor plan (plan-only, same root).
+It never reports a root as anchored.
 
 ## What the client must never do
 
