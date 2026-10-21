@@ -10,6 +10,7 @@ export function createFixtureEventSource(events: readonly OwnershipEvent[], fina
   const same = (a: ChainAssetRef, b: ChainAssetRef) => a.network === b.network && a.rail === b.rail && a.id === b.id;
   return {
     name: "fixture",
+    covers: (asset) => all.some((e) => same(e.asset, asset)),
     async eventsAfter(asset, afterSlot) {
       return {
         events: all.filter((e) => same(e.asset, asset) && e.slot <= finalized && (afterSlot === null || e.slot > afterSlot)),

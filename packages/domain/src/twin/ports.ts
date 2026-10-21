@@ -34,10 +34,13 @@ export interface OwnershipReader {
  * Where an ownership indexer reads finalized ownership events from. `eventsAfter` returns the asset's
  * events with a slot after `afterSlot` (all of them when null) and the finalized slot through which that
  * list is complete; the indexer stores the events and only then moves its cursor to `throughSlot`.
- * Adapters live in `packages/chain` (a fixture source; a chain reader is a separate slice).
+ * Adapters live in `packages/chain`: a fixture source, and a Token-2022 source that reads finalized
+ * transactions (read-only). Compressed NFTs have no event source yet.
  */
 export interface OwnershipEventSource {
   readonly name: "fixture" | "rpc";
+  /** Whether this source can answer for the asset (its rail and network). */
+  covers(asset: ChainAssetRef): boolean;
   eventsAfter(asset: ChainAssetRef, afterSlot: bigint | null): Promise<{ events: OwnershipEvent[]; throughSlot: bigint }>;
 }
 
