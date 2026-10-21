@@ -42,3 +42,25 @@ export function explorerUrl(network: string, address: string | null | undefined)
 
 /** Testnets are labelled as such wherever a network is shown. */
 export const isTestnet = (network: string) => network !== "solana-mainnet" && network !== "tron-mainnet";
+
+/** At most this many pages are read for one list (100 rows each), so a huge list cannot stall the page. */
+export const MAX_LIST_PAGES = 20;
+
+/**
+ * Every item of a paged list, following `nextCursor` until the last page. Stops after `maxPages` and
+ * says so (`truncated`), so the page can show that the list is incomplete instead of hiding it.
+ */
+export async function allPages<T>(
+  fetchPage: (cursor: string | undefined) => Promise<{ items: T[]; nextCursor: string | null }>,
+  maxPages = MAX_LIST_PAGES,
+): Promise<{ items: T[]; truncated: boolean }> {
+  const items: T[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < maxPages; i++) {
+    const page = await fetchPage(cursor);
+    items.push(...page.items);
+    if (!page.nextCursor) return { items, truncated: false };
+    cursor = page.nextCursor;
+  }
+  return { items, truncated: true };
+}

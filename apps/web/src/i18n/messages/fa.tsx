@@ -1373,6 +1373,7 @@ export const fa: Messages = {
     registrationsHeading: "ثبت‌ها",
     registrationsIntro: "هر ثبت یک قطعه زمین، درخت یا دام تأییدشده را به‌صورت یک NFT فشرده نزد یک امانت‌دار ثبت می‌کند. پیش از هر ضرب، شخص دومی باید آن را تأیید کند.",
     noRegistrations: "هنوز هیچ ثبتی وجود ندارد.",
+    listTruncated: (shown: number, max: number) => `فقط ${shown} مورد نخست نمایش داده می‌شود. این صفحه حداکثر ${max} مورد را می‌خواند و بقیه نمایش داده نمی‌شوند.`,
     notVerified: "تأیید نشده",
     approvedOn: (when: string) => `تأییدشده در ${when}`,
     leafIndex: (i: string) => `برگ #${i}`,

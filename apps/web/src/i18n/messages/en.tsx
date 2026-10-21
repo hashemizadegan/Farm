@@ -1298,6 +1298,7 @@ export const en = {
     registrationsHeading: "Registrations",
     registrationsIntro: "Each registration records one verified parcel, tree or animal as a compressed NFT held by a custodian. A second person must approve it before anything is minted.",
     noRegistrations: "No registrations yet.",
+    listTruncated: (shown: number, max: number) => `Showing the first ${shown} only. This page reads at most ${max}; the rest are not shown.`,
     notVerified: "Not verified",
     approvedOn: (when: string) => `approved ${when}`,
     leafIndex: (i: string) => `leaf #${i}`,

@@ -4,7 +4,7 @@ import { RequireTenant } from "@/components/RequireTenant";
 import { useI18n } from "@/i18n/provider";
 import { api, unwrap, useQuery, type Schemas } from "@/lib/api";
 import { useCan } from "@/lib/can";
-import { assetTone, explorerUrl, isTestnet, leafTone, registrationTone, shortAddress } from "@/lib/rwa";
+import { MAX_LIST_PAGES, allPages, assetTone, explorerUrl, isTestnet, leafTone, registrationTone, shortAddress } from "@/lib/rwa";
 
 /**
  * Real-world assets, read only: what is registered, its share tokens, and the state of each
@@ -30,9 +30,12 @@ function Overview({ tenantId }: { tenantId: string }) {
   const t = useI18n().m.rwa;
   const can = useCan();
   const allowed = can("rwa:read");
-  const assets = useQuery(allowed ? `rwa-assets:${tenantId}` : null, () => unwrap(api.GET("/v1/tenants/{tenantId}/rwa/assets", { params: { path: { tenantId } } })));
+  // The lists are paged by the API; the page reads every page (up to MAX_LIST_PAGES) and says if it stopped early.
+  const assets = useQuery(allowed ? `rwa-assets:${tenantId}` : null, () =>
+    allPages((cursor) => unwrap(api.GET("/v1/tenants/{tenantId}/rwa/assets", { params: { path: { tenantId }, query: { limit: 100, cursor } } }))),
+  );
   const registrations = useQuery(allowed ? `rwa-registrations:${tenantId}` : null, () =>
-    unwrap(api.GET("/v1/tenants/{tenantId}/rwa/registrations", { params: { path: { tenantId } } })),
+    allPages((cursor) => unwrap(api.GET("/v1/tenants/{tenantId}/rwa/registrations", { params: { path: { tenantId }, query: { limit: 100, cursor } } }))),
   );
 
   if (!allowed) return <Notice tone="info">{t.noAccess}</Notice>;
@@ -54,6 +57,7 @@ function Overview({ tenantId }: { tenantId: string }) {
         )}
         {assets.data && assets.data.items.length === 0 && <EmptyState title={t.noAssets} />}
         {assets.data && assets.data.items.length > 0 && <AssetTable items={assets.data.items} />}
+        {assets.data?.truncated && <Notice tone="warning">{t.listTruncated(assets.data.items.length, MAX_LIST_PAGES * 100)}</Notice>}
       </section>
 
       <section aria-labelledby="rwa-registrations">
@@ -67,6 +71,7 @@ function Overview({ tenantId }: { tenantId: string }) {
         )}
         {registrations.data && registrations.data.items.length === 0 && <EmptyState title={t.noRegistrations} />}
         {registrations.data && registrations.data.items.length > 0 && <RegistrationTable items={registrations.data.items} />}
+        {registrations.data?.truncated && <Notice tone="warning">{t.listTruncated(registrations.data.items.length, MAX_LIST_PAGES * 100)}</Notice>}
       </section>
     </>
   );
