@@ -88,6 +88,8 @@ namespace Metafarm.Twin.Core.Yield
                 LeafLayoutVersion = (ushort)ReadLittleEndian(b, 195, 2),
                 LeafIndex = (uint)ReadLittleEndian(b, 197, 4),
             };
+            // A zero-amount claim is never valid (zero-allocation policy): refused on decode as on encode.
+            if (f.Amount == 0) throw new ArgumentException("a leaf amount must be greater than zero", nameof(b));
             if (f.LeafLayoutVersion == LayoutVersion && b.Length == Length) return f;
             if (f.LeafLayoutVersion == LayoutVersionSnapshotBound && b.Length == LengthSnapshotBound)
             {

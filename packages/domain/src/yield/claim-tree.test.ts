@@ -149,7 +149,13 @@ describe("claim tree of a distribution plan", () => {
 
   it("refuses two parties sharing a payout wallet, zero payable amounts, empty trees and too many leaves", async () => {
     expect(await code(() => build(plan([party("a", 1n, "01".repeat(32)), party("b", 1n, "01".repeat(32))], 10n)))).toBe("duplicate_recipient");
-    expect(await code(() => build(plan([party("a", 1n, "01".repeat(32)), party("z", 0n, "02".repeat(32))], 10n)))).toBe("amount_out_of_range");
+    // The planner never makes a zero amount payable (zero-allocation policy); a forged plan that does is refused here too.
+    const withZero = plan([party("a", 1n, "01".repeat(32)), party("z", 0n, "02".repeat(32))], 10n);
+    expect(withZero.entries.map((e) => [e.partyId, e.state, e.deferredReason])).toEqual([["a", "payable", null], ["z", "deferred", "zero_amount"]]);
+    expect((await build(withZero)).leaves.map((l) => l.partyId)).toEqual(["a"]);
+    const forged = structuredClone(withZero);
+    Object.assign(forged.entries[1]!, { state: "payable", deferredReason: null });
+    expect(await code(() => build(forged))).toBe("amount_out_of_range");
     expect(await code(() => build(plan([party("a", 1n, null)], 10n)))).toBe("empty_tree");
     expect(await code(() => build(exampleF(), { policy: { ...SIMULATION_CLAIM_TREE_POLICY, maxLeaves: 2 } }))).toBe("too_many_leaves");
     expect(await code(() => build(exampleF(), { context: { ...context, clusterIdentity: "aa".repeat(31) } }))).toBe("invalid_key");
