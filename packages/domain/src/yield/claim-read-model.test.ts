@@ -29,6 +29,11 @@ const code = async (fn: () => unknown) => {
   return "no error";
 };
 const expectedOf = (a: CycleDistributionArtifact, sha: string) => ({ cycleId: a.cycle.id, cycleVersion: a.cycle.version, artifactSha256: sha });
+const sameBytes = (a: Uint8Array, b: Uint8Array) => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+};
 /** A copy of a store with one record replaced (or removed with null). */
 async function edited(store: InMemoryClaimReadModelStore, key: string, value: string | null) {
   const out = new InMemoryClaimReadModelStore();
@@ -49,7 +54,8 @@ async function roundTrip(r: { artifact: CycleDistributionArtifact; artifactSha25
   // Persistence round trip: the reloaded store re-encodes to the same bytes.
   const again = await encodeReadModelImage(loaded);
   expect(again.sha256).toBe(image.sha256);
-  expect(again.bytes).toEqual(image.bytes);
+  // Compared byte by byte: a deep toEqual over a multi-megabyte typed array enumerates every index.
+  expect(sameBytes(again.bytes, image.bytes)).toBe(true);
 
   // Exact record count: header, holders, unattributed, recipient index, leaves, nodes.
   const plan = r.artifact.distribution.plan;
