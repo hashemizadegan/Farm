@@ -15,7 +15,7 @@ milestone, not a production client or a complete metaverse.
 
 | Data | Source of truth | What the client may assume |
 | --- | --- | --- |
-| Who owns or holds an asset | The chain (Solana), read through an `OwnershipReader` | Only what `ownership` says, with its `source`, `assurance` and `asOfSlot`. `not_indexed` means unknown. |
+| Who owns or holds an asset | The chain (Solana), read through an `OwnershipReader` (the platform's ownership index, `source: chain_index`, see [ownership-index.md](ownership-index.md); off by default) | Only what `ownership` says, with its `source`, `assurance` and `asOfSlot`. `not_indexed` means unknown. |
 | Transfers, sales | On-chain transactions signed by the user's wallet | Nothing until a transaction is final; previews are not transactions |
 | Asset identity, geometry, status | The platform registry (`business_assets`), verified by a second person | As returned; `status` and `verifiedAt` say how far it is verified |
 | Off-chain data (surveys, telemetry windows, media, scene bundles) | Object storage, identified by SHA-256 | `state: included` only means the Merkle proof was re-checked against the stored batch root; `anchored` (root on-chain) is not produced yet |

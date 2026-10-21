@@ -5,7 +5,7 @@
  *
  * Transaction preparation is `previewTransfer` (./transfer): it is pure and never signs.
  */
-import type { ChainAssetRef } from "./ownership";
+import type { ChainAssetRef, OwnershipEvent } from "./ownership";
 
 /**
  * How much of an ownership reading the platform itself checked:
@@ -28,6 +28,17 @@ export interface OwnershipReading {
 export interface OwnershipReader {
   readonly source: "chain_index" | "das" | "fixture";
   holdersOf(asset: ChainAssetRef): Promise<OwnershipReading | null>;
+}
+
+/**
+ * Where an ownership indexer reads finalized ownership events from. `eventsAfter` returns the asset's
+ * events with a slot after `afterSlot` (all of them when null) and the finalized slot through which that
+ * list is complete; the indexer stores the events and only then moves its cursor to `throughSlot`.
+ * Adapters live in `packages/chain` (a fixture source; a chain reader is a separate slice).
+ */
+export interface OwnershipEventSource {
+  readonly name: "fixture" | "rpc";
+  eventsAfter(asset: ChainAssetRef, afterSlot: bigint | null): Promise<{ events: OwnershipEvent[]; throughSlot: bigint }>;
 }
 
 /** Why transactions cannot be submitted. A submitter never guesses: any missing piece disables it. */

@@ -135,6 +135,8 @@ export const apiEnvSchema = z
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(15_000),
     /** Serve Swagger UI at /docs. Unset: on in development and test, off in staging and production. */
     API_DOCS_ENABLED: bool.optional(),
+    /** Digital twin: report ownership from the platform's ownership index (migration 0020). Off by default: ownership then reads `not_indexed`. Read-only. */
+    TWIN_OWNERSHIP_INDEX_ENABLED: bool.default("false"),
     ...rwa,
   })
   .superRefine(productionGuards);
@@ -205,6 +207,8 @@ export const workerEnvSchema = z
     TWIN_SNAPSHOTS_ENABLED: bool.default("false"),
     /** Digital twin: fix recorded snapshot commitments into Merkle batches (one root per workspace and run). Off by default; data only, nothing on-chain. */
     TWIN_SNAPSHOT_BATCHES_ENABLED: bool.default("false"),
+    /** Digital twin: run ownership-index jobs (read finalized ownership events into the index). Off by default; also needs an event source. Read-only on chain. */
+    TWIN_OWNERSHIP_INDEX_ENABLED: bool.default("false"),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {
@@ -236,6 +240,8 @@ export const schedulerEnvSchema = z
     TWIN_SNAPSHOT_CRON: z.string().min(9).max(100).optional(),
     /** Digital twin: cron for batching snapshot commitments. Unset = no schedule (the default). */
     TWIN_SNAPSHOT_BATCH_CRON: z.string().min(9).max(100).optional(),
+    /** Digital twin: cron for the ownership-index sweep. Unset = no schedule (the default). */
+    TWIN_OWNERSHIP_INDEX_CRON: z.string().min(9).max(100).optional(),
     CHAIN_ID: z.coerce.number().int().positive().default(31337),
     /** Comma-separated "0xaddress@fromBlock" entries. */
     CHAIN_INDEX_CONTRACTS: csv.default(""),

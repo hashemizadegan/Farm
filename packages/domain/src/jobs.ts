@@ -16,6 +16,7 @@ export const QUEUES = {
   anchor: "harvest-anchoring",
   twinSnapshots: "twin-snapshots",
   twinSnapshotBatches: "twin-snapshot-batches",
+  ownershipIndex: "ownership-index",
   deadLetter: "dead-letter",
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -30,6 +31,14 @@ export interface TwinSnapshotJob {
 /** Fix one workspace's not-yet-batched snapshot commitments into a Merkle batch, at most once per bucket. */
 export interface TwinSnapshotBatchJob {
   tenantId: string;
+  bucket: string;
+}
+
+/** Index one Solana asset's finalized ownership events, at most once per bucket. */
+export interface OwnershipIndexJob {
+  network: "solana-devnet" | "solana-mainnet";
+  rail: "SOLANA_TOKEN_2022" | "SOLANA_BUBBLEGUM_CNFT";
+  assetId: string;
   bucket: string;
 }
 
@@ -84,6 +93,7 @@ export interface JobPayloads {
   [QUEUES.anchor]: HarvestAnchorJob;
   [QUEUES.twinSnapshots]: TwinSnapshotJob;
   [QUEUES.twinSnapshotBatches]: TwinSnapshotBatchJob;
+  [QUEUES.ownershipIndex]: OwnershipIndexJob;
 }
 
 export function idempotencyKey<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloads[Q]): string {
@@ -119,6 +129,10 @@ export function idempotencyKey<Q extends keyof JobPayloads>(queue: Q, payload: J
     case QUEUES.twinSnapshotBatches: {
       const p = payload as TwinSnapshotBatchJob;
       return `twin-snapshot-batch:${p.tenantId}:${p.bucket}`;
+    }
+    case QUEUES.ownershipIndex: {
+      const p = payload as OwnershipIndexJob;
+      return `ownership-index:${p.network}:${p.rail}:${p.assetId}:${p.bucket}`;
     }
     default:
       throw new Error(`unknown queue ${String(queue)}`);

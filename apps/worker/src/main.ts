@@ -18,6 +18,8 @@ import { startTelemetryConsumer } from "./telemetry/consumer";
 import { startRwaEngine } from "./rwa/start";
 import { twinSnapshotHandler, twinSnapshotSweepHandler } from "./handlers/twin-snapshots";
 import { twinSnapshotBatchHandler, twinSnapshotBatchSweepHandler } from "./handlers/twin-snapshot-batches";
+import { ownershipIndexHandler, ownershipIndexSweepHandler } from "./handlers/ownership-index";
+import type { OwnershipEventSource } from "@metafarm/domain";
 import { createObjectContentStore, createStorageFromEnv } from "@metafarm/storage";
 
 // On Railway the platform assigns PORT; the health server uses it unless HEALTH_PORT is set.
@@ -58,6 +60,10 @@ async function enqueue<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloa
 }
 
 const deps = { store, deadLetter, logger };
+// Where the ownership index reads finalized events from. No chain reader exists yet (a separate slice),
+// so deployed workers have none and ownership-index jobs are skipped; tests pass a fixture source.
+const ownershipEventSource: OwnershipEventSource | undefined = undefined;
+
 // Object storage for twin snapshots, created only when they are enabled.
 const twinObjectStorage = env.TWIN_SNAPSHOTS_ENABLED ? createStorageFromEnv(env) : undefined;
 const chainReader = env.CHAIN_RPC_URL ? createViemChainReader(env.CHAIN_RPC_URL) : undefined;
@@ -123,6 +129,18 @@ const processors: Record<string, Processor> = {
       return wrapHandler("twin-snapshot-batches-sweep", twinSnapshotBatchSweepHandler(pool, enqueue), deps)(view);
     }
     return wrapHandler(QUEUES.twinSnapshotBatches, twinSnapshotBatchHandler(pool), deps)(job);
+  }) as Processor,
+  [QUEUES.ownershipIndex]: (async (job) => {
+    // Opt-in and read-only: without TWIN_OWNERSHIP_INDEX_ENABLED and an event source, nothing is read or written.
+    if (!env.TWIN_OWNERSHIP_INDEX_ENABLED) return { skipped: "ownership index is disabled" };
+    const source = ownershipEventSource;
+    if (!source) return { skipped: "no ownership event source is configured" };
+    if (job.name === "sweep") {
+      const bucket: string = job.data.bucket ?? timeBucket(new Date(), 60);
+      const view = { id: job.id, name: job.name, attemptsMade: job.attemptsMade, opts: job.opts, discard: () => job.discard(), data: { bucket, idempotencyKey: `ownership-index-sweep:${bucket}` } };
+      return wrapHandler("ownership-index-sweep", ownershipIndexSweepHandler(pool, enqueue), deps)(view);
+    }
+    return wrapHandler(QUEUES.ownershipIndex, ownershipIndexHandler(pool, source), deps)(job);
   }) as Processor,
   [QUEUES.chain]: (async (job) => {
     if (!chainReader) {
