@@ -88,7 +88,8 @@ export const YIELD_TRANSITIONS: readonly YieldTransition[] = [
   { command: "calculate", from: "inputs_locked", to: "calculated", actor: "preparer" },
   { command: "submit", from: "calculated", to: "under_review", actor: "preparer" },
   { command: "reject", from: "under_review", to: "inputs_locked", actor: "reviewer" },
-  { command: "approve", from: "under_review", to: "approved", actor: "approver" },
+  // Plan §2.1: `approve` is performed by a reviewer who is not the preparer (four-eyes).
+  { command: "approve", from: "under_review", to: "approved", actor: "reviewer" },
   { command: "publish", from: "approved", to: "published", actor: "approver" },
   ...pre.map((from) => ({ command: "cancel" as const, from, to: "cancelled" as const, actor: "approver" as const })),
   ...pre.map((from) => ({ command: "expire" as const, from, to: "abandoned" as const, actor: "system" as const })),
@@ -174,9 +175,12 @@ export function isTerminalYieldState(s: YieldCycleState): boolean {
 
 /**
  * Four-eyes: the person who approves must not be the person who prepared. Both identities must be
- * given; an empty identity is refused rather than treated as "different".
+ * given as non-empty strings without surrounding whitespace; anything else is refused rather than
+ * treated as "different". Identities are compared exactly, so callers pass canonical identifiers
+ * (e.g. user ids as stored), never display names.
  */
 export function assertYieldFourEyes(preparedBy: string, approvedBy: string): void {
-  if (!preparedBy || !approvedBy) throw new YieldTransitionError("four_eyes", "both the preparer and the approver must be identified");
+  for (const id of [preparedBy, approvedBy])
+    if (typeof id !== "string" || id === "" || id.trim() !== id) throw new YieldTransitionError("four_eyes", "both the preparer and the approver must be identified by a canonical identifier");
   if (preparedBy === approvedBy) throw new YieldTransitionError("four_eyes", "the approver must not be the preparer");
 }
