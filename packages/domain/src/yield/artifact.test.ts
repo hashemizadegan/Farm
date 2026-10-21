@@ -47,6 +47,42 @@ describe("calculation artifact", () => {
     expect(() => canonicalYieldArtifact({ big: 2 ** 60 })).toThrow(YieldAmountError);
   });
 
+  it("refuses a result or settlement conversion that its own inputs do not produce", () => {
+    const policy = simulationPolicy(F3_ILLUSTRATION);
+    const ins = inputs({ gross: 1_240_000n, refunds: 40_000n, expenses: 700_000n });
+    const result = calculateYieldWaterfall({ simulation: true }, policy, ins);
+    const good = convertAmount(result.netDistributableYield, 2, 6, rate);
+    const build = (r: typeof result, conversion: typeof good, decimals = 6) =>
+      buildCalculationArtifact({ cycle: { id: "c", version: 1, simulation: true }, policy, inputs: ins, result: r, settlement: { mint: "m", network: "simulation", decimals, rate, conversion } });
+    expect(() => build({ ...result, netDistributableYield: result.netDistributableYield + 1n }, good)).toThrow(/supplied result/);
+    expect(() => build(result, { ...good, value: good.value + 1n })).toThrow(/settlement conversion/);
+    // A conversion computed for other decimals does not match the stated settlement decimals.
+    expect(() => build(result, good, 9)).toThrow(/settlement conversion/);
+    // A real cycle cannot build an artifact from a simulation policy.
+    expect(() =>
+      buildCalculationArtifact({ cycle: { id: "c", version: 1, simulation: false }, policy, inputs: ins, result, settlement: { mint: "m", network: "simulation", decimals: 6, rate, conversion: good } }),
+    ).toThrow();
+  });
+
+  it("orders expense lines canonically, so the same set of lines gives the same hash", async () => {
+    const policy = simulationPolicy(F3_ILLUSTRATION);
+    const lines = [
+      { id: "transport", amount: 200_000n, completeness: "known" as const },
+      { id: "labour", amount: 500_000n, completeness: "known" as const },
+    ];
+    const art = async (expenses: typeof lines) => {
+      const ins = { ...inputs({ gross: 1_240_000n, refunds: 40_000n, expenses: 0n }), expenses };
+      const result = calculateYieldWaterfall({ simulation: true }, policy, ins);
+      const conversion = convertAmount(result.netDistributableYield, 2, 6, rate);
+      const a = buildCalculationArtifact({ cycle: { id: "c", version: 1, simulation: true }, policy, inputs: ins, result, settlement: { mint: "m", network: "simulation", decimals: 6, rate, conversion } });
+      return { ids: a.inputs.expenses.map((e) => e.id), hash: await yieldArtifactHash(a) };
+    };
+    const x = await art(lines);
+    const y = await art([...lines].reverse());
+    expect(x.ids).toEqual(["labour", "transport"]);
+    expect(y).toEqual(x);
+  });
+
   it("records the scheme and the policy's entitlement reference", () => {
     const a = exampleA();
     expect(a.scheme).toBe("metafarm-yield-calculation/1");
