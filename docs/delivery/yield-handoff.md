@@ -6,6 +6,77 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 10:30 local (multi-cycle simulation harness; cycle 2 correction)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #84 | multi-cycle simulation harness with carry-forward and a correction (tests only) | `feature/yield-multi-cycle` | `7d70e45` | #80 | 39733082488 (2 attempts) | 14/14 passed |
+
+Owner go-ahead for the decision-free simulation track. This is pre-work towards Y14, which formally depends on Y9
+and Y13; it claims no plan stage. It adds two test files only: no production code, vitest config, C# client or
+existing pin changes. **#84 is now the tip of the stack.**
+
+**Harness API** (`packages/domain/src/yield/multi-cycle.test-support.ts`):
+- `new SimulationChain({ holders, profile, distributionPolicy, cycles: [{ cycleId, ownershipSeed, slot,
+  evidenceLines? }] })` refuses non-simulation policy records.
+- `publishAll()` publishes version 1 of each cycle in order.
+- `correct(index, { evidenceLines }, { rebase = true })` publishes version v+1 of the same cycle id, then rebases
+  every later cycle.
+- `latest(id)`, `history(id)` and `latestChain()` return published versions:
+  `{ cycleId, version, basedOn, ledgerIn, ledgerOut, ownership, evidenceLines, artifact, artifactSha256 }`.
+- `chainProblems()` reports stale or broken carry links.
+- `open(id, version?)` opens the read model: the latest version by default, refused if stale; any version
+  explicitly, for audit.
+- `store` is one immutable claim read-model store holding every published version.
+
+**Seeds and profiles** (`CHAIN_DEFAULTS`):
+- 3 cycles (`…c0001`, `…c0002`, `…c0003`) × 4,096 holders, `uniform` profile.
+- Ownership seeds `0xc1c1e` / `0xc2c2e` / `0xc3c3e`; slots 300,000,000 / 300,500,000 / 301,000,000.
+- Every 61st holder withheld; 2 unattributed.
+- Distribution policy (simulation status): `remainder: "carry"`, `dustThreshold: 1,000,000`, withhold missing
+  wallets.
+- Correction `CYCLE2_CORRECTED_LINES`: USD revenue 800,000 → 850,000 minor units.
+
+**Invariants:**
+- **Per version:** inflow (settlement + carried remainder in + Σ deferred dust in) = claims + deferred dust out +
+  withheld + unattributed + carried remainder out. The plan's ledger in is exactly the ledger passed in.
+- **Carry applied exactly once:**
+  - every carried-in deferred amount is its party's `deferredIn`, or is carried out unchanged if the party has no
+    share this cycle;
+  - no `deferredIn` appears that was not carried in;
+  - cycle k+1's ledger in is the same object as cycle k's ledger out.
+- **Chain:** Σ settlement = Σ (claims + withheld + unattributed) + final carry. This holds for the corrected chain
+  (1v1, 2v2, 3v2) and for the superseded original chain (1v1, 2v1, 3v1).
+
+**Correction semantics (latest wins):**
+- A correction is a new version of the same cycle id, with a new artifact hash.
+- Later cycles are rebased as new versions on the corrected history, keeping the same snapshot and evidence; only
+  the carried-in ledger changes.
+- The read model serves the latest version of each cycle (1v1, 2v2, 3v2). On 256 seeded holders per cycle, its
+  results equal the in-memory lookup of the latest artifact.
+- Superseded versions stay readable by explicit version.
+- A stale downstream cycle (correction without rebase) is reported by `chainProblems()` and refused by `open()`.
+
+**New pins** (deterministic; nothing existing changed):
+
+| Cycle | Version | Artifact hash |
+| --- | --- | --- |
+| `…c0001` | 1 | `77f3a1db722a7b7f606903c16c1b33cf6dea5362e192faccf6805cf019ea4b24` |
+| `…c0002` | 1 | `36e1d5c1f791fa48844389bc6a3cf899cc528bd818b70b210fe874673e527ac6` |
+| `…c0003` | 1 | `e3a4fb122bd9b0ce210d9a2c6896b02eb6b8ae18e44663b26d78ad9a7ed649ac` |
+| `…c0002` | 2 | `aa5ec40817b7cb30b2993a30d755e382a110ad5d47017fe60c800b455cb2b189` |
+| `…c0003` | 2 | `3d2bc4d779888cc59bf2dbe31d5151063fbb60ca7727803d07fd395de076cf28` |
+
+Multi-version store image: `12b0dae6ba8e10fbd4780bfa076e50e58dc9813fe1e0b137358eb7e335e40d4d`, 18,997,154 bytes.
+
+**Runtime:**
+- Locally the file runs in about 43–44 s (6/6, twice, separate processes, same pins).
+- CI unit job: 196 s (test step 123 s) on attempt 1, then 87 s (60 s) on attempt 2. This is within the runner
+  variance measured in the #80 bisect.
+
+**Holds unchanged:** simulation only; no chain, network, storage, signing, TRON, mainnet, Railway, deployment or
+merge.
+
 ## 2026-10-22, 09:45 local (current tip: #80 validated; next milestone)
 
 **Current validated tip of the yield stack: #80, `feature/yield-shared-16k-cycle` @ `703caac`.**
