@@ -126,6 +126,13 @@ export const apiEnvSchema = z
     RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(1200),
     RATE_LIMIT_WINDOW: z.string().default("1 minute"),
     TRUST_PROXY: bool.default("true"),
+    /**
+     * Private-preview access gate (API side). On: every route except /healthz, /readyz and CORS preflights needs
+     * a verified bearer token (the configured auth provider), so unauthenticated endpoints (docs, public metadata,
+     * webhooks) are closed too. Off (default): unchanged. Meant for an isolated preview deployment; the web app
+     * has its own gate (PREVIEW_ACCESS_GATE / PREVIEW_ACCESS_PASSWORD, read by apps/web/src/middleware.ts).
+     */
+    PREVIEW_ACCESS_GATE: bool.default("false"),
     WEBHOOK_SIGNING_SECRETS: csv.default(""),
     /** Let a signed-in user with no workspace create one and become its owner. */
     SELF_SERVE_WORKSPACES: bool.default("true"),
