@@ -6,6 +6,48 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 18:45 local (operator `/yield` preview: D-39 banner, sections, local run; CI 14/14 with Playwright on `565aaee`)
+
+Owner instruction: enable and preview the operator UI locally. **D-39 is adopted for the simulation banner only**,
+with the owner's wording.
+
+**Commit `565aaee` on #96** (draft):
+- **Banner:** the D-39 banner is mounted for every `/yield` route by `apps/web/src/app/yield/layout.tsx`. It is shown
+  verbatim, in English in every locale.
+- **Cycle-view sections:** read-only, each loading and failing on its own.
+  - Four-eyes: preparer, attestations, approver, and separation.
+  - Calculation dossier: new `GET …/simulation-dossier`, re-hashed on read.
+  - Carry-in and carry-out per set.
+  - The claim-intent batch from stored leaves, marked unsigned.
+- **Local tooling:**
+  - `pnpm seed:yield` (refused unless `APP_ENV` is development or test; idempotent) adds three simulation cycles to the
+    demo workspace through the real workflow: Q1 and Q2 published with intent batches and carried dust; Q3 frozen,
+    attested and awaiting approval.
+  - `pnpm dev:yield` turns the three switches on for that run only.
+  - `.env.example` documents the switches, commented out and off.
+  - The runbook is in `docs/real-yield-implementation.md`.
+- **Guards:** unchanged. The staging and production refusals hold for `YIELD_WORKFLOW_ENABLED` (production),
+  `YIELD_CLAIM_INTENTS_ENABLED` and `NEXT_PUBLIC_YIELD_PAGES_ENABLED` (staging and production). Nothing is deployed,
+  signed or submitted; no RPC is contacted.
+
+**Verification:**
+- **e2e** (`tests/e2e/yield-operator.spec.ts`, CI Playwright, chromium and mobile): the spec seeds, then walks the cycle
+  list, the published Q2 and the frozen Q3.
+  - It asserts the banner text, the statuses, the *Simulation* badges, four-eyes *Separated* and *Awaiting an
+    approver*, the dossier, the carry, *Frozen*, and the unsigned intents table with rows.
+  - It fails on any console error, page error or hydration message. It passed.
+  - Screenshots are in the `yield-screenshots` artifact of run 39798832823 (2.1 MB).
+- **CI:** 14/14 on `565aaee`, Playwright included.
+
+**Limitations:**
+- This sandbox cannot install npm packages, so no dev server was started here.
+- GitHub's artifact storage is blocked from the sandbox, so the agent has not viewed the screenshots. The owner can
+  download them from the run page.
+- The linked Mac has no repository checkout connected, so nothing was run there.
+
+**Gates:** unchanged. D-39 is adopted only for the simulation operator banner; holder, public and translated
+disclosures remain open.
+
 ## 2026-10-22, 18:00 local (Y13 unsigned simulation claim intents on #96; CI 14/14 on `b5d40a7`)
 
 **State verified:**
