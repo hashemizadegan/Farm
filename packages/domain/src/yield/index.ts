@@ -25,3 +25,4 @@ export * from "./ownership-snapshot";
 export * from "./ownership-synthetic";
 export * from "./ownership-source";
 export * from "./claim-read-model";
+export * from "./simulation-dossier";

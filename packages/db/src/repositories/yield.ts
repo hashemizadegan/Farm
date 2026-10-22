@@ -691,7 +691,8 @@ export async function reconcileYieldCycle(tx: TenantTx, cycleId: string): Promis
       findings.push({ code: "snapshot_missing", detail: `set ${s.setNumber} has no ownership snapshot` });
       continue;
     }
-    const sum = (await listYieldAllocations(tx, s.id)).filter((a) => a.kind !== "dust").reduce((acc, a) => acc + a.weight, 0n);
+    // Every row's weight counts: a dust row carries the weight of parties whose amounts were deferred.
+    const sum = (await listYieldAllocations(tx, s.id)).reduce((acc, a) => acc + a.weight, 0n);
     if (sum !== snap.totalWeight) findings.push({ code: "weights_do_not_sum", detail: `set ${s.setNumber}: allocation weights ${sum} ≠ snapshot total ${snap.totalWeight}` });
   }
   const calculated = !["draft", "inputs_locked", "cancelled", "abandoned"].includes(cycle.status);
@@ -714,4 +715,40 @@ export async function reconcileYieldCycle(tx: TenantTx, cycleId: string): Promis
     if (a < n) findings.push({ code: "audit_missing", detail: `${n} ${command} step(s) logged, ${a} audited` });
   }
   return { cycleId, status: cycle.status, findings };
+}
+
+// ── Simulation dossiers (line join) ────────────────────────────────────
+
+/**
+ * Stores a cycle's simulation dossier as its canonical text (the caller canonicalises and hashes it with the yield
+ * domain). Simulation draft cycles only; append-only; returns the revision.
+ */
+export async function registerSimulationDossier(tx: TenantTx, cycleId: string, d: { body: string; sha256: string; createdBy: string }): Promise<{ revision: number; sha256: string }> {
+  hash("sha256", d.sha256);
+  const revision = await atomically(tx, async () => {
+    await getYieldCycle(tx, cycleId, true);
+    const n = await tx.query<{ n: number }>(`SELECT COALESCE(max(revision), 0) + 1 AS n FROM yield_simulation_dossiers WHERE tenant_id = $1 AND cycle_id = $2`, [tx.tenantId, cycleId]);
+    await tx.query(`INSERT INTO yield_simulation_dossiers (tenant_id, cycle_id, revision, body, sha256, created_by) VALUES ($1, $2, $3, $4, $5, $6)`, [tx.tenantId, cycleId, n.rows[0]!.n, d.body, d.sha256, d.createdBy]);
+    return n.rows[0]!.n;
+  });
+  await writeAudit(tx, { actorUserId: d.createdBy, actorType: "user", action: "yield.dossier.register", targetType: "yield_cycle", targetId: cycleId, metadata: { revision, sha256: d.sha256 } });
+  return { revision, sha256: d.sha256 };
+}
+
+/** The latest dossier of a cycle (canonical text, its hash and revision), or null. */
+export async function latestSimulationDossier(tx: TenantTx, cycleId: string): Promise<{ body: string; sha256: string; revision: number } | null> {
+  const r = await tx.query<{ body: string; sha256: string; revision: number }>(
+    `SELECT body, sha256, revision FROM yield_simulation_dossiers WHERE tenant_id = $1 AND cycle_id = $2 ORDER BY revision DESC LIMIT 1`,
+    [tx.tenantId, cycleId],
+  );
+  return r.rows[0] ?? null;
+}
+
+/** The evidence SHA-256 of each input line of a cycle (by input id; null for a line without evidence). */
+export async function yieldInputEvidenceHashes(tx: TenantTx, cycleId: string): Promise<Record<string, string | null>> {
+  const r = await tx.query<{ id: string; sha: string | null }>(
+    `SELECT i.id::text AS id, e.content_sha256 AS sha FROM yield_inputs i LEFT JOIN yield_evidence e ON e.tenant_id = i.tenant_id AND e.id = i.evidence_id WHERE i.tenant_id = $1 AND i.cycle_id = $2`,
+    [tx.tenantId, cycleId],
+  );
+  return Object.fromEntries(r.rows.map((x) => [x.id, x.sha]));
 }

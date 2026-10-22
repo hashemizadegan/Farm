@@ -21,7 +21,10 @@ import {
   addYieldAttestation,
   addYieldInput,
   createYieldCycle,
+  latestSimulationDossier,
   listYieldInputs,
+  registerSimulationDossier,
+  yieldInputEvidenceHashes,
   loadWeightedOwnershipInput,
   reconcileYieldCycle,
   recordCalculation,
@@ -43,7 +46,8 @@ import {
 import { HoldingWeightError, uuid, type ChainAssetRef, type Permission } from "@metafarm/domain";
 import { z } from "zod";
 import { HttpError, notFound, parse } from "../lib/http";
-import { engineOutputProblems, type YieldCalculationRequest, type YieldCalculationResult } from "../lib/yield-engine";
+import { YieldEngineError, engineOutputProblems, type YieldCalculationRequest, type YieldCalculationResult } from "../lib/yield-engine";
+import { SimulationDossierError, canonicalSimulationDossier, parseSimulationDossier, simulationDossierHash } from "@metafarm/domain/yield";
 
 const STATUSES = ["draft", "inputs_locked", "calculated", "under_review", "approved", "published", "funded", "distributing", "disputed", "closed", "cancelled", "abandoned", "superseded"] as const;
 const tenantParams = z.object({ tenantId: uuid });
@@ -219,6 +223,8 @@ export function yieldHttpError(e: unknown): unknown {
   if (e instanceof YieldStoreError) return new HttpError(STATUS_OF[e.code] ?? 422, e.code, e.message);
   if (e instanceof HoldingWeightError) return new HttpError(e.code === "not_indexed" || e.code === "incomplete_history" ? 409 : 422, e.code, e.message);
   if (e instanceof OwnershipProvenanceError) return new HttpError(409, e.code, e.message);
+  if (e instanceof YieldEngineError) return new HttpError(e.status, e.code, e.message);
+  if (e instanceof SimulationDossierError) return new HttpError(422, e.code, e.message);
   return e;
 }
 
@@ -309,7 +315,10 @@ export async function yieldWorkflowRoutes(app: FastifyInstance) {
     if (cycle.slotStart === null || cycle.slotEnd === null) throw new HttpError(422, "calculation_incomplete", "set the slot range first");
     const asset = { network: cycle.network, rail: cycle.rail, id: cycle.chainAssetId } as ChainAssetRef;
     const ownership = await loadWeightedOwnershipInput(app.deps.pool, tx.tenantId, { asset, window: { startSlot: cycle.slotStart, endSlot: cycle.slotEnd }, simulation: cycle.simulation });
-    return { cycle, inputs: await listYieldInputs(tx, cycleId), ownership };
+    const stored = await latestSimulationDossier(tx, cycleId);
+    // A stored dossier was checked when registered; parsed again here, so a bad row still fails closed.
+    const dossier = stored ? parseSimulationDossier(stored.body) : null;
+    return { cycle, inputs: await listYieldInputs(tx, cycleId), ownership, dossier, evidenceSha256ByInput: await yieldInputEvidenceHashes(tx, cycleId) };
   };
   const engine = () => {
     if (!app.deps.yieldEngine) throw new HttpError(503, "calculation_engine_unavailable", "no yield calculation engine is configured on this line (integration with the yield domain is pending)");
@@ -375,6 +384,22 @@ export async function yieldWorkflowRoutes(app: FastifyInstance) {
   app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/reject", move("yield:review", "inputs_locked", cancelSchema));
   app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/publish", move("yield:approve", "published"));
   app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/cancel", move("yield:approve", "cancelled", cancelSchema));
+
+  /**
+   * Registers the cycle's simulation dossier (simulation draft cycles only; a new revision each time; the latest at
+   * lock is the one calculated with). Stored as canonical text with its SHA-256.
+   */
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/simulation-dossier", async (req, reply) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    const out = await run(req, "yield:prepare", async (tx, userId) => {
+      await simulationCycle(tx, cycleId, true);
+      const dossier = parseSimulationDossier(req.body);
+      const body = canonicalSimulationDossier(dossier);
+      const sha256 = await simulationDossierHash(dossier);
+      return registerSimulationDossier(tx, cycleId, { body, sha256, createdBy: userId });
+    });
+    return reply.status(201).send(out);
+  });
 
   /** Non-mutating calculation: the engine's numbers for the cycle as it stands. Stores nothing (plan §2.1). */
   app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/preview", async (req) => {

@@ -11,11 +11,28 @@
  */
 import type { YieldAllocationRecord, YieldCycleRow, YieldInputRow } from "@metafarm/db";
 import type { WeightedOwnershipInput } from "@metafarm/domain";
+import type { SimulationDossier } from "@metafarm/domain/yield";
 
 export interface YieldCalculationRequest {
   cycle: YieldCycleRow;
   inputs: readonly YieldInputRow[];
   ownership: WeightedOwnershipInput;
+  /** The cycle's simulation dossier (latest registered while in draft), or null when none was registered. */
+  dossier: SimulationDossier | null;
+  /** The SHA-256 of each input line's evidence (by input id), or null for a line without evidence. */
+  evidenceSha256ByInput: Readonly<Record<string, string | null>>;
+}
+
+/** An engine refusal with a stable code; nothing is stored. */
+export class YieldEngineError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly status: 409 | 422 = 422,
+  ) {
+    super(message);
+    this.name = "YieldEngineError";
+  }
 }
 
 export interface YieldCalculationResult {

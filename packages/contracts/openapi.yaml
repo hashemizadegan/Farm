@@ -3545,6 +3545,25 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/simulation-dossier:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Register the cycle's simulation calculation dossier (simulation draft cycles only; new revision each time) (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404)."
+      operationId: registerYieldSimulationDossier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: "metafarm-yield-simulation-dossier/1; bigints as decimal strings." }
+      responses:
+        "201": { description: OK, content: { application/json: { schema: { type: object, properties: { revision: { type: integer }, sha256: { type: string } } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+
 components:
   securitySchemes:
     bearerAuth:

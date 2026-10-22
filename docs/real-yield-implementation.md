@@ -1,5 +1,10 @@
 # Real-yield distribution: what this branch line implements, and what is gated
 
+> **Line join (2026-10-22, Option A):** the integration branch `integration/yield-ownership-join` is the
+> ownership-index line (#95) with the yield line (#84) merged in. On it, the Y9 workflow's engine is the yield
+> domain's simulation pipeline (`apps/api/src/lib/yield-pipeline-engine.ts`) fed by a per-cycle **simulation
+> dossier** (`packages/domain/src/yield/simulation-dossier.ts`, migration 0026). See "After the join" below.
+
 This line (ownership index: #50–#52 → #59 → #85 Y0 → #86 Y5 → … → Y15) carries the parts of the real-yield plan
 (`docs/delivery/real-yield-distribution-plan.md`, revision 4, on the plan branch) that do not need the yield
 domain library. The yield domain (Y1 cycle model, Y2 calculation, Y3 evidence, Y4 storage model, Y6 leaves and
@@ -31,3 +36,44 @@ Everything below is off by default, simulation-only where it writes, and none of
 4. Run `compareWithExplorer(asset, history.events, history.indexedThroughSlot, { slot: S, balances })`
    (`packages/chain`); record the result (`match`, or every differing owner) in the handoff.
 5. No settlement, payout, funding or claim is exercised in Y15.
+
+## After the join
+
+- **Engine:** `createPipelineYieldEngine()` runs `calculateSimulationCycle`: the Y2 waterfall over a Y4 evidence
+  ledger, the #75 snapshot, the #77 distribution plan and the #70 claim tree with snapshot-bound leaves.
+  - It is pure and deterministic.
+  - It is wired in `apps/api/src/main.ts` and is used only by the Y9 workflow, which stays off by default and
+    refused in production.
+- **Dossier:** the typed simulation records the tables do not hold.
+  - Contents:
+    - the calculation and distribution policies (status `simulation`);
+    - the settlement rate and the distribution ledger;
+    - full evidence-item metadata;
+    - one line per locked input;
+    - simulation payout addresses;
+    - the snapshot observation time.
+  - It is registered while the cycle is a draft, stored content-addressed and append-only (0026), and is
+    simulation cycles only.
+  - The engine checks it against the locked cycle: policy hash, entitlement, currency, formula, settlement, every
+    line and every evidence hash. Any difference is `dossier_mismatch`.
+- **Fail closed:**
+  - `simulation_only`;
+  - `dossier_missing`, `dossier_incomplete`;
+  - `real_network_ownership`: ownership from a verified RPC source is a real network. The yield-line snapshot accepts
+    simulation networks only, and devnet use needs the Y15 approval. This guard is kept, not relaxed;
+  - `weight_exceeds_u64`: slot weights beyond the #75 u64 shares;
+  - `carry_not_supported`: cross-cycle carry is not persisted yet;
+  - `calculation_refused`: any pipeline refusal, with its own code in the message.
+- **Stored rows:**
+  - set hash = the whole cycle artifact's SHA-256;
+  - calculation, allocation and evidence hashes = the pipeline's;
+  - root = the claim-tree root, or the RFC 9162 empty-tree hash when nothing is payable;
+  - rows = payable → `allocated`, `withheld`, `unattributed`; deferred dust plus the carried remainder in one `dust`
+    row that carries the deferred parties' weight.
+- **Simulation leaf context:** network id 0, a zero cluster identity, epoch 0. Real values come with Y6 final
+  (D-26 [Ext]) and Y0 live use.
+- **Still not built:**
+  - Y13 Merkle proofs and unsigned claim intents. The artifact (and so every proof) is recomputable from the stored
+    dossier and index, but it is not stored, and the holder endpoints for it wait for D-26, D-15, D-25, D-27 and
+    D-39;
+  - economic reconciliation (Y14) beyond the record checks.
