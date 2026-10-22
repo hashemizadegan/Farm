@@ -1,0 +1,37 @@
+# Throwaway: generates pnpm-lock.yaml on a GitHub runner (the authoring sandbox has no npm access)
+# and commits it back to THIS branch only. Never merged; the branch is deleted afterwards.
+name: tmp-lockfile-gen
+on:
+  push:
+    branches: [tmp/lockfile-gen]
+permissions:
+  contents: write
+jobs:
+  gen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Resolve and install (no lockfile yet)
+        run: |
+          set -o pipefail
+          pnpm --version
+          test ! -f pnpm-lock.yaml
+          pnpm install --no-frozen-lockfile 2>&1 | tail -40
+      - name: Report Redocly resolution
+        run: |
+          echo "::notice title=pnpm::$(pnpm --version)"
+          echo "::notice title=redocly entries::$(grep -oE "'?@redocly/[a-z-]+@[0-9][^:'(]*" pnpm-lock.yaml | sort -u | tr '\n' ' ')"
+          if grep -q "respect-core@1.34.22" pnpm-lock.yaml; then echo "::error::respect-core 1.34.22 requested"; exit 1; fi
+      - name: Frozen reinstall from the generated lockfile
+        run: rm -rf node_modules && pnpm install --frozen-lockfile 2>&1 | tail -5
+      - name: Commit lockfile to this branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "Generated pnpm-lock.yaml (pnpm $(pnpm --version))"
+          git push origin HEAD:tmp/lockfile-gen
+          echo "::notice title=lockfile sha::$(git rev-parse HEAD) $(sha256sum pnpm-lock.yaml | cut -c1-16) $(wc -l < pnpm-lock.yaml) lines"
