@@ -157,4 +157,11 @@ describe("combineOwnershipSources", () => {
     await expect(both.eventsAfter({ ...asset, network: "solana-mainnet" }, null)).rejects.toBeInstanceOf(OwnershipHistoryError);
     expect(combineOwnershipSources(createFixtureEventSource([], 0n)).name).toBe("fixture");
   });
+
+  it("refuses to combine fixture and RPC sources, or nothing (Y0 review F2, D-17)", () => {
+    const token = createToken2022OwnershipSource(node(0n, []), "solana-devnet");
+    expect(() => combineOwnershipSources(token, createFixtureEventSource([], 0n))).toThrow(OwnershipHistoryError);
+    expect(() => combineOwnershipSources(createFixtureEventSource([], 0n), token)).toThrow(OwnershipHistoryError);
+    expect(() => combineOwnershipSources()).toThrow(OwnershipHistoryError);
+  });
 });
