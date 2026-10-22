@@ -3564,6 +3564,40 @@ paths:
         "409": { $ref: "#/components/responses/BadRequest" }
         "422": { $ref: "#/components/responses/BadRequest" }
 
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/artifact-sets/{setId}/leaves:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }, { name: setId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [yield]
+      summary: "A set's persisted claim leaves and proofs (frozen at calculate; read from storage, re-verified; 409 proof_invalid) (yield:read)."
+      operationId: listYieldClaimLeaves
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/artifact-sets/{setId}/carry:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }, { name: setId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [yield]
+      summary: "A set's recorded carry-forward: its predecessor set, the carry-in and the carry-out, with their SHA-256 (yield:read)."
+      operationId: getYieldCarry
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/me/yield/cycles/{cycleId}/proof:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    get:
+      tags: [yield]
+      summary: "The member's party's persisted claim leaf and proof for a published simulation cycle, through an active account link. Off unless HOLDER_YIELD_ENABLED and PARTY_LINKS_ENABLED (404); refused when deployed (D-39). Hasher pending D-26."
+      operationId: getMyYieldProof
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+
 components:
   securitySchemes:
     bearerAuth:

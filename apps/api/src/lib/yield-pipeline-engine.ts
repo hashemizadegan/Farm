@@ -13,7 +13,8 @@
  *   formula, settlement) or its lines and evidence are not exactly the locked input lines and their evidence;
  * - `dossier_incomplete`: a party of the ownership input has no payout entry (null is explicit "none");
  * - `weight_exceeds_u64`: a slot weight does not fit the snapshot's u64 shares;
- * - `carry_not_supported`: carried remainder or deferred dust (cross-cycle carry is not persisted yet);
+ * - `carry_from_dossier_refused`: the dossier carries amounts in; carry-in comes only from the platform's recorded
+ *   carry-out of the predecessor (migration 0028), passed in the request;
  * - `calculation_refused`: any refusal of the pipeline itself, with the pipeline's own code in the message.
  *
  * Simulation leaf context (pending Y6 final, D-26 and Y0 live use): network id 0, a zero cluster identity (no
@@ -27,8 +28,12 @@ import {
   SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND,
   SIMULATION_EVIDENCE_STORAGE_POLICY,
   YIELD_FORMULA_VERSIONS,
+  CYCLE_ARTIFACT_SCHEME,
   calculateSimulationCycle,
   calculationPolicyHash,
+  canonicalCarryLedger,
+  canonicalYieldArtifact,
+  carryLedgerHash,
   commitEvidence,
   emptyEvidenceLedger,
   registerEvidence,
@@ -103,19 +108,27 @@ function snapshotInput(req: YieldCalculationRequest, o: WeightedOwnershipInput) 
   };
 }
 
-/** The stored allocation rows of an artifact: payable → allocated, withheld, unattributed; deferred dust and the carried remainder in one dust row. */
+/** The payout wallet a party's leaf pays (from the plan; every leaf has one). */
+function payoutWalletOf(a: CycleDistributionArtifact, partyId: string): string {
+  const w = a.distribution.plan.entries.find((e) => e.kind === "party" && e.partyId === partyId)?.payoutWallet;
+  if (!w) throw new YieldEngineError("calculation_refused", `the leaf of party ${partyId} has no payout wallet in the plan`);
+  return w;
+}
+
+/**
+ * The stored allocation rows of an artifact: payable → allocated, withheld, unattributed; everything carried
+ * forward (deferred dust, including dust carried in for parties no longer holding, and the carried remainder) in
+ * one dust row that carries the deferred parties' weight.
+ */
 export function allocationsOf(a: CycleDistributionArtifact): YieldAllocationRecord[] {
   const rows: YieldAllocationRecord[] = [];
   let dustWeight = 0n;
-  let dustAmount = a.totals.remainderCarried;
+  const dustAmount = a.totals.dustCarriedForward + a.totals.remainderCarried;
   for (const e of a.distribution.plan.entries) {
     if (e.kind === "unattributed") rows.push({ kind: "unattributed", holderKey: e.holderKey!, weight: e.weight, amount: e.amount });
     else if (e.state === "payable") rows.push({ kind: "allocated", partyId: e.partyId!, weight: e.weight, amount: e.amount });
     else if (e.state === "withheld") rows.push({ kind: "withheld", partyId: e.partyId!, weight: e.weight, amount: e.amount });
-    else {
-      dustWeight += e.weight;
-      dustAmount += e.amount;
-    }
+    else dustWeight += e.weight;
   }
   if (dustWeight > 0n || dustAmount > 0n) rows.push({ kind: "dust", weight: dustWeight, amount: dustAmount });
   return rows;
@@ -131,7 +144,9 @@ export function createPipelineYieldEngine(): YieldCalculationEngine {
       if (ownership.provenance.sourceKind !== "fixture")
         throw new YieldEngineError("real_network_ownership", "ownership from a verified RPC source is a real network: the simulation pipeline refuses it (devnet use needs the Y15 approval)", 409);
       const d = req.dossier;
-      if (d.distributionLedger.carriedRemainder !== 0n || d.distributionLedger.deferred.length > 0) throw new YieldEngineError("carry_not_supported", "carried amounts across cycles are not persisted yet; the dossier ledger must be empty");
+      if (d.distributionLedger.carriedRemainder !== 0n || d.distributionLedger.deferred.length > 0)
+        throw new YieldEngineError("carry_from_dossier_refused", "the dossier's distribution ledger must be empty: carry-in comes only from the predecessor's recorded carry-out");
+      if ((await carryLedgerHash(req.carryIn.ledger)) !== req.carryIn.sha256) throw new YieldEngineError("carry_mismatch", "the carry-in does not hash to its recorded value");
       await checkBindings(req);
       const formulaVersion = (YIELD_FORMULA_VERSIONS as readonly string[]).indexOf(d.calculationPolicy.formulaVersion) + 1;
 
@@ -153,7 +168,7 @@ export function createPipelineYieldEngine(): YieldCalculationEngine {
           settlement: { mint: cycle.settlementMint!, network: "simulation", decimals: cycle.settlementDecimals!, rate: d.settlementRate },
           ownership: snapshot,
           distributionPolicy: d.distributionPolicy,
-          distributionLedger: { carriedRemainder: 0n, deferred: [] },
+          distributionLedger: { carriedRemainder: req.carryIn.ledger.carriedRemainder, deferred: req.carryIn.ledger.deferred.map((x) => ({ ...x })) },
           claimTreePolicy: SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND,
           hasher: SHA256_RFC9162_HASHER,
           leafContext: { networkId: 0, clusterIdentity: "00".repeat(32), epoch: 0, economicAssetId: cycle.chainAssetId, formulaVersion },
@@ -167,7 +182,20 @@ export function createPipelineYieldEngine(): YieldCalculationEngine {
       const allocations = allocationsOf(a);
       const stored = allocations.reduce((n, x) => n + x.amount, 0n);
       if (stored !== a.totals.inflow) throw new YieldEngineError("calculation_refused", `stored allocations ${stored} do not conserve the inflow ${a.totals.inflow}`);
+      const body = canonicalYieldArtifact(a);
+      if (createHash("sha256").update(body, "utf8").digest("hex") !== result.artifactSha256) throw new YieldEngineError("calculation_refused", "the canonical artifact does not hash to the artifact hash");
+      const ledgerOut = a.distribution.plan.ledgerOut;
       return {
+        frozen: {
+          scheme: CYCLE_ARTIFACT_SCHEME,
+          body,
+          hasherId: a.claimTree?.hasherId ?? SHA256_RFC9162_HASHER.id,
+          leaves: (a.claimTree?.leaves ?? []).map((l) => ({ leafIndex: l.leafIndex, partyId: l.partyId, payoutWallet: payoutWalletOf(a, l.partyId), recipient: l.recipient, amount: l.amount, leafBytes: l.leafBytes, leafHash: l.leafHash, path: [...l.proof.path] })),
+        },
+        carry: {
+          ledgerIn: { body: canonicalCarryLedger(req.carryIn.ledger), sha256: req.carryIn.sha256 },
+          ledgerOut: { body: canonicalCarryLedger(ledgerOut), sha256: await carryLedgerHash(ledgerOut) },
+        },
         calculationHash: a.calculation.artifactSha256,
         allocationHash: a.distribution.planSha256,
         evidenceBundleHash: a.evidence.manifestSha256,

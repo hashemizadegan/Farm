@@ -5,6 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import type { YieldAllocationRecord } from "@metafarm/db";
+import { EMPTY_CARRY_LEDGER, canonicalCarryLedger, carryLedgerHash } from "@metafarm/domain/yield";
 import type { YieldCalculationEngine, YieldCalculationRequest, YieldCalculationResult } from "../lib/yield-engine";
 
 const sha = (v: unknown) => createHash("sha256").update(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x))).digest("hex");
@@ -28,7 +29,20 @@ export function stubYieldEngine(tamper?: (r: YieldCalculationResult) => YieldCal
       const allocationHash = sha(allocations);
       const evidenceBundleHash = sha(req.inputs.map((i) => [i.sourceKind, i.sourceRef, i.evidenceId]));
       const merkleRoot = sha({ leaves: allocations });
-      const out = { calculationHash, allocationHash, evidenceBundleHash, merkleRoot, setHash: sha([calculationHash, allocationHash, evidenceBundleHash, merkleRoot]), allocations, totals: { net: net.toString() } };
+      // The frozen "artifact" of the stub is its own hashes as canonical text; the set hash is that text's SHA-256.
+      const body = JSON.stringify({ calculationHash, allocationHash, evidenceBundleHash, merkleRoot, scheme: "test-stub-artifact/1" });
+      const setHash = createHash("sha256").update(body).digest("hex");
+      const out = {
+        calculationHash,
+        allocationHash,
+        evidenceBundleHash,
+        merkleRoot,
+        setHash,
+        allocations,
+        totals: { net: net.toString() },
+        frozen: { scheme: "test-stub-artifact/1", body, hasherId: "test-stub", leaves: [] },
+        carry: { ledgerIn: { body: canonicalCarryLedger(req.carryIn.ledger), sha256: req.carryIn.sha256 }, ledgerOut: { body: canonicalCarryLedger(EMPTY_CARRY_LEDGER), sha256: await carryLedgerHash(EMPTY_CARRY_LEDGER) } },
+      };
       return tamper ? tamper(out) : out;
     },
   };

@@ -21,7 +21,10 @@ import {
   addYieldAttestation,
   addYieldInput,
   createYieldCycle,
+  getYieldCarry,
   latestSimulationDossier,
+  listYieldClaimLeaves,
+  yieldCarryIn,
   listYieldInputs,
   registerSimulationDossier,
   yieldInputEvidenceHashes,
@@ -31,6 +34,7 @@ import {
   registerYieldEvidence,
   setYieldCycleParameters,
   transitionYieldCycle,
+  type YieldClaimLeafRow,
   type YieldStoreErrorCode,
   type YieldTransitionRequest,
   getYieldCycle,
@@ -47,7 +51,18 @@ import { HoldingWeightError, uuid, type ChainAssetRef, type Permission } from "@
 import { z } from "zod";
 import { HttpError, notFound, parse } from "../lib/http";
 import { YieldEngineError, engineOutputProblems, type YieldCalculationRequest, type YieldCalculationResult } from "../lib/yield-engine";
-import { SimulationDossierError, canonicalSimulationDossier, parseSimulationDossier, simulationDossierHash } from "@metafarm/domain/yield";
+import {
+  CarryLedgerError,
+  EMPTY_CARRY_LEDGER,
+  SHA256_RFC9162_HASHER,
+  SimulationDossierError,
+  canonicalSimulationDossier,
+  carryLedgerHash,
+  parseCarryLedger,
+  parseSimulationDossier,
+  simulationDossierHash,
+  verifyClaimLeafProof,
+} from "@metafarm/domain/yield";
 
 const STATUSES = ["draft", "inputs_locked", "calculated", "under_review", "approved", "published", "funded", "distributing", "disputed", "closed", "cancelled", "abandoned", "superseded"] as const;
 const tenantParams = z.object({ tenantId: uuid });
@@ -123,6 +138,28 @@ export async function yieldCycleDetail(tx: TenantTx, cycleId: string) {
   };
 }
 
+const unhex = (h: string) => Uint8Array.from(h.match(/../g) ?? [], (x) => parseInt(x, 16));
+
+/** Fails closed if a stored leaf's proof does not verify against the set's root and the tree size. */
+export async function assertStoredProof(l: YieldClaimLeafRow, root: string): Promise<void> {
+  if (l.hasherId !== SHA256_RFC9162_HASHER.id) throw new HttpError(409, "proof_invalid", `leaf ${l.leafIndex} uses hasher ${l.hasherId}, which this service cannot verify`);
+  const proof = { leafIndex: l.leafIndex, treeSize: l.treeSize, leafHash: l.leafHash, path: l.path, root: l.root };
+  if (l.root !== root || !(await verifyClaimLeafProof(SHA256_RFC9162_HASHER, unhex(l.leafBytes), proof, { root, treeSize: l.treeSize })))
+    throw new HttpError(409, "proof_invalid", `the stored proof of leaf ${l.leafIndex} does not verify`);
+}
+
+export const toLeafView = (l: YieldClaimLeafRow) => ({
+  leafIndex: l.leafIndex,
+  partyId: l.partyId,
+  payoutWallet: l.payoutWallet,
+  recipient: l.recipient,
+  amount: l.amount.toString(),
+  leafBytes: l.leafBytes,
+  leafHash: l.leafHash,
+  proof: { leafIndex: l.leafIndex, treeSize: l.treeSize, leafHash: l.leafHash, path: l.path, root: l.root },
+  hasherId: l.hasherId,
+});
+
 export async function yieldRoutes(app: FastifyInstance) {
   app.get("/v1/tenants/:tenantId/yield/cycles", async (req) => {
     parse(tenantParams, req.params);
@@ -163,6 +200,33 @@ export async function yieldRoutes(app: FastifyInstance) {
       return {
         items: items.map((a) => ({ kind: a.kind, partyId: a.partyId ?? null, holderKey: a.holderKey ?? null, weight: a.weight.toString(), amount: a.amount.toString() })),
       };
+    });
+  });
+
+  /**
+   * A set's persisted claim leaves with their proofs (0027), operators only. Read from storage, never recomputed;
+   * each proof is re-verified against the set's root and size, and a stored proof that fails is refused (409
+   * proof_invalid), not served.
+   */
+  app.get("/v1/tenants/:tenantId/yield/cycles/:cycleId/artifact-sets/:setId/leaves", async (req) => {
+    const { cycleId, setId } = parse(setParams, req.params);
+    return app.inTenant(req, "yield:read", async (tx) => {
+      const set = (await listYieldArtifactSets(tx, cycleId)).find((s) => s.id === setId);
+      if (!set) throw notFound("artifact set");
+      const leaves = await listYieldClaimLeaves(tx, setId);
+      for (const l of leaves) await assertStoredProof(l, set.merkleRoot);
+      return { root: set.merkleRoot, size: leaves.length, items: leaves.map(toLeafView) };
+    });
+  });
+
+  /** A set's recorded carry-forward (0028): what it took in, from which predecessor, and what it carries out. */
+  app.get("/v1/tenants/:tenantId/yield/cycles/:cycleId/artifact-sets/:setId/carry", async (req) => {
+    const { cycleId, setId } = parse(setParams, req.params);
+    return app.inTenant(req, "yield:read", async (tx) => {
+      if (!(await listYieldArtifactSets(tx, cycleId)).some((s) => s.id === setId)) throw notFound("artifact set");
+      const c = await getYieldCarry(tx, setId);
+      if (!c) throw notFound("carry record");
+      return { sourceSetId: c.sourceSetId, ledgerIn: { ...JSON.parse(c.ledgerIn.body), sha256: c.ledgerIn.sha256 }, ledgerOut: { ...JSON.parse(c.ledgerOut.body), sha256: c.ledgerOut.sha256 } };
     });
   });
 
@@ -216,6 +280,13 @@ const STATUS_OF: Partial<Record<YieldStoreErrorCode, number>> = {
   future_phase: 409,
   real_gate: 409,
   cycle_not_draft: 409,
+  artifact_missing: 409,
+  artifact_mismatch: 409,
+  carry_source_mismatch: 409,
+  carry_source_missing: 409,
+  carry_mismatch: 409,
+  carry_predecessor_open: 409,
+  carry_missing: 409,
 };
 
 /** Domain and store refusals as HTTP errors with their stable codes; anything else is rethrown. */
@@ -225,6 +296,7 @@ export function yieldHttpError(e: unknown): unknown {
   if (e instanceof OwnershipProvenanceError) return new HttpError(409, e.code, e.message);
   if (e instanceof YieldEngineError) return new HttpError(e.status, e.code, e.message);
   if (e instanceof SimulationDossierError) return new HttpError(422, e.code, e.message);
+  if (e instanceof CarryLedgerError) return new HttpError(409, e.code, e.message);
   return e;
 }
 
@@ -318,7 +390,12 @@ export async function yieldWorkflowRoutes(app: FastifyInstance) {
     const stored = await latestSimulationDossier(tx, cycleId);
     // A stored dossier was checked when registered; parsed again here, so a bad row still fails closed.
     const dossier = stored ? parseSimulationDossier(stored.body) : null;
-    return { cycle, inputs: await listYieldInputs(tx, cycleId), ownership, dossier, evidenceSha256ByInput: await yieldInputEvidenceHashes(tx, cycleId) };
+    // The carry-in is the predecessor's recorded carry-out (0028), checked against its hash; else the empty ledger.
+    const carry = await yieldCarryIn(tx, cycleId);
+    const carryIn = carry.ledger
+      ? { sourceSetId: carry.sourceSetId, ledger: await parseCarryLedger(carry.ledger.body, carry.ledger.sha256), sha256: carry.ledger.sha256 }
+      : { sourceSetId: null, ledger: EMPTY_CARRY_LEDGER, sha256: await carryLedgerHash(EMPTY_CARRY_LEDGER) };
+    return { cycle, inputs: await listYieldInputs(tx, cycleId), ownership, dossier, evidenceSha256ByInput: await yieldInputEvidenceHashes(tx, cycleId), carryIn };
   };
   const engine = () => {
     if (!app.deps.yieldEngine) throw new HttpError(503, "calculation_engine_unavailable", "no yield calculation engine is configured on this line (integration with the yield domain is pending)");
@@ -432,6 +509,8 @@ export async function yieldWorkflowRoutes(app: FastifyInstance) {
         setHash: out.setHash,
         snapshot: { sourceKind: o.provenance.sourceKind, sourceIdentityId: o.provenance.sourceIdentity?.id ?? null, cursorSlot: o.provenance.cursorSlot, holdingModel: "slot_weighted", inputCommitment: o.commitment, totalWeight: o.totalWeight },
         allocations: out.allocations,
+        frozen: out.frozen,
+        carry: { sourceSetId: request.carryIn.sourceSetId, ledgerIn: out.carry.ledgerIn, ledgerOut: out.carry.ledgerOut },
         actorUserId: userId,
       });
       return { ...(await yieldCycleDetail(tx, cycleId)), artifactSetId: r.artifactSetId };

@@ -8,7 +8,12 @@ import { base58Encode } from "@metafarm/chain";
 import type { YieldCycleRow, YieldInputRow } from "@metafarm/db";
 import { buildWeightedOwnershipInput, type ChainAssetRef, type OwnershipEvent, type WeightedOwnershipInput } from "@metafarm/domain";
 import {
+  EMPTY_CARRY_LEDGER,
+  SHA256_RFC9162_HASHER,
   calculationPolicyHash,
+  carryLedgerHash,
+  parseCarryLedger,
+  verifyClaimLeafProof,
   canonicalSimulationDossier,
   parseSimulationDossier,
   simulationDossierHash,
@@ -83,9 +88,12 @@ async function ownership(sourceKind: "fixture" | "rpc" = "fixture"): Promise<Wei
   });
 }
 
+const genesis = async () => ({ sourceSetId: null, ledger: EMPTY_CARRY_LEDGER, sha256: await carryLedgerHash(EMPTY_CARRY_LEDGER) });
+
 async function request(over: Partial<YieldCalculationRequest> = {}): Promise<YieldCalculationRequest> {
-  return { cycle: await cycle(), inputs: INPUTS, ownership: await ownership(), dossier: DOSSIER, evidenceSha256ByInput: { "1": h(1), "2": h(2) }, ...over };
+  return { cycle: await cycle(), inputs: INPUTS, ownership: await ownership(), dossier: DOSSIER, evidenceSha256ByInput: { "1": h(1), "2": h(2) }, carryIn: await genesis(), ...over };
 }
+const unhex = (x: string) => Uint8Array.from(x.match(/../g)!.map((b) => parseInt(b, 16)));
 
 const engine = createPipelineYieldEngine();
 async function code(p: Promise<unknown>): Promise<string> {
@@ -145,7 +153,8 @@ describe("the yield pipeline as the calculation engine (line join)", () => {
     expect(await code(engine.calculate(await request({ evidenceSha256ByInput: { "1": h(1), "2": null } })))).toBe("dossier_mismatch");
     expect(await code(engine.calculate(await request({ dossier: { ...DOSSIER, evidence: [...DOSSIER.evidence, item(3, "EXTRA")] } })))).toBe("dossier_mismatch");
     expect(await code(engine.calculate(await request({ dossier: { ...DOSSIER, payoutAddresses: { [PA]: "01".repeat(32) } } })))).toBe("dossier_incomplete");
-    expect(await code(engine.calculate(await request({ dossier: { ...DOSSIER, distributionLedger: { carriedRemainder: 1n, deferred: [] } } })))).toBe("carry_not_supported");
+    expect(await code(engine.calculate(await request({ dossier: { ...DOSSIER, distributionLedger: { carriedRemainder: 1n, deferred: [] } } })))).toBe("carry_from_dossier_refused");
+    expect(await code(engine.calculate(await request({ carryIn: { sourceSetId: null, ledger: { carriedRemainder: 5n, deferred: [] }, sha256: await carryLedgerHash(EMPTY_CARRY_LEDGER) } })))).toBe("carry_mismatch");
     const huge = await ownership();
     const big = { ...huge, parties: huge.parties.map((p, i) => (i === 0 ? { ...p, weight: 2n ** 64n } : p)) };
     expect(await code(engine.calculate(await request({ ownership: big })))).toBe("weight_exceeds_u64");
@@ -181,5 +190,37 @@ describe("the yield pipeline as the calculation engine (line join)", () => {
       { kind: "allocated", partyId: "a", weight: 6n, amount: 6n },
       { kind: "dust", weight: 1n, amount: 4n },
     ]);
+  });
+
+  it("returns the frozen artifact: its canonical text hashes to the set hash, its leaves pay the allocations and verify", async () => {
+    const out = await engine.calculate(await request());
+    const { createHash } = await import("node:crypto");
+    expect(createHash("sha256").update(out.frozen.body, "utf8").digest("hex")).toBe(out.setHash);
+    expect(JSON.parse(out.frozen.body).scheme).toBe(out.frozen.scheme);
+    expect(out.frozen.leaves).toHaveLength(1); // only party A is payable (B withheld, the stranger unattributed)
+    const leaf = out.frozen.leaves[0]!;
+    expect([leaf.partyId, leaf.amount]).toEqual([PA, out.allocations.find((a) => a.partyId === PA)!.amount]);
+    expect(await verifyClaimLeafProof(SHA256_RFC9162_HASHER, unhex(leaf.leafBytes), { leafIndex: leaf.leafIndex, treeSize: 1, leafHash: leaf.leafHash, path: leaf.path, root: out.merkleRoot }, { root: out.merkleRoot, treeSize: 1 })).toBe(true);
+    expect(out.carry.ledgerIn.sha256).toBe(await carryLedgerHash(EMPTY_CARRY_LEDGER));
+  });
+
+  it("carries forward: deferred dust goes out, and the next cycle takes it in and pays it", async () => {
+    // A dust threshold above party A's share defers it: its amount is carried out, not paid.
+    const dusty = { ...DOSSIER, distributionPolicy: { ...DOSSIER.distributionPolicy, dustThreshold: 10n ** 12n } };
+    const n = await engine.calculate(await request({ dossier: dusty }));
+    expect(n.frozen.leaves).toHaveLength(0);
+    const out = await parseCarryLedger(n.carry.ledgerOut.body, n.carry.ledgerOut.sha256);
+    expect(out.deferred.map((d) => d.partyId)).toEqual([PA]);
+    const carried = out.deferred[0]!.amount;
+    expect(carried > 0n).toBe(true);
+    // Cycle N+1 (no dust threshold) takes the carry-in: inflow grows by exactly the carried amount, and A's leaf pays it.
+    const plain = await engine.calculate(await request({ cycle: await cycle({ id: "00000000-0000-4000-8000-0000000000c2" }) }));
+    const next = await engine.calculate(await request({ cycle: await cycle({ id: "00000000-0000-4000-8000-0000000000c2" }), carryIn: { sourceSetId: "00000000-0000-4000-8000-0000000000d1", ledger: out, sha256: n.carry.ledgerOut.sha256 } }));
+    expect(BigInt(next.totals.inflow!) - BigInt(plain.totals.inflow!)).toBe(carried);
+    expect(next.carry.ledgerIn.sha256).toBe(n.carry.ledgerOut.sha256);
+    const a = next.allocations.find((x) => x.partyId === PA)!;
+    expect(a.amount - plain.allocations.find((x) => x.partyId === PA)!.amount).toBe(carried);
+    expect(next.frozen.leaves.find((l) => l.partyId === PA)!.amount).toBe(a.amount);
+    expect(next.allocations.reduce((t, x) => t + x.amount, 0n).toString()).toBe(next.totals.inflow);
   });
 });
