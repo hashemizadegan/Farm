@@ -8,6 +8,12 @@ try {
   /* no root .env (CI, Docker): rely on the real environment */
 }
 
+// Y10: the internal yield pages are refused in deployed builds until a disclosure version is approved (D-39).
+// Same rule as yieldPagesBuildProblem (src/lib/yield.ts), kept inline so the config has no app imports.
+if (process.env.NEXT_PUBLIC_YIELD_PAGES_ENABLED === "true" && (process.env.APP_ENV === "staging" || process.env.APP_ENV === "production")) {
+  throw new Error("NEXT_PUBLIC_YIELD_PAGES_ENABLED is refused in deployed environments until a disclosure version is approved (D-39)");
+}
+
 const config: NextConfig = {
   // Standalone output produces a minimal server bundle for the Docker image.
   output: "standalone",

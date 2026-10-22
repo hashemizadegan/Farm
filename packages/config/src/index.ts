@@ -325,5 +325,7 @@ export const webPublicEnvSchema = z.object({
   NEXT_PUBLIC_CESIUM_ENABLED: bool.default("false"),
   /** J8: show player-wallet linking on the account page (needs PLAYER_WALLETS_ENABLED on the API). */
   NEXT_PUBLIC_PLAYER_WALLETS_ENABLED: bool.default("false"),
+  /** Y10: show the internal yield pages (staff only; read-only; needs yield:read). The web build refuses it when APP_ENV is staging or production until a disclosure version is approved (D-39). */
+  NEXT_PUBLIC_YIELD_PAGES_ENABLED: bool.default("false"),
 });
 export type WebPublicEnv = z.infer<typeof webPublicEnvSchema>;
