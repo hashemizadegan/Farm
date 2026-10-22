@@ -62,3 +62,8 @@ a reproduction of the one defect before and after the fix.
 - The proposed security sign-off (S).
 - A full-history node chosen and documented (§4.2).
 - F2 decided under D-17.
+
+## Follow-up (2026-10-22): F2
+
+F2 was settled by the owner under D-17 ("verified RPC takes precedence") and fixed in #86: see
+`decision-brief-d17-fixture-exclusion.md`, "Owner decision". This review is still not a security sign-off.

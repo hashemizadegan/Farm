@@ -9,6 +9,17 @@
   undefined; real allocation refused.
 - §4.1 (model comparison), §4.2 (provisional recommendation), §4.3 (rules), §13.2 item 3.
 
+## Owner decision (recorded 2026-10-22)
+
+The owner approved **slot-weighted holdings for Y5** (this brief's Option A, Build gate), with these conditions:
+integer slot counts from the ownership index; deterministic and integer-only; **not** the final real-cycle
+allocation policy (the D-12 Real gate, P, T, L, stays open); a **new weighted input type**, not the #75 64-bit share
+type; explicit overflow bounds; tests for large slot counts, zero values, overflow and malformed inputs.
+
+Implemented in #86 (`packages/domain/src/twin/holding-weights.ts`): window `(start, end]` of at most 2^32 slots,
+total weight at most 2^128 − 1 (`weight_out_of_range`), `WeightedOwnershipInput` (`metafarm-weighted-ownership/1`)
+with a SHA-256 commitment. The status line above is left as written, as the record of what was proposed.
+
 ## Problem
 
 Y5 turns verified ownership events into allocation weights for one asset per cycle. The plan requires D-12 to

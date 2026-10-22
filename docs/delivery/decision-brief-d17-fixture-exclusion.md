@@ -9,6 +9,27 @@
 - §0.3 (D-17 decides *how*, not *whether*), §4.2 (fixture exclusion rules), §4.3 ("Test assets: simulation
   cycles only"), §11.1 rows Y5 and Y7, safeguard 14.
 
+## Owner decision (recorded 2026-10-22)
+
+The owner approved **staged fixture exclusion**: Y5 service-level refusal; Y7 database-level enforcement in the
+snapshot tables; fixtures only for simulation and tests; real and fixture data never silently combined. **F2 is
+resolved as "verified RPC takes precedence":** when verified RPC rows exist for an asset, its fixture rows are not
+served; fixture rows stay simulation-only; mixed-source behaviour is explicit, deterministic and tested; ambiguous
+provenance fails closed. Historical fixture data is not deleted.
+
+Implemented:
+- **Service (Y5, #86):** `buildWeightedOwnershipInput` refuses fixture history for a non-simulation input
+  (`fixture_in_real_cycle`) and unverified or foreign-network RPC identities (`unverified_source`).
+- **F2 (#86):** `readVerifiedOwnershipHistory` serves only identity-bound RPC events under a verified RPC cursor
+  (fixture rows kept, never served); a fixture cursor beside verified RPC events is `ambiguous_provenance`; a fixture
+  batch over a verified RPC cursor is refused twice (worker, cursor upsert: `fixture_after_verified_rpc`); a source
+  switch restarts the cursor; `combineOwnershipSources` refuses mixing fixture and RPC members.
+- **Database (Y7, #87):** `yield_ownership_snapshots` refuses fixture snapshots for non-simulation cycles (trigger
+  joining `yield_cycles.simulation`, whose `simulation` flag is immutable); RPC snapshots must reference a verified
+  identity of their own network.
+
+The status line above is left as written, as the record of what was proposed.
+
 ## Problem
 
 Whether fixture ownership is excluded from real cycles is **not open**; it is a safeguard (§0.3).
