@@ -6,6 +6,26 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-23, 02:00 local (#105 provider-neutral contracts: green at `8868c5b`)
+
+#105 (`feature/provider-neutral-contracts`, base #104) adds:
+- chain events `metafarm-chain-event/1`, with an adapter registry and the `metafarm-relay` adapter. Normalization
+  and checks happen before any write; an event is a re-index hint only.
+- provider capability states, asserted at API and worker start-up, with `docs/provider-capabilities.md`;
+- the Unity capability layer: map imagery, media, a disabled realtime channel, polling with retry and backoff,
+  exact decimals;
+- the realtime envelope `metafarm-event/1`. The flag is off and refused when deployed; there is no endpoint.
+- `docs/api-inventory.json`: 161 endpoints, 0 undocumented client calls.
+
+CI on `8868c5b`: 15/15. Playwright: 52 passed, 6 skipped. C#: 112 tests.
+
+Open:
+- `f3dae4f` failed integration with an unreadable log; it has not reproduced.
+- Before any merge to `main`, check the live `S3_ENDPOINT` scheme and `RWA_SOLANA_NETWORK`: two new invalid rules
+  could stop a live service.
+
+No Railway call was made.
+
 ## 2026-10-23, 00:30 local (Unity yield read client, D-39 parity, e2e account journey: #104 green at `4f0817d`)
 
 A survey of the preview line found that the Unity core had yield DTOs but no client that fetched them. #104
