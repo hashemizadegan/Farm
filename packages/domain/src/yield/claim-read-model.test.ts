@@ -14,7 +14,7 @@ import { type ClaimLookup, type ClaimPayloadDto, type PublishedClaimTree, create
 import { type ClaimReadModel, type ClaimReadModelError, InMemoryClaimReadModelStore, decodeReadModelImage, encodeReadModelImage, openClaimReadModel, projectClaimReadModel, readModelKeys } from "./claim-read-model";
 import type { CycleDistributionArtifact } from "./pipeline";
 import { contentHash } from "../twin/commitments";
-import { countingHasher, largeHolderCycle, largeTreeSample, pickParties } from "./large-holder.test-support";
+import { SHARED_16K, countingHasher, largeTreeSample, pickParties, sharedCycle16k } from "./large-holder.test-support";
 import { claimReadModelSampleText, sampleReadModel } from "./claim-read-model.sample.test-support";
 import { unhex } from "./pipeline.scenario.test-support";
 
@@ -121,7 +121,7 @@ describe("4,096 holders: full cross-check", () => {
 // ── 16,384 holders: invariants, exact cost envelopes and a seeded subset ─────────────────────────
 
 /** Fixed inputs: seed, holders and a dust threshold of 1,000 base units, so every holder state occurs. */
-const BIG = { holders: 16_384, seed: 0xe17e10e5n, dustThreshold: 1_000n, subsetSize: 1_024, subsetSeed: 0x5b5e7n } as const;
+const BIG = { ...SHARED_16K, subsetSize: 1_024, subsetSeed: 0x5b5e7n } as const;
 // Pinned for those inputs: any change to the projection or the image format shows here.
 const PINNED_16K = { sha256: "4c0ff4580f04658b06fb9e5893d970716c2a41245aed67b1ac60e859214fdffa", bytes: 16_412_652 };
 // The seeded pick of 1,024 misses the rare below-threshold state, so its first holder is added.
@@ -129,7 +129,8 @@ const PINNED_SUBSET: [string, string, string[]] = ["holder-000004", "holder-0163
 
 let bigState: ReturnType<typeof buildBig> | undefined;
 async function buildBig() {
-  const r = await largeHolderCycle(BIG.holders, BIG.seed, H, BIG.dustThreshold);
+  // The shared 16,384-holder cycle parameters (SHARED_16K), as in the #78 envelope tests; built once per file, deeply frozen.
+  const r = await sharedCycle16k();
   const projection = countingHasher();
   const persisted = await persist(r, projection);
   return { ...r, projection: projection.counts, ...persisted };

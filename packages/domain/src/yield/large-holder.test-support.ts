@@ -8,7 +8,8 @@ import { type ClaimTreeHasher, SHA256_RFC9162_HASHER } from "./claim-tree";
 import { createClaimLookup } from "./claim-lookup";
 import { SIMULATION_DISTRIBUTION_POLICY } from "./distribution";
 import { MockOwnershipAdapter, type OwnershipSnapshotRequest, loadVerifiedOwnershipSnapshot } from "./ownership-source";
-import { splitMix64 } from "./ownership-synthetic";
+import { SYNTHETIC_SHARE_PROFILES, type SyntheticShareProfile, splitMix64 } from "./ownership-synthetic";
+import { U64_MAX } from "./amounts";
 import { calculateSimulationCycle } from "./pipeline";
 import { input } from "./pipeline.scenario.test-support";
 
@@ -43,12 +44,90 @@ export function rfc9162PathLength(i: number, n: number): number {
  * Runs a seeded extreme-profile cycle. With the default dust threshold 0, zero_amount deferrals occur; a positive
  * threshold also produces below_dust_threshold deferrals.
  */
-export async function largeHolderCycle(holders: number, seed: bigint, hasher: ClaimTreeHasher = SHA256_RFC9162_HASHER, dustThreshold = 0n) {
-  const ownership = await loadVerifiedOwnershipSnapshot(new MockOwnershipAdapter({ seed, holders, profile: "extreme", withheldEvery: 97, unattributed: 3, observedAt: "2026-09-30T23:59:59Z" }), LARGE_REQUEST);
+export async function largeHolderCycle(holders: number, seed: bigint, hasher: ClaimTreeHasher = SHA256_RFC9162_HASHER, dustThreshold = 0n, profile: SyntheticShareProfile = "extreme") {
+  const ownership = await loadVerifiedOwnershipSnapshot(new MockOwnershipAdapter({ seed, holders, profile, withheldEvery: 97, unattributed: 3, observedAt: "2026-09-30T23:59:59Z" }), LARGE_REQUEST);
   const base = await input();
   const result = await calculateSimulationCycle({ ...base, ownership, hasher, distributionPolicy: { ...SIMULATION_DISTRIBUTION_POLICY, dustThreshold, missingPayoutWallet: "withhold" } });
   return { ownership, input: base, ...result };
 }
+
+// ── One deterministic cycle per parameter set, shared in-process ────────────────────────────────
+
+/** Everything that determines a shared cycle (the request, policies and hasher are fixed). */
+export interface LargeCycleParams {
+  holders: number;
+  seed: bigint;
+  profile: SyntheticShareProfile;
+  dustThreshold: bigint;
+}
+
+/**
+ * The 16,384-holder cycle shared by the #78 envelope tests and the #79 read-model tests. Dust threshold 1,000,
+ * so every holder state (claim, withheld, zero_amount, below_dust_threshold) occurs.
+ */
+export const SHARED_16K: LargeCycleParams = Object.freeze({ holders: 16_384, seed: 0xe17e10e5n, profile: "extreme", dustThreshold: 1_000n });
+
+/** The memo key: every parameter that changes the cycle. */
+export function largeCycleKey(p: LargeCycleParams): string {
+  return `holders=${p.holders};seed=0x${p.seed.toString(16)};profile=${p.profile};dustThreshold=${p.dustThreshold}`;
+}
+
+function assertLargeCycleParams(p: LargeCycleParams): void {
+  const keys = Object.keys(p).sort().join(",");
+  if (keys !== "dustThreshold,holders,profile,seed") throw new Error(`shared cycle parameters must be exactly holders, seed, profile, dustThreshold (got ${keys})`);
+  if (!Number.isSafeInteger(p.holders) || p.holders < 1) throw new Error("holders must be a positive integer");
+  if (typeof p.seed !== "bigint" || p.seed < 0n || p.seed > U64_MAX) throw new Error("seed must be a u64 bigint");
+  if (!(SYNTHETIC_SHARE_PROFILES as readonly string[]).includes(p.profile)) throw new Error(`profile must be one of ${SYNTHETIC_SHARE_PROFILES.join(", ")}`);
+  if (typeof p.dustThreshold !== "bigint" || p.dustThreshold < 0n) throw new Error("dustThreshold must be a non-negative bigint");
+}
+
+function deepFreeze<T>(v: T): T {
+  if (v && typeof v === "object" && !Object.isFrozen(v)) {
+    Object.freeze(v);
+    for (const x of Object.values(v as object)) deepFreeze(x);
+  }
+  return v;
+}
+
+export type SharedLargeCycle = Awaited<ReturnType<typeof largeHolderCycle>>;
+
+/**
+ * The in-process memo, on globalThis so it survives module re-evaluation. vitest isolates modules per test file
+ * and runs files in parallel workers, so each file that needs a cycle builds it once (same parameters, same
+ * frozen bytes in every file); within a file, every test reuses that build. Sharing one build across files would
+ * need them in one process, which serializes them and was measured slower in CI (#80). Nothing is written to
+ * files, databases or the network.
+ */
+const MEMO = Symbol.for("metafarm.yield.test.sharedLargeCycles");
+const memo = (): Map<string, Promise<SharedLargeCycle>> => ((globalThis as Record<symbol, unknown>)[MEMO] ??= new Map()) as Map<string, Promise<SharedLargeCycle>>;
+
+/**
+ * Builds (once per process and parameter set) a seeded simulation cycle with the SHA-256 RFC 9162 hasher, and
+ * returns it deeply frozen, so no test can change what another test sees. Simulation only: the ownership
+ * request names the simulation network and the pipeline refuses anything else.
+ */
+export function sharedLargeCycle(p: LargeCycleParams): Promise<SharedLargeCycle> {
+  assertLargeCycleParams(p);
+  const key = largeCycleKey(p);
+  const cache = memo();
+  let entry = cache.get(key);
+  if (!entry) {
+    entry = largeHolderCycle(p.holders, p.seed, SHA256_RFC9162_HASHER, p.dustThreshold, p.profile).then((r) => {
+      if (r.artifact.cycle.simulation !== true || r.ownership.networkId !== "simulation") throw new Error("shared cycles are simulation only");
+      return deepFreeze(r);
+    });
+    // A failed build is not cached, so a later call retries rather than reusing an error.
+    entry.catch(() => cache.delete(key));
+    cache.set(key, entry);
+  }
+  return entry;
+}
+
+/** The shared 16,384-holder cycle. */
+export const sharedCycle16k = () => sharedLargeCycle(SHARED_16K);
+
+/** Keys currently memoized in this process (for the memoization test). */
+export const sharedLargeCycleKeys = (): string[] => [...memo().keys()];
 
 /** `count` distinct party ids picked by a seeded generator (no randomness source). */
 export function pickParties(partyIds: readonly string[], count: number, seed: bigint): string[] {
