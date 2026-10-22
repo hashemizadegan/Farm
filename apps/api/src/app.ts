@@ -6,6 +6,7 @@ import type { Deps } from "./deps";
 import { contextPlugin } from "./plugins/context";
 import { idempotencyPlugin } from "./plugins/idempotency";
 import { metricsPlugin } from "./plugins/metrics";
+import { previewGatePlugin } from "./plugins/preview-gate";
 import { securityPlugin } from "./plugins/security";
 import { chainRoutes } from "./routes/chain";
 import { farmRoutes } from "./routes/farms";
@@ -62,6 +63,8 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   // Before every route, so that every response is counted.
   await app.register(metricsPlugin, { token: deps.env.METRICS_TOKEN });
   await app.register(contextPlugin, { deps });
+  // Before every route (health included, which it lets through), so nothing is reachable around it.
+  await app.register(previewGatePlugin, { enabled: deps.env.PREVIEW_ACCESS_GATE });
   await app.register(idempotencyPlugin);
   await app.register(healthRoutes, { isDraining });
 
