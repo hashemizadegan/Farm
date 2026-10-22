@@ -6,6 +6,28 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-23, 00:30 local (Unity yield read client, D-39 parity, e2e account journey: #104 green at `4f0817d`)
+
+A survey of the preview line found that the Unity core had yield DTOs but no client that fetched them. #104
+(`feature/unity-yield-read`, base #103) adds:
+- `IYieldReadApi` / `YieldReadClient`: GET only; cycle list with filters, cycle detail, allocations;
+- `YieldDisclosure`: D-39 text, id and `en`; `For()` refuses non-simulation cycles;
+- xunit tests;
+- a web↔Unity D-39 parity unit test;
+- the e2e account journey: new account → first workspace → owner → sign out → sign-in required.
+
+CI on `4f0817d`: 15/15. Playwright: 52 passed, 6 skipped by design. C#: 102 tests.
+
+Test defect: on `ea0e1eb`, `TheYieldModelsAreDataOnly` matched every class named `Yield*`, including the new
+client. It is now scoped to the Models namespace.
+
+Not built, by decision rather than as stubs:
+- the chain webhook's provider event mapping (`TODO(provider-config)`);
+- a live WebSocket or MQTT feed to Unity. The client polls through `SnapshotSync`; a push channel is new
+  architecture.
+
+No Railway call was made.
+
 ## 2026-10-22, 23:30 local (preview line verified end to end in CI: #103 green at `7a9b3af`)
 
 The reviewer asked to finish the preview-ready implementation. #103 (`preview/ops-readiness`, base #99, with #100
