@@ -70,11 +70,16 @@ d("preview seed runner", () => {
     expect(await cycles()).toEqual(["published", "published", "under_review"]);
   }, 300_000);
 
-  it("refuses once the database holds a workspace other than the demo one", async () => {
+  it("refuses once the database holds a real sign-in, or a workspace the development seed did not create", async () => {
+    await preview.query(`INSERT INTO users (oidc_issuer, oidc_subject) VALUES ('https://idp.example', 'real-person')`);
+    const user = run({ APP_ENV: "test" });
+    expect(user.code).toBe(1);
+    expect(user.out).toContain("from a real identity provider");
+    await preview.query(`DELETE FROM users WHERE oidc_issuer = 'https://idp.example'`);
     await preview.query(`INSERT INTO tenants (slug, name) VALUES ('acme-real', 'A real workspace')`);
-    const r = run({ APP_ENV: "test" });
-    expect(r.code).toBe(1);
-    expect(r.out).toContain("not a fresh, isolated preview database");
-    expect(r.out).not.toContain(DEV_SECRET);
+    const tenant = run({ APP_ENV: "test" });
+    expect(tenant.code).toBe(1);
+    expect(tenant.out).toContain("not a fresh, isolated preview database");
+    expect(`${user.out}${tenant.out}`).not.toContain(DEV_SECRET);
   });
 });

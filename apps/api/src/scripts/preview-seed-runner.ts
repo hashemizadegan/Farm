@@ -22,7 +22,7 @@ const fail = (msg: string): never => {
 
 // Checked before any connection.
 if (!process.env.APP_ENV || !["development", "test"].includes(process.env.APP_ENV)) {
-  fail(previewSeedRefusal({ appEnv: process.env.APP_ENV, tenantSlugs: [], latestMigration: null })!);
+  fail(previewSeedRefusal({ appEnv: process.env.APP_ENV, tenantSlugs: [], nonDevUsers: 0, latestMigration: null })!);
 }
 const url = process.env.DATABASE_URL;
 if (!url) fail("DATABASE_URL is required");
@@ -38,7 +38,8 @@ const facts = await (async () => {
         ? ((await tx.query<{ version: string }>("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1")).rows[0]?.version ?? null)
         : null;
       const slugs = (await exists("public.tenants")) ? (await tx.query<{ slug: string }>("SELECT slug FROM tenants")).rows.map((r) => r.slug) : [];
-      return { appEnv: process.env.APP_ENV, tenantSlugs: slugs, latestMigration: latest };
+      const nonDevUsers = (await exists("public.users")) ? ((await tx.query<{ n: number }>("SELECT count(*)::int AS n FROM users WHERE oidc_issuer <> 'dev'")).rows[0]?.n ?? 0) : 0;
+      return { appEnv: process.env.APP_ENV, tenantSlugs: slugs, nonDevUsers, latestMigration: latest };
     });
   } finally {
     await pool.end();
