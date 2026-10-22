@@ -6,6 +6,23 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 14:20 local (line join, Option A: verified state before any change)
+
+Owner decision (this message): **join the lines, Option A.** One integration branch off the ownership-line tip
+(#95), with the yield-line tip (#84) merged into it, as one draft PR.
+
+**Verified on GitHub and locally (before any change):**
+
+| Item | Value |
+| --- | --- |
+| #84 (yield line tip) | draft, open, unmerged; head `feature/yield-multi-cycle` @ `0a5783cd5072e58e0a825cbbd1bae03f7776bd3b`; base `feature/yield-shared-16k-cycle` @ `703caac` (#80) |
+| #95 (ownership line tip) | draft, open, unmerged; head `feature/devnet-verification-harness` @ `49a419db00143d101e019db47973c31aa50f4531`; base `feature/yield-reconciliation` @ `7298c53` (#94) |
+| Common ancestor | `ebb3f56` (#59, contains J7 #50–#52) |
+| Ancestry | neither tip contains the other; `main` is an ancestor of both |
+| `main` | `b59eaff`, last commit 2026-10-20; untouched |
+| Merged PRs | none from #40 onward (the merged ones are #1–#39) |
+| Files changed on both lines since `ebb3f56` | none, so no textual conflicts are expected |
+
 ## 2026-10-22, evening (Y5–Y15 implemented on the ownership-index line; stopped at the gates)
 
 Machine-readable: `yield-run-summary-2026-10-22.json`. Decisions: D-12 (Build) and D-17 owner-approved;
