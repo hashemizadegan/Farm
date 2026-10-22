@@ -6,6 +6,77 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 13:30 local (state check; Y0 security review and fix; D-12 and D-17 briefs; remaining work)
+
+**Verified state (GitHub API and git ancestry):**
+
+| PR | Head | Base | CI |
+| --- | --- | --- | --- |
+| #84 | `0a5783c` | #80 `703caac` | 14/14 passed |
+| #85 | `20ccaae` (was `243191b`) | #59 `ebb3f56` | 14/14 passed; run 39744219837 for `20ccaae` |
+
+- Both are open drafts and unmerged, on separate branch lines.
+- #85 contains #59 and #52. #84 does not contain #85.
+- #84 recorded scope unchanged; not reworked.
+
+**Y0 security review:** `y0-security-review.md` (input to the proposed security sign-off; not a sign-off).
+- **F1, Medium (latent):** pre-0023 RPC rows could make the reader serve partial history. Reproduced on
+  PostgreSQL 16. **Fixed in `20ccaae`:**
+  - an unbound cursor is ignored, so the asset is re-indexed from the start;
+  - its slot is replaced, not kept as a lower bound;
+  - identical re-observed rows are bound to the verified identity.
+- **F2, Medium (pre-existing):** fixture and RPC rows can coexist for one asset; left to D-17.
+- **F3, Low:** the start-up registration error log lacked a message. Fixed in `20ccaae`.
+- **F4–F8, Info:** self-reported genesis hash; IPv6 hosts refused; `NOT VALID` clean-up note; verification
+  latency; the app role can read provider host names.
+- **Checks passed:** registration, endpoint sanitisation, permissions, constraints, binding, transaction boundary,
+  fail-closed defaults.
+
+**Tests for `20ccaae`:**
+- local: worker unit 7/7, schema 5/5, chain 18/18; targeted tsc clean on the changed files;
+- PostgreSQL 16: before/after reproduction of F1, cursor replacement, row binding, replay, fixture non-binding;
+- CI: 14/14, including the new integration test for pre-0023 rows.
+
+**Decision briefs** (OPEN — FOR REVIEW ONLY, no approvals assumed):
+- `decision-brief-d12-holding-model.md`: recommends **slots** (Option A) for the Build gate; the model choice
+  (Real gate: P, T, L) stays open. It notes that slot weights can exceed the u64 `rawShares` of #75, so Y5 needs a
+  weighted ownership input.
+- `decision-brief-d17-fixture-exclusion.md`: recommends **all three layers**, staged: service and tests in Y5,
+  database in Y7. It raises F2 for the owner to settle.
+
+**Remaining work, dependency-ordered (plan §11.1 and §12.2):**
+
+1. **Unblocked now** (no open decision; owner authorisation only):
+   - Y0 review fixes: done (#85, `20ccaae`).
+   - Simulation-only pre-work that claims no stage: done (multi-cycle harness, #84).
+   - No other Y-stage is both decision-free and approval-free. Y10 internal pages and Y11 need no decision but
+     depend on Y8.
+2. **Blocked on D-12 and/or D-17:**
+   - **Y5:** D-12 Build + D-17. Y0 is implemented.
+   - **Y7:** D-17 + D-31, after Y0–Y6.
+   - Then, in order:
+     - **Y8:** D-28;
+     - **Y9:** D-11 confirmation;
+     - **Y10 and Y11:** depend on Y8 (D-39 before any non-staff audience);
+     - **Y12:** D-29;
+     - **Y13:** Y12, Y6, Y9 (D-15, D-25, D-27, D-39 before non-simulation intents);
+     - **Y14:** Y9 and Y13.
+   - **Y6 final:** D-26. The simulation code already exists in #70 and #71.
+3. **Needs security sign-off or explicit operational approval:**
+   - **Y0 live use:** deploy hold lifted, J7 enabled, proposed security sign-off, a full-history node.
+   - **Y4 real adapter:** [Legal] data-protection review, D-24.
+   - **Y7:** proposed security sign-off for RLS.
+   - **Y12:** proposed security sign-off.
+   - **Y15:** devnet approval and the deploy hold.
+   - **Y16:** separate approval and audit.
+   - **Y17:** all production approvals.
+   - **Real attestations:** D-23.
+
+**Next code step:** none is available without a decision. Y5 needs D-12 (Build) and D-17.
+
+**Holds unchanged:** no merges, deployments or enabling of ownership indexing; no execution, signing, TRON,
+mainnet, Railway or deployment change; drafts only.
+
 ## 2026-10-22, 12:30 local (Y0 implemented: verified cluster identity, D-16 option A)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
