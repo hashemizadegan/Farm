@@ -10,7 +10,7 @@ belongs to the frozen #40–#59 stack.
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
 | --- | --- | --- | --- | --- | --- | --- |
-| #80 | shared, memoized 16,384-holder cycle; `unit-shared-cycle` vitest project (tests and config only) | `feature/yield-shared-16k-cycle` | `631516e` | #79 | 39690915829 | 14/14 passed |
+| #80 | shared, memoized 16,384-holder cycle helper (tests only; `unit-shared-cycle` project dropped) | `feature/yield-shared-16k-cycle` | `703caac` | #79 | 39715678632 (attempts 2, 3) | 14/14 passed |
 
 - **Helper:** `sharedLargeCycle(params)` is memoized on `globalThis`.
   - The key covers holders, seed, profile and dust threshold. Results are deeply frozen, parameters are checked
@@ -23,8 +23,28 @@ belongs to the frozen #40–#59 stack.
   dust-1,000 cycle. #78's 4,096-holder pins are unchanged. The memo test proves the key includes seed and dust
   threshold.
 - **Finding:** the unit job took 191 s, up from 107 s. Sharing serializes the two heavy files, which previously ran in
-  parallel. Recommendation: keep the helper and memo test, drop the `unit-shared-cycle` project. Awaiting the
-  owner's choice.
+  parallel.
+- **Owner decision: drop the project (`703caac`).**
+  - `vitest.config.ts` and the scripts are restored exactly to #79, so the heavy files run in parallel workers again.
+    Each builds the same frozen `SHARED_16K` cycle once. The helper, key checks, deep freeze and memo test are kept.
+  - No pinned value changed, and `clients/` is untouched.
+  - CI run 39715678632:
+    - attempt 1: 13/14; Dependency audit failed (`pnpm audit` ran 250 s, exit 1; no dependency changed, so likely
+      transient);
+    - attempts 2 and 3: 14/14 passed.
+  - Unit-test timings (test step / job):
+
+    | Run | Test step | Job |
+    | --- | --- | --- |
+    | #79 `cf10f41`, two attempts | 77 / 68 s | 107 / 98 s |
+    | #80 with the shared project | 159 s | 191 s |
+    | #80 `703caac`, three attempts | 98 / 102 / 97 s | 131 / 131 / 123 s |
+
+  - Parallelism is restored, but the job did **not** return to ~105–110 s: it stays about 25–30 s slower than #79.
+    Locally the heavy files time the same as at #79 (envelope 38 s, read-model 58–59 s), and the memo test takes
+    2 s. The CI-only gap is unexplained.
+  - Remaining differences from #79: the memo test file, the envelope file on the frozen dust-1,000 cycle, and the
+    deep freeze. Isolating the cause needs a CI bisect; the job logs are not readable from this sandbox.
 - **Holds unchanged:** no production code; simulation only; no chain, network, storage, signing, deployment or merge.
 
 ## 2026-10-22, 02:30 local (claim read model: low-memory single-holder lookups)
