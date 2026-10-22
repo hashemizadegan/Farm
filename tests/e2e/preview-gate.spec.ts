@@ -53,7 +53,8 @@ test.describe("preview access gate", () => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await signIn(page, "owner");
-    if (process.env.NEXT_PUBLIC_YIELD_PAGES_ENABLED === "true") {
+    // A deployed preview always has the yield pages; locally they follow the build's switch.
+    if (REMOTE || process.env.NEXT_PUBLIC_YIELD_PAGES_ENABLED === "true") {
       await page.goto("/yield");
       await expect(page.locator("[data-disclosure]")).toContainText(D39_PREFIX);
       await expect(page.locator("[data-disclosure]")).toHaveAttribute("lang", "en");

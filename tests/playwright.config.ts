@@ -74,8 +74,16 @@ const localServers = [
     : []),
 ];
 
+/**
+ * What a remote run exercises: the preview's own surface (the access gate and the /yield operator pages). The
+ * preview runs no worker and is not a general test bed, so the rest of the suite (farm editing, jobs, uploads)
+ * stays local unless E2E_REMOTE_ALL=1 asks for it explicitly.
+ */
+const REMOTE_SPECS = ["preview-gate.spec.ts", "yield-operator.spec.ts"];
+
 export default defineConfig({
   testDir: "./e2e",
+  ...(REMOTE && process.env.E2E_REMOTE_ALL !== "1" ? { testMatch: REMOTE_SPECS } : {}),
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
