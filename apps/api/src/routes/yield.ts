@@ -23,6 +23,7 @@ import {
   createYieldCycle,
   listYieldInputs,
   loadWeightedOwnershipInput,
+  reconcileYieldCycle,
   recordCalculation,
   registerYieldEvidence,
   setYieldCycleParameters,
@@ -158,6 +159,20 @@ export async function yieldRoutes(app: FastifyInstance) {
       return {
         items: items.map((a) => ({ kind: a.kind, partyId: a.partyId ?? null, holderKey: a.holderKey ?? null, weight: a.weight.toString(), amount: a.amount.toString() })),
       };
+    });
+  });
+
+  /** Y14: do the cycle's stored records agree with each other (read-only)? */
+  app.get("/v1/tenants/:tenantId/yield/cycles/:cycleId/reconciliation", async (req) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    return app.inTenant(req, "yield:read", async (tx) => {
+      try {
+        const r = await reconcileYieldCycle(tx, cycleId);
+        return { ...r, consistent: r.findings.length === 0 };
+      } catch (e) {
+        if (e instanceof YieldStoreError && e.code === "not_found") throw notFound("yield cycle");
+        throw e;
+      }
     });
   });
 

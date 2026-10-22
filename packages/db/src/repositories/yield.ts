@@ -666,3 +666,52 @@ export async function listPartyYieldAllocations(tx: TenantTx, partyId: string, o
     settlementDecimals: x.settlement_decimals,
   }));
 }
+
+// ── Reconciliation (Y14) ───────────────────────────────────────────────
+
+export interface YieldReconciliationFinding {
+  code: "weights_do_not_sum" | "snapshot_missing" | "set_hash_mismatch" | "history_mismatch" | "audit_missing" | "no_live_set";
+  detail: string;
+}
+
+/**
+ * Checks a cycle's stored records against each other, read-only: every artifact set's allocation weights sum to its
+ * snapshot's total weight; each set has its snapshot; a calculated-or-later cycle names its live set's hash and
+ * root; the transition log ends in the cycle's status; and every logged step has its audit event (D-31). An empty
+ * list means the records agree; it says nothing about the economics (that is the calculation library's).
+ */
+export async function reconcileYieldCycle(tx: TenantTx, cycleId: string): Promise<{ cycleId: string; status: YieldCycleStatus; findings: YieldReconciliationFinding[] }> {
+  const cycle = await getYieldCycle(tx, cycleId);
+  if (!cycle) throw new YieldStoreError("not_found", `yield cycle ${cycleId} not found`);
+  const findings: YieldReconciliationFinding[] = [];
+  const sets = await listYieldArtifactSets(tx, cycleId);
+  for (const s of sets) {
+    const snap = await getYieldOwnershipSnapshot(tx, s.id);
+    if (!snap) {
+      findings.push({ code: "snapshot_missing", detail: `set ${s.setNumber} has no ownership snapshot` });
+      continue;
+    }
+    const sum = (await listYieldAllocations(tx, s.id)).filter((a) => a.kind !== "dust").reduce((acc, a) => acc + a.weight, 0n);
+    if (sum !== snap.totalWeight) findings.push({ code: "weights_do_not_sum", detail: `set ${s.setNumber}: allocation weights ${sum} ≠ snapshot total ${snap.totalWeight}` });
+  }
+  const calculated = !["draft", "inputs_locked", "cancelled", "abandoned"].includes(cycle.status);
+  if (calculated) {
+    const live = sets.find((s) => (s.status === "frozen" || s.status === "approved" || (cycle.status === "superseded" && s.status === "superseded")) && s.setHash === cycle.artifactSetHash);
+    if (!live) findings.push({ code: "no_live_set", detail: `no frozen or approved set has the cycle's hash ${cycle.artifactSetHash}` });
+    else if (live.merkleRoot !== cycle.merkleRoot) findings.push({ code: "set_hash_mismatch", detail: `the cycle's root differs from set ${live.setNumber}'s` });
+  }
+  const history = await listYieldCycleTransitions(tx, cycleId);
+  if (history.length === 0 || history[history.length - 1]!.toState !== cycle.status) findings.push({ code: "history_mismatch", detail: `the transition log does not end in ${cycle.status}` });
+  const audit = await tx.query<{ action: string; n: number }>(
+    `SELECT action, count(*)::int AS n FROM audit_events WHERE tenant_id = $1 AND target_type = 'yield_cycle' AND target_id = $2 AND action LIKE 'yield.cycle.%' GROUP BY action`,
+    [tx.tenantId, cycleId],
+  );
+  const audited = new Map(audit.rows.map((r) => [r.action, r.n]));
+  const logged = new Map<string, number>();
+  for (const t of history) logged.set(t.command, (logged.get(t.command) ?? 0) + 1);
+  for (const [command, n] of logged) {
+    const a = audited.get(`yield.cycle.${command}`) ?? 0;
+    if (a < n) findings.push({ code: "audit_missing", detail: `${n} ${command} step(s) logged, ${a} audited` });
+  }
+  return { cycleId, status: cycle.status, findings };
+}
