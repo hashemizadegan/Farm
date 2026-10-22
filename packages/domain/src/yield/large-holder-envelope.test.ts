@@ -19,7 +19,7 @@ import { canonicalYieldArtifact, yieldArtifactHash } from "./artifact";
 import { SHA256_RFC9162_HASHER, SIMULATION_CLAIM_TREE_POLICY_SNAPSHOT_BOUND, buildClaimTree } from "./claim-tree";
 import { type ClaimPayloadDto, type ClaimLookupError, type PublishedClaimTree, createClaimLookup, verifyClaimPayload } from "./claim-lookup";
 import { type CyclePipelineError, calculateSimulationCycle, cycleArtifactProblems } from "./pipeline";
-import { LARGE_REQUEST, countingHasher, largeHolderCycle, largeTreeSampleText, pickParties, rfc9162PathLength, sharedCycle16k } from "./large-holder.test-support";
+import { LARGE_REQUEST, countingHasher, largeHolderCycle, largeTreeSampleText, pickParties, rfc9162PathLength } from "./large-holder.test-support";
 import { MockOwnershipAdapter, type OwnershipSourceError, loadVerifiedOwnershipSnapshot } from "./ownership-source";
 
 const SAMPLE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../clients/unity-starter/Samples/claim-payloads.large-tree.sample.json");
