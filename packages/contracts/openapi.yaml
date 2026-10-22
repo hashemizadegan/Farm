@@ -3523,6 +3523,17 @@ paths:
         "409": { $ref: "#/components/responses/BadRequest" }
         "422": { $ref: "#/components/responses/BadRequest" }
 
+  /v1/tenants/{tenantId}/me/yield/allocations:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [yield]
+      summary: "The signed-in member's own allocations through an active account link (simulation cycles only). Off unless HOLDER_YIELD_ENABLED and PARTY_LINKS_ENABLED (404); refused when deployed (D-39)."
+      operationId: listMyYieldAllocations
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
 components:
   securitySchemes:
     bearerAuth:

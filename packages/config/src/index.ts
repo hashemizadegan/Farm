@@ -166,6 +166,12 @@ export const apiEnvSchema = z
      * sign-off is outstanding.
      */
     PARTY_LINKS_ENABLED: bool.default("false"),
+    /**
+     * Y13: holder-facing yield reads (GET /v1/tenants/{tenantId}/me/yield/allocations) through an active account
+     * link (PARTY_LINKS_ENABLED). Simulation cycles only. Off (default): 404. Refused in staging and production:
+     * holder disclosures are not approved (D-39), nor D-15, D-25 and D-27.
+     */
+    HOLDER_YIELD_ENABLED: bool.default("false"),
     ...rwa,
   })
   .superRefine(productionGuards)
@@ -175,6 +181,9 @@ export const apiEnvSchema = z
     }
     if (env.PARTY_LINKS_ENABLED && env.APP_ENV === "production") {
       ctx.addIssue({ code: "custom", path: ["PARTY_LINKS_ENABLED"], message: "account-to-party links are not approved for production (D-29, D-39)" });
+    }
+    if (env.HOLDER_YIELD_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
+      ctx.addIssue({ code: "custom", path: ["HOLDER_YIELD_ENABLED"], message: "holder-facing yield views need approved disclosures (D-39) before any deployed use" });
     }
   });
 
