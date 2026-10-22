@@ -3143,8 +3143,8 @@ paths:
                         kind: { type: string, enum: [allocated, unattributed, withheld, dust] }
                         partyId: { type: [string, "null"], format: uuid }
                         holderKey: { type: [string, "null"] }
-                        weight: { type: string, description: Decimal integer (slot-weighted units). }
-                        amount: { type: string, description: Decimal integer, settlement minor units (u64). }
+                        weight: { type: string, description: "Decimal integer (slot-weighted units)." }
+                        amount: { type: string, description: "Decimal integer: settlement minor units (u64)." }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
   /v1/tenants/{tenantId}/yield/cycles/{cycleId}/audit:
@@ -3512,7 +3512,7 @@ components:
         businessAssetId: { type: string, format: uuid }
         period: { type: object, required: [start, end], properties: { start: { type: string, format: date }, end: { type: string, format: date } } }
         version: { type: integer }
-        simulation: { type: boolean, description: Simulation-labelled cycles can never be funded. }
+        simulation: { type: boolean, description: "Simulation-labelled cycles can never be funded." }
         status: { $ref: "#/components/schemas/YieldCycleStatus" }
         priorStatus: { type: [string, "null"] }
         closeReason: { type: [string, "null"] }
@@ -3555,7 +3555,7 @@ components:
             holdingModel: { type: string, enum: [slot_weighted] }
             inputCommitment: { type: string }
             totalWeight: { type: string }
-        attesters: { type: integer, description: Attesters whose attestation is not revoked. }
+        attesters: { type: integer, description: "Attesters whose attestation is not revoked." }
         createdAt: { type: string, format: date-time }
     Error:
       type: object
