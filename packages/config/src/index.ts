@@ -150,6 +150,11 @@ export const apiEnvSchema = z
      * has its own gate (PREVIEW_ACCESS_GATE / PREVIEW_ACCESS_PASSWORD, read by apps/web/src/middleware.ts).
      */
     PREVIEW_ACCESS_GATE: bool.default("false"),
+    /**
+     * Set by Railway on every deployed service (never set it yourself). Used only to recognise a *deployed*
+     * development configuration, which must run behind the preview access gate (see the guard below).
+     */
+    RAILWAY_PROJECT_ID: z.string().min(1).optional(),
     WEBHOOK_SIGNING_SECRETS: csv.default(""),
     /** Let a signed-in user with no workspace create one and become its owner. */
     SELF_SERVE_WORKSPACES: bool.default("true"),
@@ -200,6 +205,11 @@ export const apiEnvSchema = z
     }
     if (env.HOLDER_YIELD_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
       ctx.addIssue({ code: "custom", path: ["HOLDER_YIELD_ENABLED"], message: "holder-facing yield views need approved disclosures (D-39) before any deployed use" });
+    }
+    // A development or test configuration (dev sign-in, simulation switches) deployed on the platform is a preview:
+    // it must be private. Fail closed rather than serve it openly.
+    if (env.RAILWAY_PROJECT_ID && (env.APP_ENV === "development" || env.APP_ENV === "test") && !env.PREVIEW_ACCESS_GATE) {
+      ctx.addIssue({ code: "custom", path: ["PREVIEW_ACCESS_GATE"], message: "a deployed development/test configuration must set PREVIEW_ACCESS_GATE=true (isolated preview only)" });
     }
   });
 

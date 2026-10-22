@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decidePreviewGate, parseBasic, PREVIEW_PASSWORD_MIN_LENGTH, previewGateEnabled, previewGateResponse } from "./preview-gate";
+import { decidePreviewGate, deployedDevelopment, parseBasic, PREVIEW_PASSWORD_MIN_LENGTH, previewGateEnabled, previewGateResponse } from "./preview-gate";
 
 const SECRET = "s3cret-preview-password-0123456789";
 const ON = { PREVIEW_ACCESS_GATE: "true", PREVIEW_ACCESS_PASSWORD: SECRET };
@@ -71,5 +71,27 @@ describe("Basic header parsing and responses", () => {
     const r503 = previewGateResponse(503);
     expect(r503.status).toBe(503);
     expect(r503.headers.get("www-authenticate")).toBeNull();
+  });
+});
+
+describe("deployed development build without the gate", () => {
+  const railway = { RAILWAY_PROJECT_ID: "00000000-0000-4000-8000-000000000000" };
+  it("is refused (503) everywhere except the health check", async () => {
+    for (const APP_ENV of ["development", "test"]) {
+      expect(deployedDevelopment({ ...railway, APP_ENV })).toBe(true);
+      expect(await decidePreviewGate({ ...railway, APP_ENV }, req("/yield"))).toEqual({ kind: "deny", status: 503 });
+      expect(await decidePreviewGate({ ...railway, APP_ENV, PREVIEW_ACCESS_GATE: "false" }, req("/_next/static/x.js"))).toEqual({ kind: "deny", status: 503 });
+      expect(await decidePreviewGate({ ...railway, APP_ENV }, req("/healthz"))).toEqual({ kind: "off" });
+    }
+  });
+  it("is gated normally once the gate is on", async () => {
+    expect(await decidePreviewGate({ ...railway, APP_ENV: "development", ...ON }, req("/yield", basic("preview", SECRET)))).toEqual({ kind: "allow" });
+  });
+  it("leaves local development and deployed production/staging alone", async () => {
+    expect(deployedDevelopment({ APP_ENV: "development" })).toBe(false);
+    for (const APP_ENV of [undefined, "staging", "production"]) {
+      expect(deployedDevelopment({ ...railway, APP_ENV })).toBe(false);
+      expect(await decidePreviewGate({ ...railway, APP_ENV }, req("/"))).toEqual({ kind: "off" });
+    }
   });
 });

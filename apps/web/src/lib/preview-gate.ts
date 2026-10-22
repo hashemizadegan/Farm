@@ -55,11 +55,23 @@ export function parseBasic(header: string | null): { user: string; password: str
   return { user: decoded.slice(0, i), password: decoded.slice(i + 1) };
 }
 
+/**
+ * A development or test build running on the platform (Railway sets RAILWAY_PROJECT_ID on every deployed service) is
+ * a preview and must be private. With the gate off it is refused (503), not served openly. Production and staging
+ * web services are unaffected: they do not run with APP_ENV development or test.
+ */
+export function deployedDevelopment(env: { APP_ENV?: string; RAILWAY_PROJECT_ID?: string }): boolean {
+  return Boolean(env.RAILWAY_PROJECT_ID) && (env.APP_ENV === "development" || env.APP_ENV === "test");
+}
+
 export async function decidePreviewGate(
-  env: { PREVIEW_ACCESS_GATE?: string; PREVIEW_ACCESS_PASSWORD?: string },
+  env: { PREVIEW_ACCESS_GATE?: string; PREVIEW_ACCESS_PASSWORD?: string; APP_ENV?: string; RAILWAY_PROJECT_ID?: string },
   req: { method: string; pathname: string; authorization: string | null },
 ): Promise<PreviewGateDecision> {
-  if (!previewGateEnabled(env.PREVIEW_ACCESS_GATE)) return { kind: "off" };
+  if (!previewGateEnabled(env.PREVIEW_ACCESS_GATE)) {
+    if (deployedDevelopment(env) && req.pathname !== PREVIEW_HEALTH_PATH) return { kind: "deny", status: 503 };
+    return { kind: "off" };
+  }
   if ((req.method === "GET" || req.method === "HEAD") && req.pathname === PREVIEW_HEALTH_PATH) return { kind: "allow" };
   const secret = env.PREVIEW_ACCESS_PASSWORD ?? "";
   if (secret.length < PREVIEW_PASSWORD_MIN_LENGTH) return { kind: "deny", status: 503 };

@@ -16,7 +16,12 @@ export async function middleware(req: NextRequest) {
   // Private-preview gate (off unless PREVIEW_ACCESS_GATE is set; see lib/preview-gate.ts). Runs first, on every
   // path including static assets, so nothing is served around it.
   const gate = await decidePreviewGate(
-    { PREVIEW_ACCESS_GATE: process.env.PREVIEW_ACCESS_GATE, PREVIEW_ACCESS_PASSWORD: process.env.PREVIEW_ACCESS_PASSWORD },
+    {
+      PREVIEW_ACCESS_GATE: process.env.PREVIEW_ACCESS_GATE,
+      PREVIEW_ACCESS_PASSWORD: process.env.PREVIEW_ACCESS_PASSWORD,
+      APP_ENV: process.env.APP_ENV,
+      RAILWAY_PROJECT_ID: process.env.RAILWAY_PROJECT_ID,
+    },
     { method: req.method, pathname: req.nextUrl.pathname, authorization: req.headers.get("authorization") },
   );
   if (gate.kind === "deny") return previewGateResponse(gate.status);
