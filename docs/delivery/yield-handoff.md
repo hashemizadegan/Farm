@@ -6,6 +6,99 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 17:30 local (G1–G3 complete on #96; CI 14/14 on `bba14cc`)
+
+**State verified:**
+- #96 is a draft, unmerged, base #95 `49a419d`, head `bba14cc`;
+- main `b59eaff` is untouched.
+
+| Commit | Content |
+| --- | --- |
+| `d35bb4c` | G2 and G3: migrations 0027 and 0028, services, routes, tests. Its CI run was cancelled because a later push superseded it. |
+| `0ef75ae` | G1: `docs/delivery/yield-adapter-shapes.md` (on the integration branch; line references pinned at `d35bb4c`, spot-checked at `bba14cc`) |
+| `300ac80` | stage map in `docs/real-yield-implementation.md`. CI: Integration **failed** (test defect, below) |
+| `bba14cc` | test fix. **CI 14/14 passed.** |
+
+**G1, adapter shapes.** One reference document covering:
+- the ownership snapshot, the leaf context, evidence items and categories, and the line/distribution taxonomy;
+- the frozen artifact, the dossier, the Y5 weighted input and the engine contract;
+- each shape's TypeScript definition with file and line range, canonical JSON examples from the repository's
+  fixtures, invariants and refusal codes, and scheme/versioning notes.
+
+It is documentation only.
+
+**G2, frozen artifacts (migration 0027).**
+- **Tables:** `yield_frozen_artifacts` and `yield_claim_leaves`.
+  - `yield_frozen_artifacts` holds the canonical artifact text. The database checks that its SHA-256 equals the
+    set's `set_hash`.
+  - `yield_claim_leaves` holds the leaf bytes, hash and RFC 9162 path. Each leaf's root is the set's root, and its
+    amount is its party's `allocated` row.
+- **When rows are written:** only while the cycle is being calculated, for simulation cycles only. The tables are
+  append-only, with RLS.
+- **Calculate rule:** an added trigger means `calculate` needs the set's artifact and all its leaves. 0024 is
+  unchanged.
+- **Reads:** stored data only — `GET …/artifact-sets/{setId}/leaves`, re-verified, refused with `proof_invalid`,
+  and the holder's `GET /me/yield/cycles/{cycleId}/proof` through an active link.
+- **Preview** persists nothing.
+
+**G3, carry-forward (migration 0028).**
+- **Table:** `yield_carry_ledgers`, holding the canonical ledger-in and ledger-out with their SHA-256, checked by
+  the database.
+- **Predecessor rule:** a single SQL function, `yield_carry_source`, finds the latest published or closed
+  simulation cycle of the same asset ending before this cycle starts; ties go to the highest version.
+- **Chaining:**
+  - carry-in must equal the predecessor's carry-out, by hash;
+  - genesis carry-in is the canonical empty ledger;
+  - an open intermediate cycle blocks the chain (`carry_predecessor_open`);
+  - real cycles are refused.
+- **Engine and calculate:** the engine takes carry-in only from the platform (`carry_from_dossier_refused`), and
+  `calculate` needs the carry row.
+
+**New refusal codes:**
+- `artifact_missing`, `artifact_mismatch`, `proof_invalid`, `no_leaf`;
+- `carry_source_mismatch`, `carry_source_missing`, `carry_mismatch`, `carry_predecessor_open`, `carry_missing`,
+  `carry_from_dossier_refused`.
+
+`carry_not_supported` is retired. Kept as before: `real_network_ownership`, the provenance separation, the
+`simulation_only`/dossier refusals, `weight_exceeds_u64`, and the off-by-default and refused-in-production
+switches.
+
+**Determinism:**
+- every persisted artifact is canonical text whose SHA-256 the database checks;
+- the set hash is the artifact hash;
+- carry is chained by hash;
+- rows are append-only, and only written while calculating;
+- recalculating unchanged inputs gives the same set hash under the next set number (tested).
+
+**Defect found:**
+
+| Defect | Classification | Cause | Fix |
+| --- | --- | --- | --- |
+| The G3 carry test read a preview with `GET` (404). | Test defect | `preview` is a `POST` route. | `bba14cc` |
+
+**Local verification (sandbox):**
+- 0024–0028 up, then 0028 and 0027 down and up again, on scratch PostgreSQL 16;
+- guards exercised: `calculate` refused without the artifact and without carry, wrong artifact hash, non-genesis
+  carry-in with no source, rows after calculate, edits;
+- unit sweep: 50 of 53 files pass.
+
+The three failing twin files fail identically on the pre-join tip `49a419d`. They are artifacts of the local `zod`
+stub (repository/environment issue) and pass in CI.
+
+**Remaining gates (unchanged; none crossed, no sign-off recorded):**
+- D-26 [Ext] (Y6 final; the leaf context is simulation-only);
+- D-15, D-25, D-27 and D-39 before any non-simulation Y13 intent;
+- D-30;
+- confirmations of D-11, D-28, D-29 and D-31; the D-12 Real gate;
+- proposed security sign-offs for Y0, Y5, Y7, Y12 and 0026–0028;
+- Unity 6 validation;
+- Y15 devnet approval and the deploy hold (#45);
+- Y16 and Y17.
+
+**Next action:** owner review of #96. The next safe slice is the Y13 unsigned simulation claim intents over the
+persisted leaves. They are leaf data only, with no rail-specific fields. Compliance checkpoint 1 is recorded, and
+intents stay off and refused when deployed.
+
 ## 2026-10-22, 15:00 local (G1–G3 started: adapter shapes, frozen artifacts, carry-forward)
 
 Verified before any change:
