@@ -53,6 +53,8 @@ tags:
   - name: exports
   - name: reports
   - name: rwa
+  - name: yield
+    description: Real-yield distribution, operator views (read-only; simulation-labelled cycles; nothing is funded, signed or submitted)
   - name: twin
     description: Digital twin for a separate 3D client (read-mostly; no transaction is ever submitted)
   - name: media
@@ -3004,6 +3006,146 @@ paths:
         "409": { $ref: "#/components/responses/BadRequest" }
         "422": { $ref: "#/components/responses/BadRequest" }
 
+  /v1/tenants/{tenantId}/yield/cycles:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [yield]
+      summary: Yield cycles, newest first (operator view; yield:read)
+      description: |
+        Real-yield distribution cycles (plan §7.3, Y8). Read-only. Simulation cycles are labelled
+        `simulation: true`. The public summary route is not registered (D-30 open).
+      operationId: listYieldCycles
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { $ref: "#/components/parameters/RwaListCursor" }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/YieldCycleStatus" } }
+        - { name: simulation, in: query, schema: { type: string, enum: ["true", "false"] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/YieldCycle" } }
+                  nextCursor: { type: [string, "null"], format: uuid }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    get:
+      tags: [yield]
+      summary: A yield cycle with its artifact sets and ownership snapshots (yield:read)
+      operationId: getYieldCycle
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/YieldCycle" }
+                  - type: object
+                    required: [artifactSets]
+                    properties:
+                      artifactSets: { type: array, items: { $ref: "#/components/schemas/YieldArtifactSet" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/transitions:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    get:
+      tags: [yield]
+      summary: The cycle's append-only transition history (yield:read)
+      operationId: listYieldCycleTransitions
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [command, from, to, actorUserId, reason, artifactSetHash, at]
+                      properties:
+                        command: { type: string }
+                        from: { type: [string, "null"] }
+                        to: { type: string }
+                        actorUserId: { type: [string, "null"], format: uuid }
+                        reason: { type: [string, "null"] }
+                        artifactSetHash: { type: [string, "null"] }
+                        at: { type: string, format: date-time }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/artifact-sets/{setId}/allocations:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/YieldCycleId" }
+      - { name: setId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [yield]
+      summary: An artifact set's allocations (operators only; yield:read)
+      operationId: listYieldAllocations
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [kind, partyId, holderKey, weight, amount]
+                      properties:
+                        kind: { type: string, enum: [allocated, unattributed, withheld, dust] }
+                        partyId: { type: [string, "null"], format: uuid }
+                        holderKey: { type: [string, "null"] }
+                        weight: { type: string, description: "Decimal integer (slot-weighted units)." }
+                        amount: { type: string, description: "Decimal integer: settlement minor units (u64)." }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/audit:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    get:
+      tags: [yield]
+      summary: Audit events about the cycle (audit:read; D-31 reuses audit_events)
+      operationId: listYieldCycleAudit
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, actorUserId, actorType, action, outcome, metadata, at]
+                      properties:
+                        id: { type: string }
+                        actorUserId: { type: [string, "null"], format: uuid }
+                        actorType: { type: string }
+                        action: { type: string }
+                        outcome: { type: string }
+                        metadata: { type: object }
+                        at: { type: string, format: date-time }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3034,6 +3176,11 @@ components:
         A UUID chosen by the client. Phones working offline queue writes and resend them; a
         resend with the same key returns the original result instead of recording twice.
         Reusing a key for a different request is a 409.
+      schema: { type: string, format: uuid }
+    YieldCycleId:
+      name: cycleId
+      in: path
+      required: true
       schema: { type: string, format: uuid }
     TenantId:
       name: tenantId
@@ -3087,6 +3234,62 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    YieldCycleStatus:
+      type: string
+      enum: [draft, inputs_locked, calculated, under_review, approved, published, funded, distributing, disputed, closed, cancelled, abandoned, superseded]
+    YieldCycle:
+      type: object
+      required: [id, businessAssetId, period, version, simulation, status, chainAsset, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        businessAssetId: { type: string, format: uuid }
+        period: { type: object, required: [start, end], properties: { start: { type: string, format: date }, end: { type: string, format: date } } }
+        version: { type: integer }
+        simulation: { type: boolean, description: "Simulation-labelled cycles can never be funded." }
+        status: { $ref: "#/components/schemas/YieldCycleStatus" }
+        priorStatus: { type: [string, "null"] }
+        closeReason: { type: [string, "null"] }
+        chainAsset: { type: object, properties: { network: { type: string }, rail: { type: string }, id: { type: string } } }
+        entitlementRef: { type: [string, "null"] }
+        policyHash: { type: [string, "null"] }
+        formulaVersion: { type: [string, "null"] }
+        accountingCurrency: { type: [string, "null"] }
+        settlement: { type: [object, "null"], properties: { mint: { type: string }, decimals: { type: integer } } }
+        slotRange: { type: [object, "null"], properties: { start: { type: string }, end: { type: string } } }
+        artifactSetHash: { type: [string, "null"] }
+        merkleRoot: { type: [string, "null"] }
+        preparedBy: { type: [string, "null"], format: uuid }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    YieldArtifactSet:
+      type: object
+      required: [id, setNumber, status, hashes, ownershipSnapshot, attesters, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        setNumber: { type: integer }
+        status: { type: string, enum: [frozen, invalidated, approved, superseded] }
+        hashes:
+          type: object
+          properties:
+            calculation: { type: string }
+            allocation: { type: string }
+            evidenceBundle: { type: string }
+            merkleRoot: { type: string }
+            set: { type: string }
+        ownershipSnapshot:
+          type: [object, "null"]
+          properties:
+            sourceKind: { type: string, enum: [rpc, fixture] }
+            sourceIdentityId: { type: [string, "null"] }
+            network: { type: string }
+            slotRange: { type: object, properties: { start: { type: string }, end: { type: string } } }
+            cursorSlot: { type: string }
+            holdingModel: { type: string, enum: [slot_weighted] }
+            inputCommitment: { type: string }
+            totalWeight: { type: string }
+        attesters: { type: integer, description: "Attesters whose attestation is not revoked." }
+        createdAt: { type: string, format: date-time }
     Error:
       type: object
       required: [error, message]
