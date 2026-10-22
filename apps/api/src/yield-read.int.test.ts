@@ -121,11 +121,12 @@ d("yield operator read API (Y8)", () => {
     expect(r.json().items.map((e: { action: string }) => e.action)).toEqual(expect.arrayContaining(["yield.cycle.create", "yield.cycle.lock", "yield.cycle.calculate"]));
   });
 
-  it("does not show another tenant's cycle, and has no public or write route", async () => {
+  it("does not show another tenant's cycle, and has no public route; the workflow is off by default", async () => {
     const otherTenant = (await pool.query<{ id: string }>(`SELECT id FROM tenants WHERE slug = $1`, [`yr-o-${sfx}`])).rows[0]!.id;
     const r = await app.inject({ method: "GET", url: `/v1/tenants/${otherTenant}/yield/cycles/${cycleId}`, headers: { authorization: `Bearer ${await tokenFor(who("outsider"))}` } });
     expect(r.statusCode).toBe(404);
     expect(app.hasRoute({ method: "GET", url: "/v1/public/yield/cycles/:cycleId" })).toBe(false);
-    expect(app.hasRoute({ method: "POST", url: "/v1/tenants/:tenantId/yield/cycles" })).toBe(false);
+    const w = await app.inject({ method: "POST", url: `/v1/tenants/${tenantId}/yield/cycles/${cycleId}/lock`, headers: { authorization: `Bearer ${await tokenFor(who("owner"))}` }, payload: {} });
+    expect(w.statusCode).toBe(404);
   });
 });

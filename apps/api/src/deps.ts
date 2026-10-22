@@ -5,6 +5,7 @@ import type { JobPayloads, OwnershipReader } from "@metafarm/domain";
 import type { Logger } from "@metafarm/observability";
 import type { AuthProvider } from "./auth/provider";
 import type { SolanaClusterCheck } from "./lib/solana-cluster";
+import type { YieldCalculationEngine } from "./lib/yield-engine";
 import type { ObjectStorage } from "@metafarm/storage";
 import type { Redis } from "ioredis";
 
@@ -41,6 +42,11 @@ export interface Deps {
    * ownership as `not_indexed` and never substitutes its own records.
    */
   ownershipReader?: OwnershipReader;
+  /**
+   * The yield calculation library (Y9 `calculate` / `preview`). Absent on this branch line: those routes answer
+   * 503 `calculation_engine_unavailable` until the yield line is integrated (an owner decision).
+   */
+  yieldEngine?: YieldCalculationEngine;
   /** Shared rate-limit counters; required when RATE_LIMIT_STORE is `redis`, ignored otherwise. */
   rateLimitRedis?: Redis;
 }
