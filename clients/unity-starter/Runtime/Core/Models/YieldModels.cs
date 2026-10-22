@@ -111,6 +111,12 @@ namespace Metafarm.Twin.Core.Models
         [JsonProperty("amount")] public string Amount;
     }
 
+    /// <summary>GET …/yield/cycles/{cycleId}/artifact-sets/{setId}/allocations.</summary>
+    public sealed class YieldAllocationList
+    {
+        [JsonProperty("items")] public List<YieldAllocationView> Items = new List<YieldAllocationView>();
+    }
+
     /// <summary>The cycle statuses of plan §2.1 and how a client should treat them. No display text (D-39).</summary>
     public static class YieldStatuses
     {
