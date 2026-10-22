@@ -23,6 +23,7 @@ import {
   listYieldCycleTransitions,
   listYieldCycles,
   recordCalculation,
+  reconcileYieldCycle,
   registerYieldEvidence,
   setYieldCycleParameters,
   toYieldStoreError,
@@ -207,5 +208,20 @@ d("yield schema (Y7)", () => {
     expect(await code(inT((tx) => registerYieldEvidence(tx, { contentSha256: h("d"), evidenceType: "receipt", classification: "internal", simulation: false, createdBy: preparer })))).toBe("evidence_retention_unapproved");
     // Another tenant cannot see or extend this tenant's cycle.
     expect(await code(inT((tx) => addYieldInput(tx, realA, { ...line, sourceRef: "x" }), other))).toBe("not_found");
+  });
+
+  it("reconciles a cycle's records (Y14): consistent when written through the repository, findings otherwise", async () => {
+    const good = await lockedCycle(true);
+    await inT((tx) => recordCalculation(tx, good, calc()));
+    expect((await inT((tx) => reconcileYieldCycle(tx, good))).findings).toEqual([]);
+    // Weights that do not add up to the snapshot's total.
+    const bad = await lockedCycle(true);
+    await inT((tx) => recordCalculation(tx, bad, calc({ allocations: [{ kind: "allocated", partyId: party, weight: 50n, amount: 1n }] })));
+    expect((await inT((tx) => reconcileYieldCycle(tx, bad))).findings.map((f) => f.code)).toEqual(["weights_do_not_sum"]);
+    // A step taken outside the repository has no audit event (D-31).
+    const raw = await lockedCycle(true);
+    await inT((tx) => tx.query(`UPDATE yield_cycles SET status = 'cancelled', status_changed_by = $2 WHERE id = $1`, [raw, preparer]));
+    expect((await inT((tx) => reconcileYieldCycle(tx, raw))).findings).toEqual([{ code: "audit_missing", detail: "1 cancel step(s) logged, 0 audited" }]);
+    expect(await code(inT((tx) => reconcileYieldCycle(tx, "00000000-0000-4000-8000-000000000000")))).toBe("not_found");
   });
 });
