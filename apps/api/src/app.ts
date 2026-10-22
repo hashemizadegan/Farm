@@ -29,6 +29,7 @@ import { twinRoutes } from "./routes/twin";
 import { twinSnapshotRoutes } from "./routes/twin-snapshots";
 import { twinAnchorRoutes } from "./routes/twin-anchors";
 import { yieldRoutes, yieldWorkflowRoutes } from "./routes/yield";
+import { partyLinkRoutes } from "./routes/party-links";
 
 export interface BuildOptions {
   deps: Deps;
@@ -101,6 +102,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(twinAnchorRoutes);
   await app.register(yieldRoutes);
   await app.register(yieldWorkflowRoutes);
+  await app.register(partyLinkRoutes);
 
   return app;
 }
