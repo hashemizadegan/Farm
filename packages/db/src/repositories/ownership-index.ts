@@ -125,8 +125,12 @@ export async function insertOwnershipEvents(tx: SystemTx, events: readonly Owner
 
 /**
  * Moves an asset's cursor forward (never back). Returns the slot it is indexed through afterwards. An RPC
- * cursor records the cluster identity verified before the batch that moved it. A cursor written before
- * migration 0023 (RPC, no identity) is not trusted: its slot is replaced, not kept as a lower bound.
+ * cursor records the cluster identity verified before the batch that moved it.
+ *
+ * Provenance rules (D-17, F2: verified RPC takes precedence):
+ * - a cursor written before migration 0023 (RPC, no identity) is not trusted: its slot is replaced;
+ * - a cursor of the other source is not trusted either: switching source restarts the cursor (slot replaced);
+ * - a fixture batch can never move or demote a verified RPC cursor: refused with OwnershipProvenanceError.
  */
 export async function advanceOwnershipCursor(tx: SystemTx, asset: ChainAssetRef, throughSlot: bigint, source: OwnershipIndexSource, sourceIdentityId: bigint | null = null): Promise<bigint> {
   const r = await tx.query<{ indexed_through_slot: string }>(
@@ -135,64 +139,136 @@ export async function advanceOwnershipCursor(tx: SystemTx, asset: ChainAssetRef,
      ON CONFLICT (network, rail, asset_id) DO UPDATE
        SET indexed_through_slot = CASE
              WHEN chain_ownership_cursors.source = 'rpc' AND chain_ownership_cursors.source_identity_id IS NULL THEN EXCLUDED.indexed_through_slot
+             WHEN chain_ownership_cursors.source <> EXCLUDED.source THEN EXCLUDED.indexed_through_slot
              ELSE GREATEST(chain_ownership_cursors.indexed_through_slot, EXCLUDED.indexed_through_slot)
            END,
            source = EXCLUDED.source, source_identity_id = EXCLUDED.source_identity_id, updated_at = now()
+       WHERE NOT (chain_ownership_cursors.source = 'rpc' AND chain_ownership_cursors.source_identity_id IS NOT NULL AND EXCLUDED.source = 'fixture')
      RETURNING indexed_through_slot`,
     [asset.network, asset.rail, asset.id, throughSlot.toString(), source, sourceIdentityId === null ? null : sourceIdentityId.toString()],
   );
-  return BigInt(r.rows[0]!.indexed_through_slot);
+  if (!r.rows[0]) throw new OwnershipProvenanceError("fixture_after_verified_rpc", `a fixture batch cannot move the verified RPC cursor of ${asset.id}`);
+  return BigInt(r.rows[0].indexed_through_slot);
 }
 
-/**
- * The slot an asset is indexed through, for the indexer. A cursor written before migration 0023 (RPC, no
- * verified identity) counts as none, so the asset is re-indexed from the start through a verified source.
- */
-export async function ownershipCursorOf(tx: SystemTx, asset: ChainAssetRef): Promise<bigint | null> {
-  const r = await tx.query<{ s: string }>(
-    `SELECT indexed_through_slot::text AS s FROM chain_ownership_cursors
-      WHERE network = $1 AND rail = $2 AND asset_id = $3 AND (source <> 'rpc' OR source_identity_id IS NOT NULL)`,
+/** The provenance of an asset's cursor: which source wrote it and whether it is bound to a verified identity. */
+export interface OwnershipCursorState {
+  source: OwnershipIndexSource;
+  /** True for an RPC cursor bound to a verified cluster identity (Y0). */
+  verified: boolean;
+  sourceIdentityId: bigint | null;
+  indexedThroughSlot: bigint;
+}
+
+export async function ownershipCursorState(tx: SystemTx, asset: ChainAssetRef): Promise<OwnershipCursorState | null> {
+  const r = await tx.query<{ source: OwnershipIndexSource; id: string | null; s: string }>(
+    `SELECT source, source_identity_id::text AS id, indexed_through_slot::text AS s FROM chain_ownership_cursors WHERE network = $1 AND rail = $2 AND asset_id = $3`,
     [asset.network, asset.rail, asset.id],
   );
-  return r.rows[0] ? BigInt(r.rows[0].s) : null;
+  const x = r.rows[0];
+  if (!x) return null;
+  return { source: x.source, verified: x.source === "rpc" && x.id !== null, sourceIdentityId: x.id === null ? null : BigInt(x.id), indexedThroughSlot: BigInt(x.s) };
 }
 
 /**
- * One asset's index, read as the application role in a read-only transaction. Null when the asset has
- * no cursor, that is, it is not indexed. Events after the cursor are excluded, so a reading never mixes
- * a newer partial scan into an older complete one.
+ * The slot an asset is indexed through, for an indexer of the given source. Only a cursor of that source
+ * counts, and for RPC only one bound to a verified identity: a cursor written before migration 0023 (RPC, no
+ * identity) or by the other source counts as none, so the asset is re-indexed from the start.
  */
-export async function readOwnershipIndex(pool: Pool, asset: ChainAssetRef): Promise<IndexedOwnership | null> {
+export async function ownershipCursorOf(tx: SystemTx, asset: ChainAssetRef, source: OwnershipIndexSource = "rpc"): Promise<bigint | null> {
+  const state = await ownershipCursorState(tx, asset);
+  if (!state || state.source !== source) return null;
+  if (source === "rpc" && !state.verified) return null;
+  return state.indexedThroughSlot;
+}
+
+export const OWNERSHIP_PROVENANCE_ERROR_CODES = ["ambiguous_provenance", "fixture_after_verified_rpc"] as const;
+export type OwnershipProvenanceErrorCode = (typeof OWNERSHIP_PROVENANCE_ERROR_CODES)[number];
+
+/** Ownership provenance that cannot be served or written safely. Stable codes. */
+export class OwnershipProvenanceError extends Error {
+  constructor(
+    readonly code: OwnershipProvenanceErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "OwnershipProvenanceError";
+  }
+}
+
+/** An asset's served history and where it came from. */
+export interface VerifiedOwnershipHistory {
+  events: OwnershipEvent[];
+  indexedThroughSlot: bigint;
+  sourceKind: OwnershipIndexSource;
+  /** The verified cluster identity of an RPC history (Y0); null for fixture history. */
+  sourceIdentity: { id: string; network: Network; genesisHash: string } | null;
+}
+
+/**
+ * One asset's history, read as the application role in a read-only transaction, under the provenance rules
+ * (D-17; F2 resolved as "verified RPC takes precedence"):
+ * - no cursor, or an RPC cursor without a verified identity (written before 0023): not indexed (null);
+ * - a verified RPC cursor: only RPC events bound to a verified identity are served; fixture rows for the same
+ *   asset are kept for audit but never served;
+ * - a fixture cursor: fixture events only (simulation, tests, demonstrations), unless verified RPC events exist
+ *   for the asset, which makes the provenance ambiguous: refused with OwnershipProvenanceError.
+ * Events after the cursor are excluded, so a reading never mixes a newer partial scan into an older complete one.
+ */
+export async function readVerifiedOwnershipHistory(pool: Pool, asset: ChainAssetRef): Promise<VerifiedOwnershipHistory | null> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN READ ONLY");
     await client.query("SET LOCAL ROLE metafarm_app");
-    // RPC rows written before Y0 carry no verified cluster identity: they are never served (fail closed).
-    const c = await client.query<{ s: string }>(
-      `SELECT indexed_through_slot::text AS s FROM chain_ownership_cursors
-        WHERE network = $1 AND rail = $2 AND asset_id = $3 AND (source <> 'rpc' OR source_identity_id IS NOT NULL)`,
+    const c = await client.query<{ s: string; source: OwnershipIndexSource; id: string | null; network: Network | null; genesis_hash: string | null }>(
+      `SELECT c.indexed_through_slot::text AS s, c.source, c.source_identity_id::text AS id, i.network, i.genesis_hash
+         FROM chain_ownership_cursors c LEFT JOIN ownership_source_identities i ON i.id = c.source_identity_id
+        WHERE c.network = $1 AND c.rail = $2 AND c.asset_id = $3`,
       [asset.network, asset.rail, asset.id],
     );
-    if (!c.rows[0]) {
+    const cursor = c.rows[0];
+    if (!cursor || (cursor.source === "rpc" && cursor.id === null)) {
       await client.query("COMMIT");
       return null;
     }
-    const through = c.rows[0].s;
+    if (cursor.source === "fixture") {
+      const v = await client.query(
+        `SELECT 1 FROM chain_ownership_events WHERE network = $1 AND rail = $2 AND asset_id = $3 AND source = 'rpc' AND source_identity_id IS NOT NULL LIMIT 1`,
+        [asset.network, asset.rail, asset.id],
+      );
+      if (v.rowCount) throw new OwnershipProvenanceError("ambiguous_provenance", `${asset.id} has a fixture cursor but verified RPC events`);
+    }
+    const filter = cursor.source === "rpc" ? `source = 'rpc' AND source_identity_id IS NOT NULL` : `source = 'fixture'`;
     const e = await client.query<EventRow>(
       `SELECT network, rail, asset_id, kind, from_address, to_address, amount::text AS amount, slot::text AS slot, tx_index, ix_index, signature
          FROM chain_ownership_events
-        WHERE network = $1 AND rail = $2 AND asset_id = $3 AND slot <= $4 AND (source <> 'rpc' OR source_identity_id IS NOT NULL)
+        WHERE network = $1 AND rail = $2 AND asset_id = $3 AND slot <= $4 AND ${filter}
         ORDER BY slot, tx_index, ix_index, signature, id`,
-      [asset.network, asset.rail, asset.id, through],
+      [asset.network, asset.rail, asset.id, cursor.s],
     );
     await client.query("COMMIT");
-    return { events: e.rows.map(toEvent), indexedThroughSlot: BigInt(through) };
+    return {
+      events: e.rows.map(toEvent),
+      indexedThroughSlot: BigInt(cursor.s),
+      sourceKind: cursor.source,
+      sourceIdentity: cursor.source === "rpc" ? { id: cursor.id!, network: cursor.network!, genesisHash: cursor.genesis_hash! } : null,
+    };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw err;
   } finally {
     client.release();
   }
+}
+
+/**
+ * One asset's index for the twin reader: the served events and the slot they are complete through, under the
+ * same provenance rules as readVerifiedOwnershipHistory (null when not indexed; ambiguous provenance throws,
+ * which the API shows as `not_indexed` / `reader_unavailable`).
+ */
+export async function readOwnershipIndex(pool: Pool, asset: ChainAssetRef): Promise<IndexedOwnership | null> {
+  const h = await readVerifiedOwnershipHistory(pool, asset);
+  return h ? { events: h.events, indexedThroughSlot: h.indexedThroughSlot } : null;
 }
 
 /**
