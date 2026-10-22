@@ -6,6 +6,73 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, afternoon (line join done: integration PR #96, engine wired)
+
+| Item | Value |
+| --- | --- |
+| Integration branch | `integration/yield-ownership-join` (worktree `/home/claude/farm-int`) |
+| Draft PR | #96 (base `feature/devnet-verification-harness` = #95) |
+| Pre-merge tips | ownership line #95 `49a419db00143d101e019db47973c31aa50f4531`; yield line #84 `0a5783cd5072e58e0a825cbbd1bae03f7776bd3b` |
+| Merge commit | `b5f87ea` (no conflicts; no file changed on both lines since `ebb3f56`) |
+| Engine wiring and tests | `649ca70` |
+| CI | 14/14 passed on `649ca70` |
+
+#84 and #95 were not modified; nothing merged to main; nothing deployed or enabled; no RPC contacted.
+
+**Engine wiring scope:**
+- `createPipelineYieldEngine` runs the yield domain's `calculateSimulationCycle` as the Y9 `calculate`/`preview`
+  engine, for simulation cycles over **fixture** ownership.
+- A per-cycle simulation dossier supplies the typed records the tables lack:
+  - domain `simulation-dossier.ts`;
+  - migration 0026: content-addressed, append-only, simulation draft cycles only;
+  - checked against the locked cycle line by line.
+- **Kept fail-closed:**
+  - devnet RPC ownership is refused (`real_network_ownership`), because the yield-line snapshot accepts simulation
+    networks only;
+  - also refused: real cycles, a missing or incomplete dossier, a mismatching dossier, u64 overflow, and
+    cross-cycle carry.
+- The workflow remains off by default and refused in production. 0024 and 0025 are unchanged.
+
+**Tests added:**
+1. 0024 ↔ Y1 transition, state and four-eyes sync (`packages/db/src/line-join-sync.test.ts`).
+2. No silent fixture/RPC mixing across the join (`apps/api/src/line-join-provenance.test.ts`).
+3. Calculate → freeze stability under preview, idempotent retry, refused re-calculate, unlock/recalculate (same
+   set hash, next set number) and versioning (`apps/api/src/yield-pipeline.int.test.ts`, PostgreSQL), plus the
+   engine unit suite (`apps/api/src/yield-pipeline-engine.test.ts`).
+
+**Local results:**
+- new tests 6/6, 3/3, 3/3;
+- yield pipeline 21/21, multi-cycle 10/10, cycle 14/14;
+- Y5/Y7/Y12 unit suites green;
+- 0026 up/down/up and its guards on scratch PostgreSQL 16.
+
+**Defects found:** two test defects, fixed before push:
+- regenerated event signatures were treated as the same input;
+- an over-broad SQL regex.
+
+None are open.
+
+**Sandbox limits:** no PostGIS, .NET or npm registry access, so integration, C#, full typecheck and lint ran in CI
+only. The local unit harness stubs `pg`, `zod` and `fastify`, and now resolves `@metafarm/<pkg>/<subpath>`.
+
+**Remaining gates (none crossed; no sign-off recorded):**
+- D-26 [Ext] on-chain hash cost check (Y6 final; the leaf context is simulation-only);
+- Y13 Merkle proofs and unsigned intents (D-15, D-25, D-27, D-39);
+- D-30 public route; D-39 wording;
+- confirmations for D-11, D-28, D-29 and D-31; the D-12 Real gate;
+- proposed security sign-offs for Y0, Y5, Y7 and Y12 (and the new 0026);
+- Unity 6 validation;
+- Y15 devnet approval and the deploy hold (#45), which also unblock RPC ownership in the pipeline;
+- Y16 and Y17 approvals.
+
+**Exact next action:**
+- Owner review of #96.
+- Then, for the next safe slice:
+  - persist the frozen cycle artifact (or its leaves and proofs) at `calculate`, so Y13 proof reads need no
+    recomputation;
+  - persist the cross-cycle distribution ledger, so `carry_not_supported` can be lifted for simulation cycles.
+- Both are simulation-only and need no new decision.
+
 ## 2026-10-22, 14:20 local (line join, Option A: verified state before any change)
 
 Owner decision (this message): **join the lines, Option A.** One integration branch off the ownership-line tip
