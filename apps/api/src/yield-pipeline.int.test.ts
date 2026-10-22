@@ -222,7 +222,7 @@ d("yield pipeline engine through the workflow (line join)", () => {
     expect([carryM.sourceSetId, carryM.ledgerIn.sha256]).toEqual([cn.artifactSetId, carryN.ledgerOut.sha256]);
     expect(carryM.ledgerOut).toMatchObject({ carriedRemainder: "0", deferred: [] });
     const rows = (await call("GET", `/cycles/${m.id}/artifact-sets/${cm.artifactSetId}/allocations`, "manager")).json().items as { kind: string; partyId: string | null; amount: string }[];
-    const plain = (await call("GET", `/cycles/${(await preparedCycle(15)).id}/preview`, "manager", {}).then((r) => r.json())) as { allocations: { partyId: string | null; amount: string }[] };
+    const plain = (await call("POST", `/cycles/${(await preparedCycle(15)).id}/preview`, "manager", {}).then((r) => r.json())) as { allocations: { partyId: string | null; amount: string }[] };
     const aNow = BigInt(rows.find((r) => r.partyId === pa)!.amount);
     const aPlain = BigInt(plain.allocations.find((r) => r.partyId === pa)!.amount);
     expect(aNow - aPlain).toBe(deferredA);
