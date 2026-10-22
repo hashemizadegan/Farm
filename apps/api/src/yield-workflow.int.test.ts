@@ -101,6 +101,11 @@ d("yield workflow (Y9)", () => {
     expect((await call("POST", "/cycles", "manager", { businessAssetId: assetId }, off)).statusCode).toBe(404);
     const real = await call("POST", "/cycles", "manager", { businessAssetId: assetId, periodStart: "2026-01-01", periodEnd: "2026-03-31", simulation: false, network: "solana-devnet", rail: "SOLANA_TOKEN_2022", chainAssetId: chainAsset.id });
     expect([real.statusCode, real.json().error]).toEqual([409, "real_gate"]);
+    // R1: a simulation cycle cannot carry a mainnet label, and nothing is written.
+    const cyclesBefore = (await pool.query("SELECT count(*)::int AS n FROM yield_cycles")).rows[0].n;
+    const mainnet = await call("POST", "/cycles", "manager", { businessAssetId: assetId, periodStart: "2026-01-01", periodEnd: "2026-03-31", network: "solana-mainnet", rail: "SOLANA_TOKEN_2022", chainAssetId: chainAsset.id });
+    expect([mainnet.statusCode, mainnet.json().error]).toEqual([409, "simulation_network_label"]);
+    expect((await pool.query("SELECT count(*)::int AS n FROM yield_cycles")).rows[0].n).toBe(cyclesBefore);
     expect((await call("POST", "/cycles", "viewer", { businessAssetId: assetId, periodStart: "2026-01-01", periodEnd: "2026-03-31", network: "solana-devnet", rail: "SOLANA_TOKEN_2022", chainAssetId: chainAsset.id })).statusCode).toBe(403);
     expect((await call("POST", "/cycles", "verifier", { businessAssetId: assetId, periodStart: "2026-01-01", periodEnd: "2026-03-31", network: "solana-devnet", rail: "SOLANA_TOKEN_2022", chainAssetId: chainAsset.id })).statusCode).toBe(403);
   });

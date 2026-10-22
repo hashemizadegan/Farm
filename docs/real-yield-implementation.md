@@ -84,6 +84,11 @@ Everything below is off by default, simulation-only where it writes, and none of
   - the predecessor is fixed by one rule (`yield_carry_source`): the latest published or closed simulation cycle of
     the same asset ending earlier;
   - the carry-in must be its carry-out; open intermediate cycles block; real cycles are refused.
+- **Network label (R1, security review 2026-10-22):** every cycle the workflow creates is a simulation, and its
+  `network` label must be `solana-devnet`. `solana-mainnet` is refused with 409 `simulation_network_label`, checked
+  with the request body before authentication and before any query (`SIMULATION_CYCLE_NETWORKS` in
+  `apps/api/src/routes/yield.ts`). The database domain (0024) still lists both labels for the day real cycles are
+  approved; until then, no simulation cycle can claim to concern mainnet assets.
 - **Shapes:** `docs/delivery/yield-adapter-shapes.md` (G1).
 - **Still not built:**
   - unsigned claim intents (D-15, D-25, D-27, D-39);
