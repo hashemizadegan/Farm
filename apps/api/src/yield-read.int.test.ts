@@ -21,6 +21,7 @@ import {
 } from "@metafarm/db";
 import type { Role } from "@metafarm/domain";
 import { buildTestApp, tokenFor } from "./test/helpers";
+import { frozenNoLeaves, testArtifact } from "./test/yield-calc";
 
 const url = process.env.DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -60,7 +61,7 @@ d("yield operator read API (Y8)", () => {
       await transitionYieldCycle(tx, c.id, { to: "inputs_locked", actorUserId: manager, reason: "period ended" });
       await setYieldCycleParameters(tx, c.id, { slotStart: 100n, slotEnd: 200n }, manager);
       const r = await recordCalculation(tx, c.id, {
-        calculationHash: h("1"), allocationHash: h("2"), evidenceBundleHash: h("3"), merkleRoot: h("4"), setHash: h("5"),
+        calculationHash: h("1"), allocationHash: h("2"), evidenceBundleHash: h("3"), merkleRoot: h("4"), ...frozenNoLeaves("a"),
         snapshot: { sourceKind: "fixture", sourceIdentityId: null, cursorSlot: 300n, holdingModel: "slot_weighted", inputCommitment: h("6"), totalWeight: 100n },
         allocations: [{ kind: "allocated", partyId: party, weight: 100n, amount: 1000n }],
         actorUserId: manager,
@@ -105,7 +106,7 @@ d("yield operator read API (Y8)", () => {
     const r = await get(`/cycles/${cycleId}`, "verifier");
     expect(r.statusCode).toBe(200);
     const c = r.json();
-    expect([c.status, c.simulation, c.slotRange, c.artifactSetHash]).toEqual(["calculated", true, { start: "100", end: "200" }, h("5")]);
+    expect([c.status, c.simulation, c.slotRange, c.artifactSetHash]).toEqual(["calculated", true, { start: "100", end: "200" }, testArtifact("a").setHash]);
     expect(c.artifactSets).toHaveLength(1);
     expect(c.artifactSets[0]).toMatchObject({ id: setId, setNumber: 1, status: "frozen", attesters: 0, ownershipSnapshot: { sourceKind: "fixture", sourceIdentityId: null, totalWeight: "100", holdingModel: "slot_weighted" } });
     const t = (await get(`/cycles/${cycleId}/transitions`)).json().items.map((x: { command: string }) => x.command);

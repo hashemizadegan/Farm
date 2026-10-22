@@ -25,6 +25,7 @@ import {
   type Pool,
 } from "@metafarm/db";
 import { buildTestApp, tokenFor } from "./test/helpers";
+import { frozenNoLeaves, testArtifact } from "./test/yield-calc";
 
 const url = process.env.DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -65,7 +66,7 @@ d("holder-facing yield allocations (Y13)", () => {
       await transitionYieldCycle(tx, c.id, { to: "inputs_locked", actorUserId: ids.owner! });
       await setYieldCycleParameters(tx, c.id, { slotStart: 1n, slotEnd: 2n }, ids.owner!);
       const r = await recordCalculation(tx, c.id, {
-        calculationHash: h("1"), allocationHash: h("2"), evidenceBundleHash: h("3"), merkleRoot: h("4"), setHash: h("5"),
+        calculationHash: h("1"), allocationHash: h("2"), evidenceBundleHash: h("3"), merkleRoot: h("4"), ...frozenNoLeaves("a"),
         snapshot: { sourceKind: "fixture", sourceIdentityId: null, cursorSlot: 2n, holdingModel: "slot_weighted", inputCommitment: h("6"), totalWeight: 100n },
         allocations: [
           { kind: "allocated", partyId: mine, weight: 60n, amount: 600n },
@@ -75,7 +76,7 @@ d("holder-facing yield allocations (Y13)", () => {
         actorUserId: ids.owner!,
       });
       await transitionYieldCycle(tx, c.id, { to: "under_review", actorUserId: ids.owner! });
-      await addYieldAttestation(tx, { artifactSetId: r.artifactSetId, attesterUserId: ids.admin!, kind: "attest", attestedHash: h("5"), statement: "ok" });
+      await addYieldAttestation(tx, { artifactSetId: r.artifactSetId, attesterUserId: ids.admin!, kind: "attest", attestedHash: testArtifact("a").setHash, statement: "ok" });
       return { mine, theirs, linkId: link.id, cycleId: c.id };
     }));
     ({ app } = await buildTestApp({ pool, env: { HOLDER_YIELD_ENABLED: "true", PARTY_LINKS_ENABLED: "true" } }));
@@ -97,7 +98,7 @@ d("holder-facing yield allocations (Y13)", () => {
       await transitionYieldCycle(tx, cycleId, { to: "published", actorUserId: ids.admin! });
     });
     const body = (await get("holder")).json();
-    expect(body).toMatchObject({ linked: true, disclosureApproved: false, proofs: "unavailable" });
+    expect(body).toMatchObject({ linked: true, disclosureApproved: false, proofs: "per_cycle" });
     expect(body.items).toEqual([expect.objectContaining({ cycleId, kind: "allocated", amount: "600", weight: "60", simulation: true, payoutsPaused: false })]);
     expect(JSON.stringify(body)).not.toContain(theirs);
     expect(JSON.stringify(body)).not.toContain(mine); // the party id itself is not echoed either

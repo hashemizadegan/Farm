@@ -5,6 +5,15 @@
  * deployed environments until an approved disclosure version exists, D-39). They are read-only.
  */
 
+/**
+ * D-39, simulation banner: owner-adopted wording (2026-10-22), shown verbatim at the top of every `/yield` view, in
+ * English in every locale (no translation of this text has been approved). It covers the simulation operator views
+ * only; any other audience still needs its own approved disclosure.
+ */
+export const D39_SIMULATION_DISCLOSURE =
+  "SIMULATION ONLY: Yield metrics, cycles, and claim intents displayed in this interface are generated from deterministic simulation models. No real assets, mainnet signatures, or monetary liabilities are incurred.";
+export const D39_DISCLOSURE_ID = "D-39/simulation-banner/2026-10-22";
+
 /** Whether the internal yield pages are shown in this build. */
 export const yieldPagesEnabled = (env: Record<string, string | undefined> = { NEXT_PUBLIC_YIELD_PAGES_ENABLED: process.env.NEXT_PUBLIC_YIELD_PAGES_ENABLED }) =>
   env.NEXT_PUBLIC_YIELD_PAGES_ENABLED === "true";
@@ -48,4 +57,12 @@ export function viewState<T>(q: { data?: T; error?: unknown; loading: boolean },
 export function groupDigits(value: string): string {
   if (!/^\d+$/.test(value)) return value;
   return value.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/** Four-eyes summary of a cycle's history: who prepared (calculate), who approved, and whether they differ. */
+export function fourEyes(history: readonly { command: string; actorUserId: string | null }[]): { preparedBy: string | null; approvedBy: string | null; separated: boolean | null } {
+  const last = (cmd: string) => [...history].reverse().find((t) => t.command === cmd)?.actorUserId ?? null;
+  const preparedBy = last("calculate");
+  const approvedBy = last("approve");
+  return { preparedBy, approvedBy, separated: preparedBy && approvedBy ? preparedBy !== approvedBy : null };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupDigits, shortHash, viewState, yieldPagesBuildProblem, yieldPagesEnabled, yieldStatusKey, yieldTone } from "./yield";
+import { D39_SIMULATION_DISCLOSURE, fourEyes, groupDigits, shortHash, viewState, yieldPagesBuildProblem, yieldPagesEnabled, yieldStatusKey, yieldTone } from "./yield";
 
 describe("yield page helpers (Y10)", () => {
   it("is off unless the flag is exactly true, and refused in deployed builds", () => {
@@ -37,4 +37,17 @@ describe("yield page helpers (Y10)", () => {
     expect(groupDigits("999")).toBe("999");
     expect(groupDigits("-1")).toBe("-1");
   });
+
+  it("shows the adopted D-39 simulation wording verbatim", () => {
+    expect(D39_SIMULATION_DISCLOSURE).toBe(
+      "SIMULATION ONLY: Yield metrics, cycles, and claim intents displayed in this interface are generated from deterministic simulation models. No real assets, mainnet signatures, or monetary liabilities are incurred.",
+    );
+  });
+
+  it("summarises four-eyes from the history: the latest preparer and approver, and whether they differ", () => {
+    expect(fourEyes([{ command: "calculate", actorUserId: "p" }, { command: "approve", actorUserId: "a" }])).toEqual({ preparedBy: "p", approvedBy: "a", separated: true });
+    expect(fourEyes([{ command: "calculate", actorUserId: "p" }])).toEqual({ preparedBy: "p", approvedBy: null, separated: null });
+    expect(fourEyes([{ command: "calculate", actorUserId: "x" }, { command: "unlock", actorUserId: "x" }, { command: "calculate", actorUserId: "p" }]).preparedBy).toBe("p");
+  });
 });
+

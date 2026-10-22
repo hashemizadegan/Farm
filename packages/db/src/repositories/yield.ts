@@ -37,6 +37,15 @@ export const YIELD_STORE_ERROR_CODES = [
   "cycle_not_draft",
   "double_counted",
   "evidence_retention_unapproved",
+  "artifact_missing",
+  "artifact_mismatch",
+  "invalid_state",
+  "intents_exist",
+  "carry_source_mismatch",
+  "carry_source_missing",
+  "carry_mismatch",
+  "carry_predecessor_open",
+  "carry_missing",
   "refused",
 ] as const;
 export type YieldStoreErrorCode = (typeof YIELD_STORE_ERROR_CODES)[number];
@@ -57,6 +66,14 @@ const CONSTRAINT_CODES: Record<string, YieldStoreErrorCode> = {
   yield_evidence_simulation_only: "evidence_retention_unapproved",
   yield_ownership_snapshots_source_identity: "unverified_source",
   yield_ownership_snapshots_source_identity_id_network_fkey: "unverified_source",
+  yield_claim_intent_batches_artifact_set_id_key: "intents_exist",
+  yield_claim_intent_batches_cycle_id_set_number_batch_sha256_key: "intents_exist",
+  yield_frozen_artifacts_content_hash: "artifact_mismatch",
+  yield_frozen_artifacts_artifact_set_id_key: "duplicate",
+  yield_carry_ledgers_in_hash: "carry_mismatch",
+  yield_carry_ledgers_out_hash: "carry_mismatch",
+  yield_carry_ledgers_genesis: "carry_source_mismatch",
+  yield_simulation_dossiers_content_hash: "invalid_input",
 };
 
 /** Maps a PostgreSQL error from the yield schema to a stable code; anything else is rethrown unchanged. */
@@ -448,7 +465,41 @@ export interface YieldCalculationRecord {
   setHash: string;
   snapshot: YieldSnapshotRecord;
   allocations: readonly YieldAllocationRecord[];
+  /** The frozen artifact (canonical text hashing to `setHash`) and its claim leaves (migration 0027). */
+  frozen: YieldFrozenArtifactRecord;
+  /** What the calculation took in and carried out (migration 0028). */
+  carry: YieldCarryRecord;
   actorUserId: string;
+}
+
+export interface YieldFrozenLeafRecord {
+  leafIndex: number;
+  partyId: string;
+  payoutWallet: string;
+  /** Hex of the 32 recipient bytes. */
+  recipient: string;
+  amount: bigint;
+  /** Hex of the leaf bytes. */
+  leafBytes: string;
+  leafHash: string;
+  /** Hex sibling hashes, nearest first. */
+  path: string[];
+}
+
+export interface YieldFrozenArtifactRecord {
+  scheme: string;
+  /** The canonical artifact text; its SHA-256 is the set hash. */
+  body: string;
+  hasherId: string;
+  leaves: readonly YieldFrozenLeafRecord[];
+}
+
+export interface YieldCarryRecord {
+  /** The predecessor's approved artifact set (yield_carry_source), or null. */
+  sourceSetId: string | null;
+  /** Canonical carry ledgers (packages/domain yield/carry-ledger.ts) and their SHA-256. */
+  ledgerIn: { body: string; sha256: string };
+  ledgerOut: { body: string; sha256: string };
 }
 
 /**
@@ -496,6 +547,23 @@ export async function recordCalculation(tx: TenantTx, cycleId: string, c: YieldC
         [tx.tenantId, cycleId, setId, a.kind, a.partyId ?? null, a.holderKey ?? null, a.weight.toString(), a.amount.toString()],
       );
     }
+    // The frozen artifact and its leaves (0027): content-addressed, checked by the database against the set.
+    await tx.query(
+      `INSERT INTO yield_frozen_artifacts (tenant_id, cycle_id, artifact_set_id, scheme, body, artifact_sha256, leaf_count) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [tx.tenantId, cycleId, setId, c.frozen.scheme, c.frozen.body, c.setHash, c.frozen.leaves.length],
+    );
+    for (const l of c.frozen.leaves) {
+      await tx.query(
+        `INSERT INTO yield_claim_leaves (tenant_id, cycle_id, artifact_set_id, leaf_index, tree_size, party_id, payout_wallet, recipient, amount, leaf_bytes, leaf_hash, proof_path, root, hasher_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        [tx.tenantId, cycleId, setId, l.leafIndex, c.frozen.leaves.length, l.partyId, l.payoutWallet, l.recipient, l.amount.toString(), l.leafBytes, l.leafHash, l.path, c.merkleRoot, c.frozen.hasherId],
+      );
+    }
+    // Carry-forward (0028): the database checks the source is this cycle's predecessor and the chain of hashes.
+    await tx.query(
+      `INSERT INTO yield_carry_ledgers (tenant_id, cycle_id, artifact_set_id, source_set_id, ledger_in, ledger_in_sha256, ledger_out, ledger_out_sha256) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [tx.tenantId, cycleId, setId, c.carry.sourceSetId, c.carry.ledgerIn.body, c.carry.ledgerIn.sha256, c.carry.ledgerOut.body, c.carry.ledgerOut.sha256],
+    );
     await tx.query(
       `UPDATE yield_cycles SET status = 'calculated', status_changed_by = $3, artifact_set_hash = $4, merkle_root = $5 WHERE tenant_id = $1 AND id = $2`,
       [tx.tenantId, cycleId, c.actorUserId, c.setHash, c.merkleRoot],
@@ -691,7 +759,8 @@ export async function reconcileYieldCycle(tx: TenantTx, cycleId: string): Promis
       findings.push({ code: "snapshot_missing", detail: `set ${s.setNumber} has no ownership snapshot` });
       continue;
     }
-    const sum = (await listYieldAllocations(tx, s.id)).filter((a) => a.kind !== "dust").reduce((acc, a) => acc + a.weight, 0n);
+    // Every row's weight counts: a dust row carries the weight of parties whose amounts were deferred.
+    const sum = (await listYieldAllocations(tx, s.id)).reduce((acc, a) => acc + a.weight, 0n);
     if (sum !== snap.totalWeight) findings.push({ code: "weights_do_not_sum", detail: `set ${s.setNumber}: allocation weights ${sum} ≠ snapshot total ${snap.totalWeight}` });
   }
   const calculated = !["draft", "inputs_locked", "cancelled", "abandoned"].includes(cycle.status);
@@ -714,4 +783,148 @@ export async function reconcileYieldCycle(tx: TenantTx, cycleId: string): Promis
     if (a < n) findings.push({ code: "audit_missing", detail: `${n} ${command} step(s) logged, ${a} audited` });
   }
   return { cycleId, status: cycle.status, findings };
+}
+
+// ── Simulation dossiers (line join) ────────────────────────────────────
+
+/**
+ * Stores a cycle's simulation dossier as its canonical text (the caller canonicalises and hashes it with the yield
+ * domain). Simulation draft cycles only; append-only; returns the revision.
+ */
+export async function registerSimulationDossier(tx: TenantTx, cycleId: string, d: { body: string; sha256: string; createdBy: string }): Promise<{ revision: number; sha256: string }> {
+  hash("sha256", d.sha256);
+  const revision = await atomically(tx, async () => {
+    await getYieldCycle(tx, cycleId, true);
+    const n = await tx.query<{ n: number }>(`SELECT COALESCE(max(revision), 0) + 1 AS n FROM yield_simulation_dossiers WHERE tenant_id = $1 AND cycle_id = $2`, [tx.tenantId, cycleId]);
+    await tx.query(`INSERT INTO yield_simulation_dossiers (tenant_id, cycle_id, revision, body, sha256, created_by) VALUES ($1, $2, $3, $4, $5, $6)`, [tx.tenantId, cycleId, n.rows[0]!.n, d.body, d.sha256, d.createdBy]);
+    return n.rows[0]!.n;
+  });
+  await writeAudit(tx, { actorUserId: d.createdBy, actorType: "user", action: "yield.dossier.register", targetType: "yield_cycle", targetId: cycleId, metadata: { revision, sha256: d.sha256 } });
+  return { revision, sha256: d.sha256 };
+}
+
+/** The latest dossier of a cycle (canonical text, its hash and revision), or null. */
+export async function latestSimulationDossier(tx: TenantTx, cycleId: string): Promise<{ body: string; sha256: string; revision: number } | null> {
+  const r = await tx.query<{ body: string; sha256: string; revision: number }>(
+    `SELECT body, sha256, revision FROM yield_simulation_dossiers WHERE tenant_id = $1 AND cycle_id = $2 ORDER BY revision DESC LIMIT 1`,
+    [tx.tenantId, cycleId],
+  );
+  return r.rows[0] ?? null;
+}
+
+/** The evidence SHA-256 of each input line of a cycle (by input id; null for a line without evidence). */
+export async function yieldInputEvidenceHashes(tx: TenantTx, cycleId: string): Promise<Record<string, string | null>> {
+  const r = await tx.query<{ id: string; sha: string | null }>(
+    `SELECT i.id::text AS id, e.content_sha256 AS sha FROM yield_inputs i LEFT JOIN yield_evidence e ON e.tenant_id = i.tenant_id AND e.id = i.evidence_id WHERE i.tenant_id = $1 AND i.cycle_id = $2`,
+    [tx.tenantId, cycleId],
+  );
+  return Object.fromEntries(r.rows.map((x) => [x.id, x.sha]));
+}
+
+
+// ── Frozen artifacts, claim leaves and carry (0027, 0028) ─────────────
+
+/** The carry-in a calculation of this cycle must take: the predecessor set (or null) and its recorded carry-out. */
+export async function yieldCarryIn(tx: TenantTx, cycleId: string): Promise<{ sourceSetId: string | null; ledger: { body: string; sha256: string } | null }> {
+  const src = await tx.query<{ id: string | null }>(`SELECT yield_carry_source($1) AS id`, [cycleId]);
+  const sourceSetId = src.rows[0]?.id ?? null;
+  if (sourceSetId === null) return { sourceSetId: null, ledger: null };
+  const r = await tx.query<{ ledger_out: string; ledger_out_sha256: string }>(`SELECT ledger_out, ledger_out_sha256 FROM yield_carry_ledgers WHERE tenant_id = $1 AND artifact_set_id = $2`, [tx.tenantId, sourceSetId]);
+  if (!r.rows[0]) throw new YieldStoreError("carry_source_missing", `the predecessor set ${sourceSetId} has no recorded carry-out`);
+  return { sourceSetId, ledger: { body: r.rows[0].ledger_out, sha256: r.rows[0].ledger_out_sha256 } };
+}
+
+export interface YieldCarryRow {
+  artifactSetId: string;
+  sourceSetId: string | null;
+  ledgerIn: { body: string; sha256: string };
+  ledgerOut: { body: string; sha256: string };
+}
+
+export async function getYieldCarry(tx: TenantTx, artifactSetId: string): Promise<YieldCarryRow | undefined> {
+  const r = await tx.query<{ artifact_set_id: string; source_set_id: string | null; ledger_in: string; ledger_in_sha256: string; ledger_out: string; ledger_out_sha256: string }>(
+    `SELECT artifact_set_id, source_set_id, ledger_in, ledger_in_sha256, ledger_out, ledger_out_sha256 FROM yield_carry_ledgers WHERE tenant_id = $1 AND artifact_set_id = $2`,
+    [tx.tenantId, artifactSetId],
+  );
+  const x = r.rows[0];
+  return x ? { artifactSetId: x.artifact_set_id, sourceSetId: x.source_set_id, ledgerIn: { body: x.ledger_in, sha256: x.ledger_in_sha256 }, ledgerOut: { body: x.ledger_out, sha256: x.ledger_out_sha256 } } : undefined;
+}
+
+export async function getFrozenArtifact(tx: TenantTx, artifactSetId: string): Promise<{ scheme: string; body: string; sha256: string; leafCount: number; createdAt: Date } | undefined> {
+  const r = await tx.query<{ scheme: string; body: string; artifact_sha256: string; leaf_count: number; created_at: Date }>(
+    `SELECT scheme, body, artifact_sha256, leaf_count, created_at FROM yield_frozen_artifacts WHERE tenant_id = $1 AND artifact_set_id = $2`,
+    [tx.tenantId, artifactSetId],
+  );
+  const x = r.rows[0];
+  return x ? { scheme: x.scheme, body: x.body, sha256: x.artifact_sha256, leafCount: x.leaf_count, createdAt: x.created_at } : undefined;
+}
+
+export interface YieldClaimLeafRow extends YieldFrozenLeafRecord {
+  treeSize: number;
+  root: string;
+  hasherId: string;
+}
+
+type LeafDb = { leaf_index: number; tree_size: number; party_id: string; payout_wallet: string; recipient: string; amount: string; leaf_bytes: string; leaf_hash: string; proof_path: string[]; root: string; hasher_id: string };
+const LEAF_SELECT = `SELECT leaf_index, tree_size, party_id, payout_wallet, recipient, amount::text, leaf_bytes, leaf_hash, proof_path, root, hasher_id FROM yield_claim_leaves`;
+const toLeaf = (x: LeafDb): YieldClaimLeafRow => ({
+  leafIndex: x.leaf_index,
+  treeSize: x.tree_size,
+  partyId: x.party_id,
+  payoutWallet: x.payout_wallet,
+  recipient: x.recipient,
+  amount: BigInt(x.amount),
+  leafBytes: x.leaf_bytes,
+  leafHash: x.leaf_hash,
+  path: x.proof_path,
+  root: x.root,
+  hasherId: x.hasher_id,
+});
+
+/** A set's persisted claim leaves, by leaf index. */
+export async function listYieldClaimLeaves(tx: TenantTx, artifactSetId: string): Promise<YieldClaimLeafRow[]> {
+  return (await tx.query<LeafDb>(`${LEAF_SELECT} WHERE tenant_id = $1 AND artifact_set_id = $2 ORDER BY leaf_index`, [tx.tenantId, artifactSetId])).rows.map(toLeaf);
+}
+
+/** One party's persisted leaf in a set, or undefined (withheld, deferred or no allocation). */
+export async function getYieldClaimLeafOfParty(tx: TenantTx, artifactSetId: string, partyId: string): Promise<YieldClaimLeafRow | undefined> {
+  const r = await tx.query<LeafDb>(`${LEAF_SELECT} WHERE tenant_id = $1 AND artifact_set_id = $2 AND party_id = $3`, [tx.tenantId, artifactSetId, partyId]);
+  return r.rows[0] ? toLeaf(r.rows[0]) : undefined;
+}
+
+
+// ── Unsigned claim-intent batches (Y13, migration 0029) ─────────────────
+
+export interface ClaimIntentBatchRow {
+  artifactSetId: string;
+  setNumber: number;
+  sha256: string;
+  body: string;
+  intentCount: number;
+  createdBy: string;
+  createdAt: Date;
+}
+
+/** Stores a canonical batch (built and hashed by the yield domain). One per approved set; append-only. */
+export async function recordClaimIntentBatch(tx: TenantTx, cycleId: string, b: { artifactSetId: string; setNumber: number; body: string; sha256: string; intentCount: number; createdBy: string }): Promise<ClaimIntentBatchRow> {
+  hash("batch sha256", b.sha256);
+  await atomically(tx, () =>
+    tx.query(
+      `INSERT INTO yield_claim_intent_batches (tenant_id, cycle_id, artifact_set_id, set_number, batch_sha256, body, intent_count, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [tx.tenantId, cycleId, b.artifactSetId, b.setNumber, b.sha256, b.body, b.intentCount, b.createdBy],
+    ),
+  );
+  await writeAudit(tx, { actorUserId: b.createdBy, actorType: "user", action: "yield.claim_intents.generate", targetType: "yield_cycle", targetId: cycleId, metadata: { artifactSet: b.artifactSetId, setNumber: b.setNumber, sha256: b.sha256, intents: b.intentCount } });
+  return (await getClaimIntentBatch(tx, cycleId, b.artifactSetId))!;
+}
+
+/** A cycle's batch for a set (or its latest), or undefined. */
+export async function getClaimIntentBatch(tx: TenantTx, cycleId: string, artifactSetId?: string): Promise<ClaimIntentBatchRow | undefined> {
+  const r = await tx.query<{ artifact_set_id: string; set_number: number; batch_sha256: string; body: string; intent_count: number; created_by: string; created_at: Date }>(
+    `SELECT artifact_set_id, set_number, batch_sha256, body, intent_count, created_by, created_at FROM yield_claim_intent_batches
+      WHERE tenant_id = $1 AND cycle_id = $2 AND ($3::uuid IS NULL OR artifact_set_id = $3) ORDER BY set_number DESC LIMIT 1`,
+    [tx.tenantId, cycleId, artifactSetId ?? null],
+  );
+  const x = r.rows[0];
+  return x ? { artifactSetId: x.artifact_set_id, setNumber: x.set_number, sha256: x.batch_sha256, body: x.body, intentCount: x.intent_count, createdBy: x.created_by, createdAt: x.created_at } : undefined;
 }

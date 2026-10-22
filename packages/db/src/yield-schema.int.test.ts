@@ -6,6 +6,7 @@
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, type Pool } from "./pool";
+import { EMPTY_LEDGER, frozenNoLeaves, sha256, testArtifact } from "./yield-calc.test-support";
 import { migrateUp } from "./migrate";
 import { withSystem, withTenant, type TenantTx } from "./tenant";
 import { createTenantWithOwner, upsertUserBySubject } from "./repositories/identity";
@@ -24,6 +25,9 @@ import {
   listYieldCycles,
   recordCalculation,
   reconcileYieldCycle,
+  getFrozenArtifact,
+  getYieldCarry,
+  yieldCarryIn,
   registerYieldEvidence,
   setYieldCycleParameters,
   toYieldStoreError,
@@ -39,6 +43,7 @@ const MINT = "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV";
 const ALPH = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const b58 = () => Array.from(randomBytes(44), (b) => ALPH[b % 58]).join("");
 const h = (c: string) => c.repeat(64);
+const SET_A = testArtifact("a").setHash;
 
 async function code(p: Promise<unknown>): Promise<string> {
   try {
@@ -62,12 +67,13 @@ d("yield schema (Y7)", () => {
   let identity: string;
   const inT = <T>(fn: (tx: TenantTx) => Promise<T>, t = tenant) => withTenant(pool, t, fn);
   const params = { entitlementRef: h("a"), policyHash: h("b"), formulaVersion: "f1/2026", accountingCurrency: "EUR", settlementMint: MINT, settlementDecimals: 6 };
-  const calc = (over: Partial<YieldCalculationRecord> = {}, snap: Partial<YieldCalculationRecord["snapshot"]> = {}): YieldCalculationRecord => ({
+  /** A calculation record; its frozen artifact is the text for `tag` (0027), its carry the genesis carry (0028). */
+  const calc = (over: Partial<YieldCalculationRecord> = {}, snap: Partial<YieldCalculationRecord["snapshot"]> = {}, tag = "a"): YieldCalculationRecord => ({
     calculationHash: h("1"),
     allocationHash: h("2"),
     evidenceBundleHash: h("3"),
     merkleRoot: h("4"),
-    setHash: h("5"),
+    ...frozenNoLeaves(tag),
     snapshot: { sourceKind: "fixture", sourceIdentityId: null, cursorSlot: 300n, holdingModel: "slot_weighted", inputCommitment: h("6"), totalWeight: 100n, ...snap },
     allocations: [
       { kind: "allocated", partyId: party, weight: 90n, amount: 900n },
@@ -127,7 +133,7 @@ d("yield schema (Y7)", () => {
       expect(await code(transitionYieldCycle(tx, id, { to: "published", actorUserId: reviewer }))).toBe("invalid_transition");
       await transitionYieldCycle(tx, id, { to: "under_review", actorUserId: preparer });
       expect(await code(addYieldAttestation(tx, { artifactSetId, attesterUserId: reviewer, kind: "attest", attestedHash: h("0"), statement: "checked" }))).toBe("attestation_mismatch");
-      await addYieldAttestation(tx, { artifactSetId, attesterUserId: reviewer, kind: "attest", attestedHash: h("5"), statement: "checked" });
+      await addYieldAttestation(tx, { artifactSetId, attesterUserId: reviewer, kind: "attest", attestedHash: SET_A, statement: "checked" });
       expect(await activeYieldAttesters(tx, artifactSetId)).toEqual([reviewer]);
       expect(await code(transitionYieldCycle(tx, id, { to: "approved", actorUserId: preparer }))).toBe("four_eyes");
       await transitionYieldCycle(tx, id, { to: "approved", actorUserId: reviewer });
@@ -165,7 +171,7 @@ d("yield schema (Y7)", () => {
     const id = await lockedCycle(true);
     const first = await inT((tx) => recordCalculation(tx, id, calc()));
     await inT((tx) => transitionYieldCycle(tx, id, { to: "inputs_locked", actorUserId: preparer, reason: "correction" }));
-    const second = await inT((tx) => recordCalculation(tx, id, calc({ setHash: h("8"), merkleRoot: h("7"), actorUserId: reviewer })));
+    const second = await inT((tx) => recordCalculation(tx, id, calc({ merkleRoot: h("7"), actorUserId: reviewer }, {}, "b")));
     expect(second.cycle.preparedBy).toBe(reviewer);
     await inT((tx) => transitionYieldCycle(tx, id, { to: "under_review", actorUserId: reviewer }));
     // The approver may not be the preparer (reviewer here) nor the creator (preparer).
@@ -223,5 +229,85 @@ d("yield schema (Y7)", () => {
     await inT((tx) => tx.query(`UPDATE yield_cycles SET status = 'cancelled', status_changed_by = $2 WHERE id = $1`, [raw, preparer]));
     expect((await inT((tx) => reconcileYieldCycle(tx, raw))).findings).toEqual([{ code: "audit_missing", detail: "1 cancel step(s) logged, 0 audited" }]);
     expect(await code(inT((tx) => reconcileYieldCycle(tx, "00000000-0000-4000-8000-000000000000")))).toBe("not_found");
+  });
+
+  // ── G2: frozen artifacts persisted at calculate (0027) ──
+
+  it("persists the frozen artifact at calculate; a second calculate without unlock is refused and adds nothing", async () => {
+    const id = await lockedCycle(true);
+    const { artifactSetId } = await inT((tx) => recordCalculation(tx, id, calc()));
+    const stored = await inT((tx) => getFrozenArtifact(tx, artifactSetId));
+    expect(stored).toMatchObject({ sha256: SET_A, leafCount: 0, body: testArtifact("a").body });
+    const count = async () => (await pool.query<{ n: number }>(`SELECT (SELECT count(*) FROM yield_artifact_sets WHERE cycle_id = $1) + (SELECT count(*) FROM yield_frozen_artifacts WHERE cycle_id = $1) + (SELECT count(*) FROM yield_carry_ledgers WHERE cycle_id = $1) AS n`, [id])).rows[0]!.n;
+    const before = await count();
+    expect(await code(inT((tx) => recordCalculation(tx, id, calc({}, {}, "b"))))).toBe("not_calculating");
+    expect(await count()).toBe(before);
+    // Immutable, even for the owner role.
+    expect(await code(pool.query(`UPDATE yield_frozen_artifacts SET scheme = 'x' WHERE artifact_set_id = $1`, [artifactSetId]))).toBe("forbidden");
+  });
+
+  it("refuses a frozen artifact that does not hash to the set hash, and a calculate without one; nothing is stored", async () => {
+    const id = await lockedCycle(true);
+    const wrong = { ...calc(), frozen: { ...calc().frozen, body: "not the artifact" } };
+    expect(await code(inT((tx) => recordCalculation(tx, id, wrong)))).toBe("artifact_mismatch");
+    expect((await inT((tx) => listYieldArtifactSets(tx, id))).length).toBe(0);
+    // Straight SQL, without the repository: the cycle cannot reach calculated without its frozen artifact.
+    const set = await inT(async (tx) => {
+      const s = (await tx.query<{ id: string }>(`INSERT INTO yield_artifact_sets (tenant_id, cycle_id, set_number, calculation_hash, allocation_hash, evidence_bundle_hash, merkle_root, set_hash, created_by) VALUES ($1, $2, 1, $3, $3, $3, $3, $4, $5) RETURNING id`, [tenant, id, h("1"), SET_A, preparer])).rows[0]!.id;
+      await tx.query(`INSERT INTO yield_ownership_snapshots (tenant_id, cycle_id, artifact_set_id, source_kind, network, rail, chain_asset_id, slot_start, slot_end, cursor_slot, holding_model, input_commitment, total_weight) VALUES ($1, $2, $3, 'fixture', 'solana-devnet', 'SOLANA_TOKEN_2022', $4, 100, 200, 300, 'slot_weighted', $5, 1)`, [tenant, id, s, MINT, h("6")]);
+      return s;
+    });
+    const r = inT((tx) => tx.query(`UPDATE yield_cycles SET status = 'calculated', status_changed_by = $2, artifact_set_hash = $3, merkle_root = $4 WHERE id = $1`, [id, preparer, SET_A, h("1")]));
+    expect(await code(r)).toBe("artifact_missing");
+    expect(set).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  // ── G3: carry-forward between consecutive simulation cycles (0028) ──
+
+  it("chains carry-forward in period order: genesis, then the published predecessor's carry-out; open predecessors block", async () => {
+    // A separate asset, so earlier tests' cycles are not predecessors.
+    const asset2 = await inT(async (tx) => (await tx.query<{ id: string }>(`INSERT INTO business_assets (tenant_id, farm_id, kind, name) SELECT tenant_id, farm_id, 'farm_share', 'Chain' FROM business_assets WHERE id = $1 RETURNING id`, [asset])).rows[0]!.id);
+    const cycleIn = (start: string, end: string) =>
+      inT(async (tx) => {
+        const c = await createYieldCycle(tx, { businessAssetId: asset2, periodStart: start, periodEnd: end, network: "solana-devnet", rail: "SOLANA_TOKEN_2022", chainAssetId: MINT, createdBy: preparer });
+        await setYieldCycleParameters(tx, c.id, params, preparer);
+        await transitionYieldCycle(tx, c.id, { to: "inputs_locked", actorUserId: preparer });
+        await setYieldCycleParameters(tx, c.id, { slotStart: 100n, slotEnd: 200n }, preparer);
+        return c.id;
+      });
+    const OUT1 = `{"carriedRemainder":"3","deferred":[{"amount":"7","partyId":"${party}"}]}`;
+    const carry = (sourceSetId: string | null, inBody: string, outBody = EMPTY_LEDGER) => ({ sourceSetId, ledgerIn: { body: inBody, sha256: sha256(inBody) }, ledgerOut: { body: outBody, sha256: sha256(outBody) } });
+
+    const q1 = await cycleIn("2027-01-01", "2027-03-31");
+    expect(await inT((tx) => yieldCarryIn(tx, q1))).toEqual({ sourceSetId: null, ledger: null });
+    const r1 = await inT((tx) => recordCalculation(tx, q1, { ...calc({}, {}, "q1"), carry: carry(null, EMPTY_LEDGER, OUT1) }));
+    const q2 = await cycleIn("2027-04-01", "2027-06-30");
+    // Q1 is not published yet: Q2 has no predecessor.
+    expect((await inT((tx) => yieldCarryIn(tx, q2))).sourceSetId).toBeNull();
+    await inT(async (tx) => {
+      await transitionYieldCycle(tx, q1, { to: "under_review", actorUserId: preparer });
+      await transitionYieldCycle(tx, q1, { to: "approved", actorUserId: reviewer });
+      await transitionYieldCycle(tx, q1, { to: "published", actorUserId: reviewer });
+    });
+    expect(await inT((tx) => yieldCarryIn(tx, q2))).toEqual({ sourceSetId: r1.artifactSetId, ledger: { body: OUT1, sha256: sha256(OUT1) } });
+    // The wrong source, or a carry-in that is not Q1's carry-out, is refused; nothing is stored.
+    expect(await code(inT((tx) => recordCalculation(tx, q2, { ...calc({}, {}, "q2"), carry: carry(null, EMPTY_LEDGER) })))).toBe("carry_source_mismatch");
+    expect(await code(inT((tx) => recordCalculation(tx, q2, { ...calc({}, {}, "q2"), carry: carry(r1.artifactSetId, EMPTY_LEDGER) })))).toBe("carry_mismatch");
+    expect((await inT((tx) => listYieldArtifactSets(tx, q2))).length).toBe(0);
+    const r2 = await inT((tx) => recordCalculation(tx, q2, { ...calc({}, {}, "q2"), carry: carry(r1.artifactSetId, OUT1) }));
+    expect(await inT((tx) => getYieldCarry(tx, r2.artifactSetId))).toMatchObject({ sourceSetId: r1.artifactSetId, ledgerIn: { sha256: sha256(OUT1) } });
+    // Q3 while Q2 is still open: Q1's carry-out would be consumed twice. Refused.
+    const q3 = await cycleIn("2027-07-01", "2027-09-30");
+    expect(await code(inT((tx) => recordCalculation(tx, q3, { ...calc({}, {}, "q3"), carry: carry(r1.artifactSetId, OUT1) })))).toBe("carry_predecessor_open");
+    // A correction of Q1 (version 2) is not a predecessor of itself: it takes the same (genesis) carry-in as Q1.
+    expect((await inT((tx) => yieldCarryIn(tx, q1))).sourceSetId).toBeNull();
+    // Carry rows are immutable.
+    expect(await code(pool.query(`DELETE FROM yield_carry_ledgers WHERE cycle_id = $1`, [q1]))).toBe("forbidden");
+  });
+
+  it("refuses frozen artifacts and carry rows for real cycles", async () => {
+    const real = await lockedCycle(false);
+    expect(await code(inT((tx) => recordCalculation(tx, real, calc({}, { sourceKind: "rpc", sourceIdentityId: identity }))))).toBe("real_gate");
+    expect((await pool.query(`SELECT 1 FROM yield_frozen_artifacts WHERE cycle_id = $1 UNION ALL SELECT 1 FROM yield_carry_ledgers WHERE cycle_id = $1`, [real])).rowCount).toBe(0);
   });
 });

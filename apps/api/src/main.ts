@@ -11,6 +11,7 @@ import { createBullProducer } from "./queue/producer";
 import { createStorageFromEnv } from "@metafarm/storage";
 import { solanaClusterCheck } from "./lib/solana-cluster";
 import { createRateLimitRedis } from "./lib/rate-limit-redis";
+import { createPipelineYieldEngine } from "./lib/yield-pipeline-engine";
 
 const env = loadEnv(apiEnvSchema);
 const logger = createLogger({
@@ -53,6 +54,8 @@ const app = await buildApp({
     // Ownership from the platform's index (read-only, off by default): without it, ownership reads `not_indexed`.
     ownershipReader: env.TWIN_OWNERSHIP_INDEX_ENABLED ? new IndexOwnershipReader((asset) => readOwnershipIndex(pool, asset)) : undefined,
     rateLimitRedis,
+    // The yield domain's simulation pipeline (pure; used only by the Y9 workflow, which is off by default).
+    yieldEngine: createPipelineYieldEngine(),
     solanaCluster: env.RWA_SOLANA_RPC_URL ? solanaClusterCheck(() => ({ url: env.RWA_SOLANA_RPC_URL!, network: env.RWA_SOLANA_NETWORK })) : undefined,
   },
   isDraining: () => shutdown.isShuttingDown,

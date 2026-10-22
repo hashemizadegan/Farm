@@ -9,13 +9,35 @@
  *
  * Engine contract: pure and deterministic (same request, same result); integers only; never contacts a chain.
  */
-import type { YieldAllocationRecord, YieldCycleRow, YieldInputRow } from "@metafarm/db";
+import type { YieldAllocationRecord, YieldCycleRow, YieldFrozenArtifactRecord, YieldInputRow } from "@metafarm/db";
 import type { WeightedOwnershipInput } from "@metafarm/domain";
+import type { DistributionLedger, SimulationDossier } from "@metafarm/domain/yield";
 
 export interface YieldCalculationRequest {
   cycle: YieldCycleRow;
   inputs: readonly YieldInputRow[];
   ownership: WeightedOwnershipInput;
+  /** The cycle's simulation dossier (latest registered while in draft), or null when none was registered. */
+  dossier: SimulationDossier | null;
+  /** The SHA-256 of each input line's evidence (by input id), or null for a line without evidence. */
+  evidenceSha256ByInput: Readonly<Record<string, string | null>>;
+  /**
+   * The carry-in, read from the platform (migration 0028): the predecessor's recorded carry-out, already checked
+   * against its hash, or the empty ledger when the cycle has no predecessor. Never taken from the dossier.
+   */
+  carryIn: { sourceSetId: string | null; ledger: DistributionLedger; sha256: string };
+}
+
+/** An engine refusal with a stable code; nothing is stored. */
+export class YieldEngineError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly status: 409 | 422 = 422,
+  ) {
+    super(message);
+    this.name = "YieldEngineError";
+  }
 }
 
 export interface YieldCalculationResult {
@@ -28,6 +50,10 @@ export interface YieldCalculationResult {
   allocations: YieldAllocationRecord[];
   /** Totals for display (decimal strings, accounting minor units); not stored. */
   totals: Record<string, string>;
+  /** The frozen artifact (canonical text hashing to `setHash`) and its claim leaves, persisted at calculate. */
+  frozen: YieldFrozenArtifactRecord;
+  /** The canonical carry ledgers the calculation took in and carries out, with their SHA-256. */
+  carry: { ledgerIn: { body: string; sha256: string }; ledgerOut: { body: string; sha256: string } };
 }
 
 export interface YieldCalculationEngine {
@@ -57,5 +83,14 @@ export function engineOutputProblems(req: YieldCalculationRequest, out: YieldCal
       else seen.add(`h:${a.holderKey}`);
     } else if (++dust > 1) problems.push("more than one dust row");
   }
+  // Every leaf pays a party exactly its allocated amount, once.
+  const allocated = new Map(out.allocations.filter((a) => a.kind === "allocated").map((a) => [a.partyId!, a.amount]));
+  const leafParties = new Set<string>();
+  for (const l of out.frozen?.leaves ?? []) {
+    if (allocated.get(l.partyId) !== l.amount) problems.push(`leaf ${l.leafIndex} does not pay party ${l.partyId}'s allocated amount`);
+    if (leafParties.has(l.partyId)) problems.push(`party ${l.partyId} has two leaves`);
+    leafParties.add(l.partyId);
+  }
+  if (out.carry?.ledgerIn.sha256 !== req.carryIn.sha256) problems.push("the calculation did not take the platform's carry-in");
   return problems;
 }

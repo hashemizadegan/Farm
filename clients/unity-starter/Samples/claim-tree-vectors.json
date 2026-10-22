@@ -1,0 +1,625 @@
+{
+  "description": "Claim-tree parity vectors (plan rev. 4 section 6.2), generated from packages/domain/src/yield/claim-tree.ts by claim-tree.vectors.test-support.ts. Simulation only. Hasher sha256-rfc9162-double-leaf/1: leaf = SHA-256(0x00 || SHA-256(leafBytes)), node = SHA-256(0x01 || left || right). Amounts are decimal strings (u64).",
+  "hasherId": "sha256-rfc9162-double-leaf/1",
+  "leafDomainTag": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a83",
+  "trees": [
+    {
+      "name": "size-1",
+      "size": 1,
+      "root": "789a111c5c66fe7ae8a85af382c8bcd411b21cf9e70212a8401d20388e7dc3cb",
+      "leaves": [
+        {
+          "index": 0,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 1,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1010101010101010101010101010101010101010101010101010101010101010",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "1000",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 0
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0100000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1010101010101010101010101010101010101010101010101010101010101010069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001e8030000000000000100010000000000",
+          "leafHash": "789a111c5c66fe7ae8a85af382c8bcd411b21cf9e70212a8401d20388e7dc3cb",
+          "path": []
+        }
+      ]
+    },
+    {
+      "name": "size-3-example-f",
+      "size": 3,
+      "root": "b45256441de46a07eea7d30815dfddf2fd2f580f9e56a72f3d92cc3aaef44421",
+      "leaves": [
+        {
+          "index": 0,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 2,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1010101010101010101010101010101010101010101010101010101010101010",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "333333",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 0
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0200000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1010101010101010101010101010101010101010101010101010101010101010069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000115160500000000000100010000000000",
+          "leafHash": "571b35af36ee9e72b38e09dce1d74e66335218fdd0119f081e93b7c009db04c7",
+          "path": [
+            "5ee1a20e33508fc3c423d4f89999fc7d326f2a4ba99fb078b41ca6f9eea8a837",
+            "758c8eaa5caa5159f72c8c72aa85a9837915b9e11bc1ce54ec037585061ffe06"
+          ]
+        },
+        {
+          "index": 1,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 2,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1111111111111111111111111111111111111111111111111111111111111111",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "333333",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 1
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0200000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1111111111111111111111111111111111111111111111111111111111111111069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000115160500000000000100010001000000",
+          "leafHash": "5ee1a20e33508fc3c423d4f89999fc7d326f2a4ba99fb078b41ca6f9eea8a837",
+          "path": [
+            "571b35af36ee9e72b38e09dce1d74e66335218fdd0119f081e93b7c009db04c7",
+            "758c8eaa5caa5159f72c8c72aa85a9837915b9e11bc1ce54ec037585061ffe06"
+          ]
+        },
+        {
+          "index": 2,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 2,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1212121212121212121212121212121212121212121212121212121212121212",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "333334",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 2
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0200000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1212121212121212121212121212121212121212121212121212121212121212069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000116160500000000000100010002000000",
+          "leafHash": "758c8eaa5caa5159f72c8c72aa85a9837915b9e11bc1ce54ec037585061ffe06",
+          "path": [
+            "aa3b8628ef08e0e8f9f4f22103d744fc8301a4dfefc02805037838b0c60a7021"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "size-5",
+      "size": 5,
+      "root": "6e34e32565c8ab9a784df34e37c448afdda65c280f79ee39219317b972cf9cde",
+      "leaves": [
+        {
+          "index": 0,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 3,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1010101010101010101010101010101010101010101010101010101010101010",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "333334",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 0
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0300000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1010101010101010101010101010101010101010101010101010101010101010069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000116160500000000000100010000000000",
+          "leafHash": "9695b60c09fd445cd736f9b358dae9552e91385c7f1b2c0d64f82ab2ec38f8b3",
+          "path": [
+            "072b5e80c8482cca02e19556d173b93886e3b4a36b067ea05820806a3515b499",
+            "f38546eef3b756f90cf56f02da229a7eaee8ea24a202012b163debed6b030236",
+            "a0e35eda62cac48bb50f930d36ca45295a97d561f0594a1cc9b9736184704ee7"
+          ]
+        },
+        {
+          "index": 1,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 3,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1111111111111111111111111111111111111111111111111111111111111111",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "266667",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 1
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0300000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1111111111111111111111111111111111111111111111111111111111111111069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001ab110400000000000100010001000000",
+          "leafHash": "072b5e80c8482cca02e19556d173b93886e3b4a36b067ea05820806a3515b499",
+          "path": [
+            "9695b60c09fd445cd736f9b358dae9552e91385c7f1b2c0d64f82ab2ec38f8b3",
+            "f38546eef3b756f90cf56f02da229a7eaee8ea24a202012b163debed6b030236",
+            "a0e35eda62cac48bb50f930d36ca45295a97d561f0594a1cc9b9736184704ee7"
+          ]
+        },
+        {
+          "index": 2,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 3,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1212121212121212121212121212121212121212121212121212121212121212",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "200001",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 2
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0300000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1212121212121212121212121212121212121212121212121212121212121212069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001410d0300000000000100010002000000",
+          "leafHash": "2323774c3211790f280a832eee6df4afcc7f58f483af756812c47f283db30e21",
+          "path": [
+            "db1572d22facb56c12565a32bf109435cba3ebeb5a88967291717ea519f7e94c",
+            "feb9d1f76ee2f9e2dde821d510e75c2b361b8bcedf38491f611ecffe1958af79",
+            "a0e35eda62cac48bb50f930d36ca45295a97d561f0594a1cc9b9736184704ee7"
+          ]
+        },
+        {
+          "index": 3,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 3,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1313131313131313131313131313131313131313131313131313131313131313",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "133334",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 3
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0300000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1313131313131313131313131313131313131313131313131313131313131313069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001d6080200000000000100010003000000",
+          "leafHash": "db1572d22facb56c12565a32bf109435cba3ebeb5a88967291717ea519f7e94c",
+          "path": [
+            "2323774c3211790f280a832eee6df4afcc7f58f483af756812c47f283db30e21",
+            "feb9d1f76ee2f9e2dde821d510e75c2b361b8bcedf38491f611ecffe1958af79",
+            "a0e35eda62cac48bb50f930d36ca45295a97d561f0594a1cc9b9736184704ee7"
+          ]
+        },
+        {
+          "index": 4,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 3,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1414141414141414141414141414141414141414141414141414141414141414",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "66667",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 4
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0300000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1414141414141414141414141414141414141414141414141414141414141414069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f000000000016b040100000000000100010004000000",
+          "leafHash": "a0e35eda62cac48bb50f930d36ca45295a97d561f0594a1cc9b9736184704ee7",
+          "path": [
+            "90981a00c8578e3880d86017e205c974a02e1c9c8a24b7a3526e6e1182421644"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "size-7",
+      "size": 7,
+      "root": "ca3df7d50b9d00194924d4132a591a2f6c2d00c34d4f960771bb865e541082b8",
+      "leaves": [
+        {
+          "index": 0,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 4,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1010101010101010101010101010101010101010101010101010101010101010",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "1428571428",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 0
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0400000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1010101010101010101010101010101010101010101010101010101010101010069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000124452655000000000100010000000000",
+          "leafHash": "4ec987ed70c5d6db8061f2e294e9ab93db66c76853214f11ca7c31502a73cade",
+          "path": [
+            "411420d9b4aabc40a8c7171045eba7cad2f4768e936f6f9cacfe62d481638251",
+            "b49ee1b13090cf9e42d44451bdfd29b276ea3ae75c2e1dcf22cabbcf617f7f07",
+            "7e0e72a51025717f02c3634bf4a134d0a1d1ac82ea79c79496fbf6b5fbd5c7d8"
+          ]
+        },
+        {
+          "index": 1,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 4,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1111111111111111111111111111111111111111111111111111111111111111",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "2142857143",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 1
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0400000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1111111111111111111111111111111111111111111111111111111111111111069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001b767b97f000000000100010001000000",
+          "leafHash": "411420d9b4aabc40a8c7171045eba7cad2f4768e936f6f9cacfe62d481638251",
+          "path": [
+            "4ec987ed70c5d6db8061f2e294e9ab93db66c76853214f11ca7c31502a73cade",
+            "b49ee1b13090cf9e42d44451bdfd29b276ea3ae75c2e1dcf22cabbcf617f7f07",
+            "7e0e72a51025717f02c3634bf4a134d0a1d1ac82ea79c79496fbf6b5fbd5c7d8"
+          ]
+        },
+        {
+          "index": 2,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 4,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1212121212121212121212121212121212121212121212121212121212121212",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "714285714",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 2
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0400000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1212121212121212121212121212121212121212121212121212121212121212069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f000000000019222932a000000000100010002000000",
+          "leafHash": "d198bf9e4d5c11bdba936425d5d672cf157c40eca500aac2780ed9ff425ef6db",
+          "path": [
+            "be69f6eb5a80746523c86581e95e7609d38f33aaf136a39d412f6f25e15e4d35",
+            "d6477e0a6d372567606d2ccfe87825f64ae3094ed08db04561aea433dab18aae",
+            "7e0e72a51025717f02c3634bf4a134d0a1d1ac82ea79c79496fbf6b5fbd5c7d8"
+          ]
+        },
+        {
+          "index": 3,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 4,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1313131313131313131313131313131313131313131313131313131313131313",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "1071428571",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 3
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0400000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1313131313131313131313131313131313131313131313131313131313131313069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001dbb3dc3f000000000100010003000000",
+          "leafHash": "be69f6eb5a80746523c86581e95e7609d38f33aaf136a39d412f6f25e15e4d35",
+          "path": [
+            "d198bf9e4d5c11bdba936425d5d672cf157c40eca500aac2780ed9ff425ef6db",
+            "d6477e0a6d372567606d2ccfe87825f64ae3094ed08db04561aea433dab18aae",
+            "7e0e72a51025717f02c3634bf4a134d0a1d1ac82ea79c79496fbf6b5fbd5c7d8"
+          ]
+        },
+        {
+          "index": 4,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 4,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1414141414141414141414141414141414141414141414141414141414141414",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "1785714286",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 4
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0400000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1414141414141414141414141414141414141414141414141414141414141414069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f000000000016ed66f6a000000000100010004000000",
+          "leafHash": "c0b5c5aa0cb77ddaa526d4da10e999a048abddf2454e1d8b8eafb51c02cfd418",
+          "path": [
+            "d8ac2949b95900f01c07ad49178334aa9ea1b5ce9e416b8f30e2d190d2efd051",
+            "0981873cc3f061895e9c0f21828b8384fc55ea5fc2fa363f867c3a765c2f57f4",
+            "cf02ff378903c9b644c1f4c0aec209f90ae2ddc3b60e9d59504e6250a8ad60e8"
+          ]
+        },
+        {
+          "index": 5,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 4,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1515151515151515151515151515151515151515151515151515151515151515",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "357142857",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 5
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0400000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1515151515151515151515151515151515151515151515151515151515151515069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000149914915000000000100010005000000",
+          "leafHash": "d8ac2949b95900f01c07ad49178334aa9ea1b5ce9e416b8f30e2d190d2efd051",
+          "path": [
+            "c0b5c5aa0cb77ddaa526d4da10e999a048abddf2454e1d8b8eafb51c02cfd418",
+            "0981873cc3f061895e9c0f21828b8384fc55ea5fc2fa363f867c3a765c2f57f4",
+            "cf02ff378903c9b644c1f4c0aec209f90ae2ddc3b60e9d59504e6250a8ad60e8"
+          ]
+        },
+        {
+          "index": 6,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 4,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1616161616161616161616161616161616161616161616161616161616161616",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "2500000000",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 6
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0400000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1616161616161616161616161616161616161616161616161616161616161616069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000100f90295000000000100010006000000",
+          "leafHash": "0981873cc3f061895e9c0f21828b8384fc55ea5fc2fa363f867c3a765c2f57f4",
+          "path": [
+            "aa2dc35f42abf525482a3de373b8fd3b844ecc3b1610374740f6353916d9b6c0",
+            "cf02ff378903c9b644c1f4c0aec209f90ae2ddc3b60e9d59504e6250a8ad60e8"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "size-8",
+      "size": 8,
+      "root": "00354249720f95a87c9de51252fb5d79ec0cb5572e91c247106ab39923cc5dd4",
+      "leaves": [
+        {
+          "index": 0,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 5,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1010101010101010101010101010101010101010101010101010101010101010",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "2305843009213693951",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 0
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0500000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1010101010101010101010101010101010101010101010101010101010101010069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001ffffffffffffff1f0100010000000000",
+          "leafHash": "d59ce7d999845166c73dc492ebdfb1baec5ad819e44028a2baa85b0f601abff9",
+          "path": [
+            "b5135ed6a0a15c34be177275da85f1bba217cb46745c42492e15487646c61800",
+            "7e88dafb50b4be8700b31edc50f5ff81ec4bd807561a136374522d0888d99004",
+            "124a9c2a60ba1912ace5445f8b930c131b996c12629a565345177af3563fdf18"
+          ]
+        },
+        {
+          "index": 1,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 5,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1111111111111111111111111111111111111111111111111111111111111111",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "2305843009213693952",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 1
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0500000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1111111111111111111111111111111111111111111111111111111111111111069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000100000000000000200100010001000000",
+          "leafHash": "b5135ed6a0a15c34be177275da85f1bba217cb46745c42492e15487646c61800",
+          "path": [
+            "d59ce7d999845166c73dc492ebdfb1baec5ad819e44028a2baa85b0f601abff9",
+            "7e88dafb50b4be8700b31edc50f5ff81ec4bd807561a136374522d0888d99004",
+            "124a9c2a60ba1912ace5445f8b930c131b996c12629a565345177af3563fdf18"
+          ]
+        },
+        {
+          "index": 2,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 5,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1212121212121212121212121212121212121212121212121212121212121212",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "2305843009213693952",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 2
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0500000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1212121212121212121212121212121212121212121212121212121212121212069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000100000000000000200100010002000000",
+          "leafHash": "edeea2a6262d55c4dc1dad174f2d7f96ed07680ac40d15286974bbd710046a02",
+          "path": [
+            "5185d9a60ff4555cade71cca871efa0a3b9dd8d5d628af69ce4942938dd354fc",
+            "95e55aae571d198505d097659c40ea43e077ab60a6eb30f3fcf9a2b01256b9cd",
+            "124a9c2a60ba1912ace5445f8b930c131b996c12629a565345177af3563fdf18"
+          ]
+        },
+        {
+          "index": 3,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 5,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1313131313131313131313131313131313131313131313131313131313131313",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "2305843009213693952",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 3
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0500000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1313131313131313131313131313131313131313131313131313131313131313069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000100000000000000200100010003000000",
+          "leafHash": "5185d9a60ff4555cade71cca871efa0a3b9dd8d5d628af69ce4942938dd354fc",
+          "path": [
+            "edeea2a6262d55c4dc1dad174f2d7f96ed07680ac40d15286974bbd710046a02",
+            "95e55aae571d198505d097659c40ea43e077ab60a6eb30f3fcf9a2b01256b9cd",
+            "124a9c2a60ba1912ace5445f8b930c131b996c12629a565345177af3563fdf18"
+          ]
+        },
+        {
+          "index": 4,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 5,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1414141414141414141414141414141414141414141414141414141414141414",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "2305843009213693952",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 4
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0500000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1414141414141414141414141414141414141414141414141414141414141414069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000100000000000000200100010004000000",
+          "leafHash": "6eceb73b6d749a167483f3b8ffe2f04bd7564b41c963eef3717ab1e79415be26",
+          "path": [
+            "dd1ecdf91b330f3dda5a8621daf2cfb0f0551ea090b5ea055ff58f2114067eef",
+            "c3d8e4db387c8d861cd9012be4032004335991365f13ea90c9995ebb7c10ad5f",
+            "1ccf8d8eb8196b16687dfa23719b28658730b0e2ffed07306cef839eb65ea81d"
+          ]
+        },
+        {
+          "index": 5,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 5,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1515151515151515151515151515151515151515151515151515151515151515",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "2305843009213693952",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 5
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0500000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1515151515151515151515151515151515151515151515151515151515151515069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000100000000000000200100010005000000",
+          "leafHash": "dd1ecdf91b330f3dda5a8621daf2cfb0f0551ea090b5ea055ff58f2114067eef",
+          "path": [
+            "6eceb73b6d749a167483f3b8ffe2f04bd7564b41c963eef3717ab1e79415be26",
+            "c3d8e4db387c8d861cd9012be4032004335991365f13ea90c9995ebb7c10ad5f",
+            "1ccf8d8eb8196b16687dfa23719b28658730b0e2ffed07306cef839eb65ea81d"
+          ]
+        },
+        {
+          "index": 6,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 5,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1616161616161616161616161616161616161616161616161616161616161616",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "2305843009213693952",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 6
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0500000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1616161616161616161616161616161616161616161616161616161616161616069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000100000000000000200100010006000000",
+          "leafHash": "771b8321155fc383c2f9ff95724352a15d368fb8b969a5a59822ace73f39023c",
+          "path": [
+            "ff7bd9ac218ef6508747390d080f96c26017d55ac1d1d60f79967a974ffcf8c0",
+            "bb7d7a92fe384c6551494cc0c64e5a30eee2a8c046b526d9c0ae466c52bb3528",
+            "1ccf8d8eb8196b16687dfa23719b28658730b0e2ffed07306cef839eb65ea81d"
+          ]
+        },
+        {
+          "index": 7,
+          "fields": {
+            "networkId": 7,
+            "clusterIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "cycleId": "00000000-0000-4000-8000-00000000000a",
+            "cycleVersion": 5,
+            "epoch": 0,
+            "economicAssetId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recipient": "1717171717171717171717171717171717171717171717171717171717171717",
+            "payoutMint": "069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+            "amount": "2305843009213693952",
+            "formulaVersion": 1,
+            "leafLayoutVersion": 1,
+            "leafIndex": 7
+          },
+          "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a8307aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000004000800000000000000a0500000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1717171717171717171717171717171717171717171717171717171717171717069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f0000000000100000000000000200100010007000000",
+          "leafHash": "ff7bd9ac218ef6508747390d080f96c26017d55ac1d1d60f79967a974ffcf8c0",
+          "path": [
+            "771b8321155fc383c2f9ff95724352a15d368fb8b969a5a59822ace73f39023c",
+            "bb7d7a92fe384c6551494cc0c64e5a30eee2a8c046b526d9c0ae466c52bb3528",
+            "1ccf8d8eb8196b16687dfa23719b28658730b0e2ffed07306cef839eb65ea81d"
+          ]
+        }
+      ]
+    }
+  ],
+  "edgeLeaf": {
+    "fields": {
+      "networkId": 255,
+      "clusterIdentity": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "cycleId": "ffffffff-ffff-4fff-bfff-ffffffffffff",
+      "cycleVersion": 4294967295,
+      "epoch": 4294967294,
+      "economicAssetId": "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0",
+      "recipient": "00070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9",
+      "payoutMint": "010e1b2835424f5c697683909daab7c4d1deebf805121f2c394653606d7a8794",
+      "amount": "18446744073709551615",
+      "formulaVersion": 65535,
+      "leafLayoutVersion": 1,
+      "leafIndex": 4294967295
+    },
+    "leafBytes": "8f24147acb60304b34971e8fea956387add8a1280ee6342be62679269a959a83ff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1fffffffffffff4fffbffffffffffffffffffffffffefffffffffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e000070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9010e1b2835424f5c697683909daab7c4d1deebf805121f2c394653606d7a8794ffffffffffffffffffff0100ffffffff",
+    "leafHash": "4205a2f35811501eeaeef659a1f0cd166460ce45ea480f80e7b828ef61b2fc8e"
+  }
+}

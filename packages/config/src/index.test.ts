@@ -55,3 +55,14 @@ describe("holder yield flag (Y13)", () => {
     }
   });
 });
+
+describe("claim intents flag (Y13)", () => {
+  const base = { DATABASE_URL: "postgres://u:p@localhost:5432/db", REDIS_URL: "redis://localhost:6379" };
+  it("is off by default and refused in staging and production", () => {
+    expect(apiEnvSchema.parse(base).YIELD_CLAIM_INTENTS_ENABLED).toBe(false);
+    for (const APP_ENV of ["staging", "production"]) {
+      const r = apiEnvSchema.safeParse({ ...base, APP_ENV, AUTH_PROVIDER: "oidc", STORAGE_DRIVER: "s3", YIELD_CLAIM_INTENTS_ENABLED: "true" });
+      expect(JSON.stringify(r.error?.issues)).toContain("YIELD_CLAIM_INTENTS_ENABLED");
+    }
+  });
+});
