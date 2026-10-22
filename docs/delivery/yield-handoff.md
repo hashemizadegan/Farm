@@ -6,6 +6,53 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, evening (Y5–Y15 implemented on the ownership-index line; stopped at the gates)
+
+Machine-readable: `yield-run-summary-2026-10-22.json`. Decisions: D-12 (Build) and D-17 owner-approved;
+D-31, D-28, D-11, D-29 applied as documented recommendations, **not sign-offs**
+(`decision-adoptions-2026-10-22.md`). Security notes: `y5-y7-y12-security-notes.md` (not a sign-off).
+
+| Stage | PR | Branch | Base | Head | CI |
+| --- | --- | --- | --- | --- | --- |
+| Y5 slot-weighted holdings, F2 precedence | #86 | `feature/ownership-holding-weights` | #85 | `c3abaf3` | 14/14 |
+| Y7 schema 0024, D-17 layer 2 | #87 | `feature/yield-schema-core` | #86 | `3c0cf4b` | 14/14 |
+| Y8 operator read API, `yield:*` | #88 | `feature/yield-operator-api` | #87 | `f1789f8` | 14/14 |
+| Y9 simulation workflow (no engine: 503) | #89 | `feature/yield-workflow` | #88 | `8c1b9cf` | 14/14 |
+| Y10 internal pages (flag, refused when deployed) | #90 | `feature/yield-internal-pages` | #89 | `652605c` | 14/14 |
+| Y11 Unity DTOs | #91 | `feature/yield-unity-read-models` | #90 | `3c2912d` | 14/14 |
+| Y12 account-to-party links, 0025 | #92 | `feature/party-account-links` | #91 | `f3fcc8e` | 14/14 |
+| Y13 holder allocations (partial) | #93 | `feature/holder-yield-allocations` | #92 | `f5eb3cf` | 14/14 |
+| Y14 record reconciliation (partial) | #94 | `feature/yield-reconciliation` | #93 | `7298c53` | 14/14 |
+| Y15 offline comparator + runbook | #95 | `feature/devnet-verification-harness` | #94 | `49a419d` | 14/14 |
+
+All drafts; nothing merged, deployed or enabled; no RPC contacted; nothing signed. The yield line (#60–#84) is
+untouched and not mixed in.
+
+**Local verification:**
+- unit tests through the stub harness;
+- SQL for 0024 and 0025 exercised on scratch PostgreSQL 16 (up, down, up; lifecycle, four-eyes, D-17, real gate,
+  append-only, RLS);
+- the targeted tsc check.
+
+Integration, C#, full typecheck, lint and OpenAPI lint ran in CI only (no PostGIS, .NET or npm in the sandbox).
+
+**Defects found and fixed:**
+- implementation: F2 combined-source labelling; Y7 creation-log FK; inherited transition actor; OpenAPI flow-mapping
+  comma;
+- test: raw-error mapping, insertion order, a lint import, the revoked-link error code.
+
+None are open.
+
+**Stopped at:**
+- the line join (an owner decision, needed for the calculation engine, final leaves, proofs, intents and economic
+  reconciliation);
+- D-26 [Ext] (Y6 final);
+- the devnet approval (Y15 live);
+- Y16 and Y17 approvals;
+- the confirmations and sign-offs listed in the JSON.
+
+**Next action after the gates:** see `next_action_after_final_gate` in the JSON.
+
 ## 2026-10-22, 13:30 local (state check; Y0 security review and fix; D-12 and D-17 briefs; remaining work)
 
 **Verified state (GitHub API and git ancestry):**

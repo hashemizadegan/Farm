@@ -1,0 +1,55 @@
+{
+  "schema": "metafarm-delivery-run/1",
+  "date": "2026-10-22",
+  "plan": { "file": "docs/delivery/real-yield-distribution-plan.md", "revision": 4, "commit": "f914af4" },
+  "authorised_decisions": {
+    "D-12": "owner-approved 2026-10-22 (Build: slot-weighted)",
+    "D-17": "owner-approved 2026-10-22 (staged; F2 = verified RPC takes precedence)"
+  },
+  "adopted_recommendations_not_signoffs": ["D-31", "D-28", "D-11", "D-29"],
+  "not_applied": { "D-26": "pending [Ext] on-chain cost verification" },
+  "line": "ownership-index (#59 ebb3f56 -> #85 Y0 20ccaae -> ...); yield line #60..#84 untouched (#84 0a5783c)",
+  "stages": [
+    { "stage": "Y5", "pr": 86, "branch": "feature/ownership-holding-weights", "base": "feature/ownership-cluster-identity (#85)", "head": "c3abaf3", "status": "complete", "ci": "14/14" },
+    { "stage": "Y7", "pr": 87, "branch": "feature/yield-schema-core", "base": "#86", "head": "3c0cf4b", "status": "complete", "ci": "14/14" },
+    { "stage": "Y8", "pr": 88, "branch": "feature/yield-operator-api", "base": "#87", "head": "f1789f8", "status": "complete", "ci": "14/14" },
+    { "stage": "Y9", "pr": 89, "branch": "feature/yield-workflow", "base": "#88", "head": "8c1b9cf", "status": "complete except engine (503 until line join)", "ci": "14/14" },
+    { "stage": "Y10", "pr": 90, "branch": "feature/yield-internal-pages", "base": "#89", "head": "652605c", "status": "complete (staff only)", "ci": "14/14" },
+    { "stage": "Y11", "pr": 91, "branch": "feature/yield-unity-read-models", "base": "#90", "head": "3c2912d", "status": "complete (DTOs)", "ci": "14/14" },
+    { "stage": "Y12", "pr": 92, "branch": "feature/party-account-links", "base": "#91", "head": "f3fcc8e", "status": "complete (off; refused in production)", "ci": "14/14" },
+    { "stage": "Y13", "pr": 93, "branch": "feature/holder-yield-allocations", "base": "#92", "head": "f5eb3cf", "status": "partial: allocations only; proofs and intents need final Y6", "ci": "14/14" },
+    { "stage": "Y14", "pr": 94, "branch": "feature/yield-reconciliation", "base": "#93", "head": "7298c53", "status": "partial: record reconciliation only", "ci": "14/14" },
+    { "stage": "Y15", "pr": 95, "branch": "feature/devnet-verification-harness", "base": "#94", "head": "49a419d", "status": "safe part only; stopped at devnet approval", "ci": "14/14" },
+    { "stage": "Y6 final", "pr": null, "status": "blocked: D-26 [Ext]" },
+    { "stage": "Y16", "pr": null, "status": "blocked: separate approval and program audit" },
+    { "stage": "Y17", "pr": null, "status": "blocked: all production approvals" }
+  ],
+  "draft_prs": [86, 87, 88, 89, 90, 91, 92, 93, 94, 95],
+  "merged": [],
+  "deployed": [],
+  "defects_found_and_fixed": [
+    { "where": "Y5 (#86)", "class": "implementation defect", "what": "combineOwnershipSources could label fixture events as RPC (Y0 review F2)", "fix": "c3abaf3" },
+    { "where": "Y7 (#87)", "class": "implementation defect", "what": "creation logged in a BEFORE INSERT trigger violated the log FK", "fix": "AFTER INSERT trigger, before first push" },
+    { "where": "Y7 (#87)", "class": "implementation defect", "what": "transition actor/reason inherited by later transitions", "fix": "cleared after logging, before first push" },
+    { "where": "Y7 (#87)", "class": "test defect", "what": "raw PostgreSQL errors not mapped in int test", "fix": "fd22dae" },
+    { "where": "Y8 (#88)", "class": "implementation defect", "what": "unquoted OpenAPI description split a flow mapping; Install failed", "fix": "aa3b50d" },
+    { "where": "Y8 (#88)", "class": "test defect", "what": "assumed insertion order among rows with one created_at", "fix": "merged forward" },
+    { "where": "Y12 (#92)", "class": "test defect", "what": "type-only import (lint); expected code for re-authorising a revoked link", "fix": "merged forward" }
+  ],
+  "unresolved_defects": [],
+  "environment_limitations": [
+    "no PostGIS, no .NET SDK, no npm registry access in the sandbox: integration, C# and full typecheck/lint ran in CI only",
+    "local unit tests ran with a stub harness (zod/pg/fastify stubs); zod-dependent schema tests are not meaningful locally"
+  ],
+  "remaining_gates": [
+    "owner decision: join the ownership-index line and the yield line (needed for a calculation engine, final Y6 leaves, proofs, intents, economic reconciliation)",
+    "D-26 [Ext] on-chain hash cost verification (Y6 final)",
+    "D-11, D-28, D-29, D-31 confirmations by their signers",
+    "D-12 Real gate; D-1..D-10, D-14, D-15, D-20..D-25, D-27, D-30, D-39",
+    "proposed security sign-off: Y0, Y5, Y7 (RLS), Y12",
+    "Unity 6 validation (Y11)",
+    "Y15 devnet approval and deploy hold (Issue #45)",
+    "Y16 separate approval and program audit; Y17 production approvals"
+  ],
+  "next_action_after_final_gate": "Once the owner decides how to join the two lines, rebase nothing: merge the yield line's head (#84) into a new integration branch on top of #95, wire the yield domain's Y2/Y6 library as the YieldCalculationEngine (apps/api deps.yieldEngine), add the Y1-vs-0024 transition-table sync test, then build Y13 proofs and unsigned intents over the final leaves after D-26."
+}
