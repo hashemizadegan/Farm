@@ -84,7 +84,7 @@ function assertLargeCycleParams(p: LargeCycleParams): void {
 function _deepFreeze<T>(v: T): T {
   if (v && typeof v === "object" && !Object.isFrozen(v)) {
     Object.freeze(v);
-    for (const x of Object.values(v as object)) deepFreeze(x);
+    for (const x of Object.values(v as object)) _deepFreeze(x);
   }
   return v;
 }
