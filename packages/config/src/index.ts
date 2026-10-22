@@ -160,6 +160,13 @@ export const apiEnvSchema = z
     SELF_SERVE_WORKSPACES: bool.default("true"),
     /** Cap on workspaces one user may own through self-service (abuse guard). */
     MAX_OWNED_WORKSPACES: z.coerce.number().int().min(1).max(100).default(3),
+    /**
+     * Providers allowed to post chain events (POST /v1/webhooks/<provider>), comma-separated; each must have an
+     * adapter (packages/domain chain-events: today only "metafarm-relay"). Empty (default): chain events are
+     * refused. Events are hints only: they ask the ownership indexer to re-read a tracked asset from the verified
+     * chain source; they never write ownership themselves.
+     */
+    CHAIN_EVENT_PROVIDERS: csv.default(""),
     WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(15_000),
     /** Serve Swagger UI at /docs. Unset: on in development and test, off in staging and production. */

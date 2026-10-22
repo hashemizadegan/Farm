@@ -287,6 +287,18 @@ export async function ownershipIndexTargets(tx: SystemTx, limit = 5_000): Promis
   return r.rows.map((x) => ({ network: x.network, rail: x.rail, id: x.id }));
 }
 
+/** Whether the platform tracks this asset (same rule as ownershipIndexTargets); system read. */
+export async function isOwnershipIndexTarget(tx: SystemTx, asset: ChainAssetRef): Promise<boolean> {
+  const r = await tx.query(
+    `SELECT 1 FROM asset_representations
+      WHERE network = $1 AND rail = $2 AND rail IN ('SOLANA_TOKEN_2022', 'SOLANA_BUBBLEGUM_CNFT')
+        AND COALESCE(mint_address, das_asset_id) = $3
+      LIMIT 1`,
+    [asset.network, asset.rail, asset.id],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
 /**
  * The Merkle tree the platform recorded for a compressed asset (system read). Null when none is
  * recorded, or when representations disagree, so a source never reads the wrong tree's history.

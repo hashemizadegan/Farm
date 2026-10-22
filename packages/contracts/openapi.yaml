@@ -2594,7 +2594,14 @@ paths:
       tags: [webhooks]
       security: []
       summary: Receive a signed provider webhook
-      description: Requires `x-webhook-signature` (`t=<unix>,v1=<hex HMAC-SHA256 of "t.body">`) and an `id` in the body for de-duplication.
+      description: >-
+        Requires `x-webhook-signature` (`t=<unix>,v1=<hex HMAC-SHA256 of "t.body">`) and an `id` in the body for
+        de-duplication. Chain event providers (a provider with an adapter, enabled in CHAIN_EVENT_PROVIDERS; today
+        `metafarm-relay`) post `metafarm-chain-event/1` events as `{ id, type: "chain.<kind>", data }`. They are
+        normalized and checked before anything is stored, and refused with 422 `chain_event_malformed`,
+        `chain_event_unsupported_event`, `chain_event_unsupported_network` or `chain_event_network_mismatch`. An
+        adapter that exists but is not enabled answers 404 `provider_not_enabled`. An accepted event is a hint: for a
+        tracked asset it asks the ownership indexer to re-read the asset from the verified chain source.
       operationId: receiveWebhook
       parameters:
         - name: x-webhook-signature
