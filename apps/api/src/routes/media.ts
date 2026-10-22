@@ -95,8 +95,8 @@ export async function mediaRoutes(app: FastifyInstance) {
   /**
    * Confirms an upload. The stored object's size and content type must match
    * what was declared; otherwise the object is deleted and the record rejected.
-   * Content scanning (malware, image re-encoding) is a TODO hook for the
-   * provider you choose — see docs/threat-model.md.
+   * Content scanning (malware, image re-encoding) is capability `media-scanning`, disabled until a
+   * scanner is chosen (docs/provider-capabilities.md, docs/threat-model.md); nothing claims an upload was scanned.
    */
   app.post("/v1/tenants/:tenantId/uploads/:mediaId/complete", async (req) => {
     const { mediaId } = parse(z.object({ tenantId: uuid, mediaId: uuid }), req.params);

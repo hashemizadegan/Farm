@@ -1,6 +1,6 @@
 import { Queue, Worker, type Processor } from "bullmq";
 import { Redis } from "ioredis";
-import { loadEnv, workerEnvSchema } from "@metafarm/config";
+import { assertCapabilities, describeCapabilities, loadEnv, workerCapabilities, workerEnvSchema } from "@metafarm/config";
 import { bubblegumTreeOf, claimJobRun, completeJobRun, createPool, failJobRun, pingDatabase, withSystem } from "@metafarm/db";
 import { QUEUES, idempotencyKey, jobIdFromKey, timeBucket, type JobPayloads } from "@metafarm/domain";
 import { MetricsRegistry, QUEUE_STATES, createJobMetrics, createLogger, createQueueDepthGauge, installGracefulShutdown, startHealthServer } from "@metafarm/observability";
@@ -26,6 +26,8 @@ import { createObjectContentStore, createStorageFromEnv } from "@metafarm/storag
 // On Railway the platform assigns PORT; the health server uses it unless HEALTH_PORT is set.
 const env = loadEnv(workerEnvSchema, { ...process.env, HEALTH_PORT: process.env.HEALTH_PORT ?? process.env.PORT });
 const logger = createLogger({ service: env.SERVICE_NAME ?? "worker", level: env.LOG_LEVEL, environment: env.APP_ENV, pretty: env.APP_ENV === "development" });
+// Fail closed on provider configuration (docs/provider-capabilities.md); names only, never values.
+logger.info({ capabilities: describeCapabilities(assertCapabilities(workerCapabilities(env))) }, "provider capabilities");
 const shutdown = installGracefulShutdown(logger, env.SHUTDOWN_GRACE_MS);
 
 const pool = createPool({ connectionString: env.DATABASE_URL, max: env.DATABASE_POOL_MAX, ssl: env.DATABASE_SSL, applicationName: "metafarm-worker" });

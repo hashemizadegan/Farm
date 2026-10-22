@@ -380,3 +380,4 @@ export const webPublicEnvSchema = z.object({
   NEXT_PUBLIC_YIELD_PAGES_ENABLED: bool.default("false"),
 });
 export type WebPublicEnv = z.infer<typeof webPublicEnvSchema>;
+export * from "./capabilities";

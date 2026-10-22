@@ -13,7 +13,7 @@ export const INDEXED_EVENTS_ABI = parseAbi([
 ]);
 
 /**
- * TODO(provider-config): CHAIN_RPC_URL must point to an RPC endpoint you
+ * Capability `evm-chain` (packages/config capabilities.ts; docs/provider-capabilities.md): CHAIN_RPC_URL must point to an RPC endpoint you
  * control or trust. It is fixed configuration, never request-derived (SSRF).
  */
 export function createViemChainReader(rpcUrl: string): ChainReader {

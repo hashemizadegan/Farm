@@ -1,4 +1,4 @@
-import { apiDocsEnabled, apiEnvSchema, loadEnv } from "@metafarm/config";
+import { apiCapabilities, apiDocsEnabled, apiEnvSchema, assertCapabilities, describeCapabilities, loadEnv } from "@metafarm/config";
 import { createPool, readOwnershipIndex } from "@metafarm/db";
 import { createLogger, installGracefulShutdown } from "@metafarm/observability";
 import { IndexOwnershipReader, httpSolanaRpc, httpTron } from "@metafarm/chain";
@@ -20,6 +20,9 @@ const logger = createLogger({
   environment: env.APP_ENV,
   pretty: env.APP_ENV === "development",
 });
+// Fail closed on provider configuration: a selected provider with missing or contradictory settings stops start-up
+// (names only in the message, never values). See docs/provider-capabilities.md.
+logger.info({ capabilities: describeCapabilities(assertCapabilities(apiCapabilities(env))) }, "provider capabilities");
 
 function authProvider(): AuthProvider {
   if (env.AUTH_PROVIDER === "oidc") {
