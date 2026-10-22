@@ -200,7 +200,8 @@ d("migrations 0019–0029: lifecycle and catalog", () => {
   it("reverts 0029 → 0019 one step at a time to the 0018 schema, then re-applies to the same catalog", async () => {
     const before = await catalog();
     const reverted: string[] = [];
-    while (((await latest()) ?? "") > "0018") {
+    // Compare the four-digit prefix: "0018_cnft_leaf" > "0018" as a string.
+    while (((await latest()) ?? "").slice(0, 4) > "0018") {
       const v = await migrateDown(pool);
       expect(v).not.toBeNull();
       reverted.push(v!);
