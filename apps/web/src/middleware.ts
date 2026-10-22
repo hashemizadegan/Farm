@@ -1,4 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { decidePreviewGate, previewGateResponse } from "./lib/preview-gate";
+
+/** Paths that never got the CSP (static build output); the matcher now reaches them only for the preview gate. */
+const STATIC_PATH = /^\/(?:_next\/static|_next\/image|favicon\.ico)(?:\/|$)/;
 
 /**
  * Per-request Content Security Policy with a nonce. Next.js applies the nonce
@@ -8,7 +12,17 @@ import { NextResponse, type NextRequest } from "next/server";
  * (NEXT_PUBLIC_MAP_CONNECT_SRC) and the object-storage origin that presigned
  * uploads PUT to (NEXT_PUBLIC_UPLOAD_CONNECT_SRC). Both are space-separated.
  */
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
+  // Private-preview gate (off unless PREVIEW_ACCESS_GATE is set; see lib/preview-gate.ts). Runs first, on every
+  // path including static assets, so nothing is served around it.
+  const gate = await decidePreviewGate(
+    { PREVIEW_ACCESS_GATE: process.env.PREVIEW_ACCESS_GATE, PREVIEW_ACCESS_PASSWORD: process.env.PREVIEW_ACCESS_PASSWORD },
+    { method: req.method, pathname: req.nextUrl.pathname, authorization: req.headers.get("authorization") },
+  );
+  if (gate.kind === "deny") return previewGateResponse(gate.status);
+  // Unchanged behaviour for static output: no CSP header, as before the matcher was widened.
+  if (STATIC_PATH.test(req.nextUrl.pathname)) return NextResponse.next();
+
   // Edge runtime: no Buffer; btoa is available.
   const nonce = btoa(crypto.randomUUID());
   const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -47,5 +61,6 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [{ source: "/((?!_next/static|_next/image|favicon.ico).*)" }],
+  // Every path, so the preview gate also covers static assets; STATIC_PATH keeps their old (CSP-free) handling.
+  matcher: [{ source: "/:path*" }],
 };
