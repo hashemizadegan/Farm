@@ -10,6 +10,7 @@ coverage/
 .DS_Store
 playwright-report/
 test-results/
+tests/yield-screenshots/
 contracts/nft/artifacts/
 contracts/nft/cache/
 contracts/nft/typechain-types/

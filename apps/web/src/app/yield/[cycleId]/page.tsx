@@ -7,11 +7,14 @@ import { useI18n } from "@/i18n/provider";
 import { api, unwrap, useQuery, type Schemas } from "@/lib/api";
 import { useCan } from "@/lib/can";
 import { groupDigits, shortHash, viewState, yieldPagesEnabled, yieldStatusKey, yieldTone } from "@/lib/yield";
+import { CalculationDossier, CarrySummary, ClaimIntentsPreview, FourEyesPanel } from "@/components/yield/sections";
 
 /**
  * Y10: one yield cycle, read only, for staff: status in the plan's wording (§8), artifact sets with their hashes,
  * the ownership snapshot's provenance, and the transition history. Each part loads and fails on its own, so a
- * failed history still shows the rest (partial data). Not an approved disclosure (D-39).
+ * failed history still shows the rest (partial data). The D-39 simulation banner comes from app/yield/layout.tsx.
+ * Sections (components/yield/sections.tsx): four-eyes, the calculation dossier, carry-forward per set, and the
+ * unsigned claim-intent batch built from stored leaves. Read-only.
  */
 export default function YieldCyclePage() {
   const { cycleId } = useParams<{ cycleId: string }>();
@@ -90,10 +93,25 @@ function Cycle({ tenantId, cycleId }: { tenantId: string; cycleId: string }) {
         </dl>
       </div>
 
+      <FourEyesPanel history={history.data?.items ?? []} attesters={c.artifactSets.find((x) => x.hashes?.set === c.artifactSetHash)?.attesters ?? 0} status={c.status} />
+
+      <CalculationDossier tenantId={tenantId} cycleId={cycleId} />
+
       <section aria-labelledby="yield-sets">
         <h2 id="yield-sets">{t.setsHeading}</h2>
-        {c.artifactSets.length === 0 ? <EmptyState title={t.noSets} /> : c.artifactSets.map((s) => <SetCard key={s.id} set={s} />)}
+        {c.artifactSets.length === 0 ? (
+          <EmptyState title={t.noSets} />
+        ) : (
+          c.artifactSets.map((s) => (
+            <div key={s.id}>
+              <SetCard set={s} />
+              <CarrySummary tenantId={tenantId} cycleId={cycleId} setId={s.id} />
+            </div>
+          ))
+        )}
       </section>
+
+      {(c.status === "published" || c.status === "disputed" || c.status === "closed") && <ClaimIntentsPreview tenantId={tenantId} cycleId={cycleId} />}
 
       <section aria-labelledby="yield-history">
         <h2 id="yield-history">{t.historyHeading}</h2>

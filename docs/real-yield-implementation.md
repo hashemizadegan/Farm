@@ -89,3 +89,49 @@ Everything below is off by default, simulation-only where it writes, and none of
   - unsigned claim intents (D-15, D-25, D-27, D-39);
   - the final leaf context and hasher (Y6 final, D-26 [Ext]);
   - economic reconciliation (Y14) beyond the record checks.
+
+## Local preview of the operator pages (`/yield`)
+
+**D-39:** the simulation banner wording was adopted by the owner on 2026-10-22. Every `/yield` view starts with it,
+verbatim (`apps/web/src/app/yield/layout.tsx`, `components/yield/YieldSimulationDisclosure.tsx`, the constant
+`D39_SIMULATION_DISCLOSURE`):
+
+> SIMULATION ONLY: Yield metrics, cycles, and claim intents displayed in this interface are generated from
+> deterministic simulation models. No real assets, mainnet signatures, or monetary liabilities are incurred.
+
+The adoption covers the simulation operator views only. The staging and production refusals are unchanged.
+
+**Run it locally** (needs Docker for PostGIS, Redis and MinIO, and Node with pnpm):
+
+```sh
+cp .env.example .env            # APP_ENV=development, DEV_AUTH_SECRET set
+docker compose up -d            # PostGIS, Redis, MinIO
+pnpm install
+pnpm db:migrate && pnpm db:seed # demo workspace and the dev users
+pnpm seed:yield                 # three simulation cycles (idempotent)
+pnpm dev:yield                  # API :4000, worker, web :3000, with the yield switches on for this run only
+pnpm --filter @metafarm/api dev-token dev-user   # paste the token at http://localhost:3000/sign-in
+```
+
+**Pages:**
+
+- `http://localhost:3000/yield` lists the cycles: Q1 and Q2 2026 *Published, with verification details*, and Q3
+  2026 *Awaiting independent review*. Each carries the *Simulation* badge.
+- `http://localhost:3000/yield/<cycleId>` shows one cycle:
+  - the D-39 banner;
+  - status, chain asset and slot range;
+  - **Four-eyes approval:** prepared by, attestations, approved by, and whether preparer ≠ approver;
+  - **Calculation dossier:** revision and hash, the simulation policies, settlement rate and lines;
+  - **Artifact sets:** status (*Frozen*, *Approved*, *Invalidated*), hashes, ownership snapshot provenance, and
+    carry-in/carry-out;
+  - **History.**
+- On published cycles, **Claim intents (unsigned)**: the batch built from stored leaves (set number, batch hash,
+  *Unsigned*, *simulation*), with one row per leaf (party, amount, payout address, leaf hash, proof steps).
+
+**Seeded scenario** (`apps/api/src/scripts/seed-yield-simulation.ts`):
+- holders A (with a payout address), B (none: withheld), D (tiny: deferred dust, carried forward) and an unregistered
+  wallet;
+- preparer `dev-yield-preparer`, auditor `dev-yield-auditor`, approver `dev-user`.
+
+The same stack runs in CI: the Playwright job (`tests/e2e/yield-operator.spec.ts`) seeds, walks these pages, fails on
+any console or page error, and uploads screenshots as the `yield-screenshots` artifact.

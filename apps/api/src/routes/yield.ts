@@ -190,6 +190,39 @@ export async function yieldRoutes(app: FastifyInstance) {
     return app.inTenant(req, "yield:read", (tx) => yieldCycleDetail(tx, cycleId));
   });
 
+  /**
+   * The cycle's latest simulation dossier, summarised for operators (yield:read). Read from storage and re-checked:
+   * the stored text must hash to its recorded SHA-256 and parse as a simulation dossier (409 otherwise).
+   */
+  app.get("/v1/tenants/:tenantId/yield/cycles/:cycleId/simulation-dossier", async (req) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    return app.inTenant(req, "yield:read", async (tx) => {
+      if (!(await getYieldCycle(tx, cycleId))) throw notFound("yield cycle");
+      const stored = await latestSimulationDossier(tx, cycleId);
+      if (!stored) throw notFound("simulation dossier");
+      if (createHash("sha256").update(stored.body, "utf8").digest("hex") !== stored.sha256) throw new HttpError(409, "artifact_mismatch", "the stored dossier does not hash to its recorded hash");
+      let d;
+      try {
+        d = parseSimulationDossier(stored.body);
+      } catch (e) {
+        throw yieldHttpError(e);
+      }
+      const p = d.calculationPolicy;
+      return {
+        revision: stored.revision,
+        sha256: stored.sha256,
+        assetClass: d.assetClass,
+        calculationPolicy: { id: p.id, version: p.version, status: p.status, formulaVersion: p.formulaVersion, accountingCurrency: p.accountingCurrency.code, fee: p.fee.alternative },
+        distributionPolicy: { id: d.distributionPolicy.id, version: d.distributionPolicy.version, status: d.distributionPolicy.status, dustThreshold: d.distributionPolicy.dustThreshold.toString(), missingPayoutWallet: d.distributionPolicy.missingPayoutWallet },
+        settlementRate: { num: d.settlementRate.num.toString(), den: d.settlementRate.den.toString(), source: d.settlementRate.source },
+        lines: d.lines.map((l) => ({ lineId: l.lineId, category: l.category, amount: l.amount === null ? null : l.amount.toString(), currency: l.currency.code, completeness: l.completeness })),
+        evidenceCount: d.evidence.length,
+        payoutParties: Object.keys(d.payoutAddresses).length,
+        ownershipObservedAt: d.ownershipObservedAt,
+      };
+    });
+  });
+
   app.get("/v1/tenants/:tenantId/yield/cycles/:cycleId/transitions", async (req) => {
     const { cycleId } = parse(cycleParams, req.params);
     return app.inTenant(req, "yield:read", async (tx) => {

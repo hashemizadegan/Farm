@@ -3547,6 +3547,15 @@ paths:
 
   /v1/tenants/{tenantId}/yield/cycles/{cycleId}/simulation-dossier:
     parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    get:
+      tags: [yield]
+      summary: "The cycle's latest simulation dossier, summarised and re-hashed on read (yield:read)."
+      operationId: getYieldSimulationDossier
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
     post:
       tags: [yield]
       summary: "Register the cycle's simulation calculation dossier (simulation draft cycles only; new revision each time) (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404)."

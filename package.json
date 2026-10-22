@@ -24,7 +24,9 @@
     "infra:down": "docker compose down",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "postinstall": "pnpm --filter @metafarm/contracts generate"
+    "postinstall": "pnpm --filter @metafarm/contracts generate",
+    "dev:yield": "APP_ENV=development YIELD_WORKFLOW_ENABLED=true YIELD_CLAIM_INTENTS_ENABLED=true NEXT_PUBLIC_YIELD_PAGES_ENABLED=true pnpm dev",
+    "seed:yield": "pnpm --filter @metafarm/api seed:yield"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",

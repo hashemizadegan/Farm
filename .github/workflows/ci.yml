@@ -201,6 +201,10 @@ jobs:
       # J8 is off by default everywhere; the e2e stack turns it on to test the account page's linking flow.
       PLAYER_WALLETS_ENABLED: "true"
       NEXT_PUBLIC_PLAYER_WALLETS_ENABLED: "true"
+      # Y10/Y13 operator pages with simulation data (APP_ENV=test only; off by default and refused when deployed).
+      YIELD_WORKFLOW_ENABLED: "true"
+      YIELD_CLAIM_INTENTS_ENABLED: "true"
+      NEXT_PUBLIC_YIELD_PAGES_ENABLED: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -217,6 +221,13 @@ jobs:
           name: playwright-report
           path: tests/playwright-report
           retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yield-screenshots
+          path: tests/yield-screenshots
+          if-no-files-found: ignore
+          retention-days: 14
 
   audit:
     name: Dependency audit
