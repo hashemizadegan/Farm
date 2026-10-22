@@ -14,6 +14,7 @@ then.
 | D-28 | new `yield:*` permissions; `verifier` extended as auditor | §12 register recommendation | #88 | T, P confirmation |
 | D-11 | freeze at `calculate` | §12 register recommendation | #89 | P, T confirmation |
 | D-29 | explicit, consented, authorised, revocable, audited link | §12 register recommendation | #92 | L, P, T; [Legal] consent wording (D-39); proposed S sign-off |
+| D-39 (simulation banner only) | the wording "SIMULATION ONLY: Yield metrics, cycles, and claim intents displayed in this interface are generated from deterministic simulation models. No real assets, mainnet signatures, or monetary liabilities are incurred." on every `/yield` operator view | **owner adoption 2026-10-22 18:12** | #96 (`565aaee`) | holder-facing and public disclosures, translations, and any non-staff audience stay open; staging and production refusals unchanged |
 | D-26 | **not applied** | recommendation is "SHA-256, pending on-chain cost verification [Ext]" | — | the [Ext] verification; Y6 final stays on the yield line |
 
 ## Conservative choices made where no recommendation exists
