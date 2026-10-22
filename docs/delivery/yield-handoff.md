@@ -6,6 +6,52 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 21:00 local (sign-off pack, R1 fixed in draft, preview seed runner; no Railway changes)
+
+Owner instruction (20:00): close the review gaps, prepare the sign-off pack, and de-risk preview enablement,
+without touching Railway.
+
+### Done (all drafts)
+- **Review pack** (`yield-security-review-package-2026-10-22.md`):
+  - one-page executive summary;
+  - a sign-off register with unticked boxes for Y0, Y5, Y7, Y12, migrations 0019–0029 (each), R1, the gate, the
+    seed runner and preview use;
+  - §A per-migration reference: tables, indexes, triggers and functions, roles, data flows, rollback;
+  - §B preview-only approval (what it permits and what it does not);
+  - §C production approval, **not granted**;
+  - §D CI heads;
+  - §E the reviewer checklist.
+- **#100 `fix/yield-r1-network-label`** (base #99, `d0d2876`, CI 14/14):
+  - R1 fixed, option A: `solana-mainnet` on cycle creation gets 409 `simulation_network_label`, refused before
+    authentication and before any query;
+  - no schema or migration change;
+  - unit and integration tests; OpenAPI and docs updated.
+- **#101 `feature/preview-seed-runner`** (base #99, `b642ec7`, CI 15/15):
+  - a `Dockerfile` target `app-seed-runner` (one-off, user `node`); production images are unchanged;
+  - the runner refuses unless `APP_ENV` is `development` or `test` (checked before connecting), there is no
+    unknown workspace and no real (non-`dev`) sign-in, and migrations are at 0029 or later;
+  - it then runs the existing seeds. It mints no tokens. Dev tokens are minted offline by the operator.
+  - Tests:
+    - unit tests for the guard;
+    - an integration test running end to end on its own database;
+    - a CI smoke step proving the image refuses `production`, `staging` and unset `APP_ENV`.
+  - Test defect history: on `43e7a76` the re-run was refused, because the dev seed creates `demo` and `other`.
+    This was an implementation defect, fixed in `b642ec7`.
+- **Hygiene:**
+  - #102 (checklist to delete `tmp/lockfile-gen` when no longer needed);
+  - #97 description now opens with an operator-decision warning: merging redeploys every live service, the
+    worker included (#45).
+
+### Railway
+No Railway call made. `melodious-liberation` is untouched. No preview project.
+
+### Blockers (unchanged)
+- Sign-offs in the register.
+- Preview-use approval.
+- Preview credentials, created in a new project.
+- D-39 version approval for deployed display.
+- The real gates.
+
 ## 2026-10-22, 20:00 local (buildability restored in draft; access gate; review package; preview proposal, not provisioned)
 
 Owner instruction (19:16): restore `main` buildability, prepare an isolated preview, and complete yield

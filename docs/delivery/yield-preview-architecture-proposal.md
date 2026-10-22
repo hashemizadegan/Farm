@@ -28,8 +28,9 @@ separate from the live Railway project.
 | redis | Railway Redis | The API's queue and readiness check need it. Private only. |
 | api | GitHub `hashemizadegan/Farm`, the preview branch (see below), root `Dockerfile`, `APP=api` | Pre-deploy `node dist/migrate.js` against the preview database only. Health check `/readyz`. |
 | web | Same branch, `APP=web` | Health check **`/healthz`** (the access gate refuses `/offline`). |
+| seed-runner (one-off) | Same branch, `APP=seed-runner` | Runs once after the migrations; see Data. Restart policy never; no domain. |
 
-**Preview branch:** `preview/yield-simulation` (draft #99, base #96).
+**Preview branch:** `preview/yield-simulation` (draft #99, base #96), together with its add-ons #100 (R1) and #101 (seed runner), merged into it before any deployment.
 - It is #96 with #97 (lockfile) and #98 (access gate) merged in, using merge commits.
 - Its lockfile was regenerated for this tree on a GitHub runner (pnpm 10.12.1; frozen reinstall succeeded).
 - Re-generate it whenever a `package.json` on the branch changes.
@@ -55,32 +56,53 @@ separate from the live Railway project.
 seed. No guard is changed, and no `preview` value is added. The development configuration is what makes the
 access gate mandatory.
 
-## Data
+## Data: seed runner (recommended approach; #101)
 
-1. Run the migrations through 0029 on the **new** database (the API pre-deploy step).
-2. Run `pnpm db:seed` (demo workspace), then `pnpm seed:yield`. **Open point:** the API runtime image contains
-   only `dist` and production dependencies. These seeds and `dev-token` are `tsx` scripts over `src`, so they
-   cannot run inside the deployed API service. Choose one of:
-   - a one-off job built from the `Dockerfile`'s `deps` stage, with the preview variables;
-   - running them from a workstation through a **temporary** TCP proxy on the preview database, removed
-     afterwards.
+**Decision:** a separate one-off container, the `Dockerfile` target `app-seed-runner`.
 
-   Either way, run the seeds against the preview database only.
-3. The seed's own guard (`APP_ENV` development or test) is the second check, after the project check.
+Alternatives not chosen:
+- Compiling the seeds into `dist` would put seed tooling into the production API image.
+- CI-produced seed artifacts would add a new import path into the database.
+
+The runner keeps the existing seeds and their guards, and the production images stay unchanged.
+
+The runner refuses, with exit 1, unless all three hold:
+1. `APP_ENV` is `development` or `test`, checked before connecting;
+2. the database holds no workspace the development seed did not create (`demo`, `other`) and no user from a
+   real identity issuer (anything but `dev`);
+3. migrations are applied through 0029.
+
+It then runs `@metafarm/db seed` and `seed:yield`. Both are idempotent, and the second keeps its own APP_ENV
+guard. It mints no tokens and prints no secret. CI builds the image and checks the refusals (#101).
+
+**Where and how it runs** (preview project only, after the API's pre-deploy migrations succeeded):
+
+| Step | Where | Command / setting |
+|---|---|---|
+| 1 | Preview project → new service `seed-runner` | Source: the preview branch. Variable `APP=seed-runner` selects the target. Restart policy: **never**. No domain, no health check. |
+| 2 | Its variables (names only) | `APP_ENV=development`, `DATABASE_URL` (reference to the **preview** Postgres), `REDIS_URL` (preview Redis), `DEV_AUTH_SECRET` (reference to the preview API's value) |
+| 3 | Deploy once | Default command: `node --import tsx src/scripts/preview-seed-runner.ts` (in `/repo/apps/api`). Expected log: `checks passed … migrations through 0029_…`, the seeds' output, `[preview-seed] done`. |
+| 4 | Afterwards | Remove the service, or leave it stopped. A re-run is idempotent ("already seeded"). |
+
+The same runner works from a workstation against a database the operator can reach:
+`APP_ENV=development DATABASE_URL=… DEV_AUTH_SECRET=… pnpm --filter @metafarm/api preview-seed`.
+This is not recommended for the preview, because it needs a public TCP proxy on the preview database.
 
 Expected result:
 - Q1 and Q2 published, with unsigned simulation intents;
-- Q3 frozen and awaiting approval.
+- Q3 frozen and awaiting approval (`under_review`).
 
 Dev users: `dev-user`, `dev-yield-preparer` and `dev-yield-auditor`. These subjects exist only in the preview
 database, under the `dev` issuer. They cannot match a production identity, which uses OIDC and another database.
 
 ## Access
 
-- The browser gets HTTP Basic for the web origin (user `preview`).
-- The API admits only bearer tokens minted with the preview `DEV_AUTH_SECRET`
-  (`pnpm --filter @metafarm/api dev-token dev-user`, run from the same one-off job or workstation as the seed).
-  The operator pastes the token on the sign-in page.
+- The browser gets HTTP Basic for the web origin (user `preview`; password = the preview
+  `PREVIEW_ACCESS_PASSWORD`, shared out of band).
+- **Dev tokens** are minted by the operator **on their own workstation**. `dev-token` only signs a JWT; it needs
+  no database and no platform runtime, so no token ever appears in platform logs:
+  `APP_ENV=development DEV_AUTH_SECRET=<preview secret> pnpm --filter @metafarm/api dev-token dev-user`.
+  The token is valid for 8 hours; paste it on the sign-in page. The command refuses staging and production.
 - Unauthenticated API requests get 401, except `/healthz`, `/readyz` and CORS preflights.
 
 ## Verification after deploy
@@ -116,7 +138,7 @@ Then check:
 | 2 | Explicit security sign-off on migrations 0026–0029 | **Not met.** |
 | 3 | Access gate implemented and tested | **Met in code.** #98 has automated tests in CI and is merged into the preview branch (#99). It has not been exercised on a deployed preview, because there is none. |
 | 4 | Preview branch builds from a lockfile | **Met in code.** #99 carries its own lockfile; see #99's CI for the image builds. |
-| 5 | Preview credentials available without committing them | **Not met.** They must be created in the new project by the owner, or by Claude after approval. A way to run the seed and `dev-token` (see Data) must also be chosen. |
+| 5 | Preview credentials available without committing them | **Not met.** `DEV_AUTH_SECRET` and `PREVIEW_ACCESS_PASSWORD` must be created in the new project's variables by the owner, or by Claude after approval. The seed and token method is settled: seed runner (#101) and offline `dev-token`. |
 | 6 | Preview database isolated from production | Design only (a new project). |
 | 7 | Dev auth cannot impersonate a production user | **Met by design.** Separate database; `dev` issuer versus OIDC; dev auth is refused in staging and production. |
 | 8 | Seed refuses staging and production | **Met.** The guard is in the code and refuses before connecting. |
