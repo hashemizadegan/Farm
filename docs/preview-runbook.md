@@ -52,7 +52,8 @@ E2E_GATED_WEB_URL=http://localhost:3101 E2E_PREVIEW_ACCESS_PASSWORD=local-only-p
    railway status          # check: project metafarm-yield-preview, NOT melodious-liberation
    ```
 
-2. **Plan.** Read-only. It fails immediately if the linked project is not a preview project:
+2. **Plan.** Read-only. It fails immediately if the linked project is not a preview project. **Always pass
+   `--file`:** without it the CLI picks up `.railway/railway.ts`, which describes the live project.
 
    ```bash
    railway config plan --file infra/railway/preview/railway.ts
@@ -61,7 +62,8 @@ E2E_GATED_WEB_URL=http://localhost:3101 E2E_PREVIEW_ACCESS_PASSWORD=local-only-p
    Expected: create `postgres`, the `postgres-data` volume, `redis`, `api`, `web` and `seed-runner`. **Nothing**
    is deleted.
 
-3. **Apply.** The services are created; the GitHub source deploys `preview/yield-simulation`:
+3. **Apply.** The services are created; the GitHub source deploys `preview/yield-simulation`. That branch must
+   already contain #100, #101 and #103 (merged by the owner; check `git log origin/preview/yield-simulation`).
 
    ```bash
    railway config apply --file infra/railway/preview/railway.ts
@@ -76,8 +78,10 @@ E2E_GATED_WEB_URL=http://localhost:3101 E2E_PREVIEW_ACCESS_PASSWORD=local-only-p
    railway variables --service web      --set "PREVIEW_ACCESS_PASSWORD=$(openssl rand -base64 32)"
    ```
 
-   - Give the seed runner the same `DEV_AUTH_SECRET` as the API: a reference variable
-     `${{api.DEV_AUTH_SECRET}}` in the seed-runner service.
+   - The seed runner reads the API's `DEV_AUTH_SECRET` by reference (declared in the IaC file); nothing to set.
+   - The first deployments made by `apply` start **before** these values exist, so they fail closed: the API refuses
+     to start without `DEV_AUTH_SECRET`, and the seed runner refuses (no secret, or migrations not yet at 0029).
+     That is expected. Redeploy `api`, then `web` (after §2.5), then the seed runner (§4).
    - Keep `DEV_AUTH_SECRET` and `PREVIEW_ACCESS_PASSWORD` in your password manager. You need them for tokens and
      smoke tests.
 
@@ -135,8 +139,7 @@ A re-run reports "already seeded" and changes nothing.
 ```bash
 E2E_REMOTE=1 E2E_WEB_URL=https://<web domain> E2E_API_URL=https://<api domain> \
 E2E_PREVIEW_ACCESS_PASSWORD='<preview PREVIEW_ACCESS_PASSWORD>' DEV_AUTH_SECRET='<preview DEV_AUTH_SECRET>' \
-NEXT_PUBLIC_YIELD_PAGES_ENABLED=true \
-  pnpm --filter @metafarm/e2e exec playwright test preview-gate.spec.ts yield-operator.spec.ts
+  pnpm test:e2e
 ```
 
 The suite checks:
@@ -146,8 +149,10 @@ The suite checks:
   four-eyes, dossier, carry-in and the unsigned intents table.
 - **Clean pages:** no console or hydration errors.
 
-Screenshots go to `tests/yield-screenshots/`; traces of failures go to `tests/test-results/`. Run only these two
-specs remotely: the rest of the suite creates data.
+In remote mode the config runs only `preview-gate.spec.ts` and `yield-operator.spec.ts`: the rest of the suite needs
+a worker (not deployed in the preview) and creates unrelated data. `E2E_REMOTE_ALL=1` overrides that deliberately.
+Nothing is seeded from the workstation in remote mode. Screenshots go to `tests/yield-screenshots/`; traces, videos
+and screenshots of failures go to `tests/test-results/` and the HTML report to `tests/playwright-report/`.
 
 ## 7. Rollback and teardown
 

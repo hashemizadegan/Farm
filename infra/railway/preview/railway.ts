@@ -104,6 +104,8 @@ export default defineRailway((ctx) => {
     env: {
       APP: "seed-runner",
       ...previewApiEnv,
+      // The API's value by reference, so the seed signs in with exactly the secret the API verifies.
+      DEV_AUTH_SECRET: api.env.DEV_AUTH_SECRET,
     },
   });
 
