@@ -93,7 +93,9 @@ d("yield operator read API (Y8)", () => {
     } while (cursor);
     expect(seen).toHaveLength(4);
     expect(new Set(seen).size).toBe(4);
-    expect(seen[0]).toBe(cycleId);
+    // All four were created in one transaction (same created_at): the id breaks the tie, so the order is fixed
+    // but not the insertion order.
+    expect(seen).toContain(cycleId);
     expect((await get("/cycles?status=calculated")).json().items.map((c: { id: string }) => c.id)).toEqual([cycleId]);
     expect((await get(`/cycles?cursor=${"0".repeat(8)}-0000-4000-8000-${"0".repeat(12)}`)).statusCode).toBe(400);
     expect((await get("/cycles?status=bogus")).statusCode).toBe(400);
