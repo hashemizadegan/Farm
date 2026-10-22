@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { PARTY_LINK_ERROR_CODES, PartyLinkError, toPartyLinkError } from "./repositories/party-links";
+import { PARTY_LINK_ERROR_CODES, toPartyLinkError, type PartyLinkError } from "./repositories/party-links";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const up = readFileSync(path.resolve(here, "../migrations/0025_party_account_links.up.sql"), "utf8").replace(/--[^\n]*/g, "");
