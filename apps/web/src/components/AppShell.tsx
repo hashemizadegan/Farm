@@ -10,6 +10,7 @@ import { LanguageSwitch } from "./LanguageSwitch";
 import { OfflineStatus } from "./OfflineStatus";
 import { ServiceWorker } from "./ServiceWorker";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { yieldPagesEnabled } from "@/lib/yield";
 
 /** Routes that render without the app chrome (sign-in and the OIDC callback). */
 const BARE = ["/sign-in", "/auth/callback", "/verify"];
@@ -54,7 +55,7 @@ function RouteFocus({ children, className }: { children: ReactNode; className?: 
   );
 }
 
-const NAV: { href: string; key: "overview" | "myTasks" | "schedule" | "farms" | "inventory" | "equipment" | "reports" | "rwa" | "assets" | "team" | "settings"; match?: (p: string) => boolean }[] = [
+const NAV: { href: string; key: "overview" | "myTasks" | "schedule" | "farms" | "inventory" | "equipment" | "reports" | "rwa" | "yield" | "assets" | "team" | "settings"; match?: (p: string) => boolean }[] = [
   { href: "/", key: "overview", match: (p) => p === "/" },
   { href: "/tasks", key: "myTasks" },
   { href: "/schedule", key: "schedule" },
@@ -63,6 +64,8 @@ const NAV: { href: string; key: "overview" | "myTasks" | "schedule" | "farms" | 
   { href: "/equipment", key: "equipment" },
   { href: "/reports", key: "reports" },
   { href: "/rwa", key: "rwa" },
+  // Y10: internal staff pages, only in builds with NEXT_PUBLIC_YIELD_PAGES_ENABLED (off by default).
+  ...(yieldPagesEnabled() ? [{ href: "/yield", key: "yield" as const }] : []),
   { href: "/assets", key: "assets" },
   { href: "/team", key: "team" },
   { href: "/settings", key: "settings" },
