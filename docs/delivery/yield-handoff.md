@@ -6,6 +6,17 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 15:00 local (G1–G3 started: adapter shapes, frozen artifacts, carry-forward)
+
+Verified before any change:
+- the `integration/yield-ownership-join` worktree is clean;
+- local HEAD = origin = PR #96 head = `649ca706d86abdb8e88a30211a93011d311101ad`;
+- #96 is an open, unmerged draft;
+- `main` = `b59eaff`, untouched.
+
+Work continues on the #96 branch (the established pattern for the integration). Results are recorded in the next
+entry.
+
 ## 2026-10-22, afternoon (line join done: integration PR #96, engine wired)
 
 | Item | Value |
