@@ -6,6 +6,43 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 08:30 local (CI timing bisect for #80: runner variance, no code-level overhead)
+
+Owner asked to isolate the ~25–30 s unit-job overhead of #80 (`703caac`) relative to #79 (`cf10f41`).
+
+**Method:** three variants of `703caac`, each in a diagnostic draft PR based on the #79 branch, so CI ran exactly
+#80 + one change. They ran in two concurrent rounds with fresh runs of #79 and #80 as controls. Test code only; no
+production, config or deployment changes.
+
+`pnpm test:unit` step (unit job wall clock is about 25–35 s more, for setup and install):
+
+| Code | Variant | Round 1 | Round 2 | Earlier |
+| --- | --- | --- | --- | --- |
+| #79 `cf10f41` | baseline (run 39689244592) | 98 s | 104 s | 77, 68 s |
+| #80 `703caac` | control (run 39715678632) | 54 s | 98 s | 98, 102, 97 s |
+| #81 `91934e2` | 1: shallow freeze only | 106 s | 67 s | — |
+| #82 `b8faf6a` | 2: memo test removed | 49 s | 107 s | — |
+| #83 `7ef0185` | 3: envelope on the #79 dust-0 unfrozen cycle | 103 s | 99 s | — |
+
+All 10 runs passed 14/14.
+
+- **Finding:** there is no code-level overhead.
+  - Every variant, the #79 baseline included, falls in a ~50–70 s or a ~97–107 s band from run to run. The earlier
+    comparison used two #79 samples that both happened to be fast.
+  - Means: #79 87 s (n = 4), #80 90 s (n = 5).
+- **Deep freeze:** about 0 ms locally on the 16,384-holder cycle (85,704 objects). The pipeline already freezes the
+  artifact and snapshot. Kept.
+- **Memo test:** it already uses a 24-holder micro-fixture (2 s locally) and never builds a 16,384-holder cycle.
+  Kept.
+- **Dust threshold:** dust 0 and dust 1,000 cycles cost the same. The envelope tests stay on `SHARED_16K`.
+- **Likely source (unconfirmed):** the CI annotations say `ubuntu-latest` is migrating to Ubuntu 26 from October 19,
+  2026, so runner images or hardware may be mixed. The job logs, which would show it, are not readable here.
+- **Outcome:** no change to #80. All pinned values are intact (layout 2 leaves, RFC 9162 path lengths, read-model
+  image `4c0ff458…` / 16,412,652 bytes, C# samples).
+- **Clean-up:** the diagnostic PRs #81–#83 are closed. Their branches (`diag/yield-80-nofreeze`, `-nomemo`, `-dust0`)
+  could not be deleted from this sandbox (git proxy HTTP 403) and can be removed on GitHub.
+- **Holds unchanged:** no merges, deployments, signing, chain or network access.
+
 ## 2026-10-22, 02:45 local (shared 16,384-holder cycle across the #78 and #79 suites)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
