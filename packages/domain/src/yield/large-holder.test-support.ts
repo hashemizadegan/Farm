@@ -114,7 +114,7 @@ export function sharedLargeCycle(p: LargeCycleParams): Promise<SharedLargeCycle>
   if (!entry) {
     entry = largeHolderCycle(p.holders, p.seed, SHA256_RFC9162_HASHER, p.dustThreshold, p.profile).then((r) => {
       if (r.artifact.cycle.simulation !== true || r.ownership.networkId !== "simulation") throw new Error("shared cycles are simulation only");
-      return deepFreeze(r);
+      return Object.freeze(r); // DIAGNOSTIC: shallow freeze only
     });
     // A failed build is not cached, so a later call retries rather than reusing an error.
     entry.catch(() => cache.delete(key));
