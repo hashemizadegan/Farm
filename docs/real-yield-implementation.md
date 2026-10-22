@@ -62,7 +62,8 @@ Everything below is off by default, simulation-only where it writes, and none of
   - `real_network_ownership`: ownership from a verified RPC source is a real network. The yield-line snapshot accepts
     simulation networks only, and devnet use needs the Y15 approval. This guard is kept, not relaxed;
   - `weight_exceeds_u64`: slot weights beyond the #75 u64 shares;
-  - `carry_not_supported`: cross-cycle carry is not persisted yet;
+  - `carry_from_dossier_refused` and `carry_mismatch`: carry-in comes only from the predecessor's recorded carry-out
+    (0028), by hash;
   - `calculation_refused`: any pipeline refusal, with its own code in the message.
 - **Stored rows:**
   - set hash = the whole cycle artifact's SHA-256;
@@ -72,8 +73,19 @@ Everything below is off by default, simulation-only where it writes, and none of
     row that carries the deferred parties' weight.
 - **Simulation leaf context:** network id 0, a zero cluster identity, epoch 0. Real values come with Y6 final
   (D-26 [Ext]) and Y0 live use.
+- **Persisted at calculate (G2, 0027):**
+  - the frozen artifact as canonical text, its hash checked by the database and equal to the set hash;
+  - every claim leaf with its proof (root = the set root; amount = the party's allocated row).
+  - `calculate` cannot complete without them. Reads come from storage only, and are re-verified:
+    - operators: `GET …/artifact-sets/{setId}/leaves`;
+    - holders, through an active link, behind the holder switches: `GET …/me/yield/cycles/{cycleId}/proof`.
+- **Carry-forward (G3, 0028):**
+  - each calculation records its carry-in and carry-out (canonical, hashed);
+  - the predecessor is fixed by one rule (`yield_carry_source`): the latest published or closed simulation cycle of
+    the same asset ending earlier;
+  - the carry-in must be its carry-out; open intermediate cycles block; real cycles are refused.
+- **Shapes:** `docs/delivery/yield-adapter-shapes.md` (G1).
 - **Still not built:**
-  - Y13 Merkle proofs and unsigned claim intents. The artifact (and so every proof) is recomputable from the stored
-    dossier and index, but it is not stored, and the holder endpoints for it wait for D-26, D-15, D-25, D-27 and
-    D-39;
+  - unsigned claim intents (D-15, D-25, D-27, D-39);
+  - the final leaf context and hasher (Y6 final, D-26 [Ext]);
   - economic reconciliation (Y14) beyond the record checks.
