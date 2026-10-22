@@ -86,7 +86,8 @@ d("account-to-party links (Y12)", () => {
     expect((await call("POST", `/me/party-links/${linkId}/revoke`, "viewer", {})).statusCode).toBe(404);
     expect((await call("POST", `/me/party-links/${linkId}/revoke`, "holder", { reason: "no longer an investor" })).json().status).toBe("revoked");
     expect(await withTenant(pool, tenantId, (tx) => activePartyOfUser(tx, ids.holder!))).toBeNull();
-    expect((await call("POST", `/rwa/account-links/${linkId}/authorise`, "admin")).json().error).toBe("invalid_transition");
+    // The recorded authorisation can never be re-done, and a revoked link stays revoked.
+    expect((await call("POST", `/rwa/account-links/${linkId}/authorise`, "admin")).json().error).toBe("immutable");
     expect((await call("POST", `/rwa/account-links/${linkId}/revoke`, "owner", {})).json().error).toBe("invalid_transition");
   });
 
