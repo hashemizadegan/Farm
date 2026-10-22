@@ -21,7 +21,9 @@ export default async function globalSetup() {
       .sign(new TextEncoder().encode(secret));
 
   // "invitee" is used only by the invitation test, so joining a workspace never affects isolation tests.
-  const tokens = { owner: await mint("dev-user"), other: await mint("dev-other"), invitee: await mint(`dev-invitee-${Date.now().toString(36)}`) };
+  // "newcomer" is a brand-new account on every run (no workspace yet): the first-workspace journey.
+  const run = Date.now().toString(36);
+  const tokens = { owner: await mint("dev-user"), other: await mint("dev-other"), invitee: await mint(`dev-invitee-${run}`), newcomer: await mint(`dev-newcomer-${run}`) };
   const out = path.join(path.dirname(fileURLToPath(import.meta.url)), ".tokens.json");
   writeFileSync(out, JSON.stringify(tokens));
 }
