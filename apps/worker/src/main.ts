@@ -18,9 +18,9 @@ import { startTelemetryConsumer } from "./telemetry/consumer";
 import { startRwaEngine } from "./rwa/start";
 import { twinSnapshotHandler, twinSnapshotSweepHandler } from "./handlers/twin-snapshots";
 import { twinSnapshotBatchHandler, twinSnapshotBatchSweepHandler } from "./handlers/twin-snapshot-batches";
-import { ownershipIndexHandler, ownershipIndexSweepHandler } from "./handlers/ownership-index";
+import { ownershipIndexHandler, ownershipIndexSweepHandler, registerOwnershipSource, type SourceIdentityGuard } from "./handlers/ownership-index";
 import type { OwnershipEventSource } from "@metafarm/domain";
-import { combineOwnershipSources, createBubblegumOwnershipSource, createToken2022OwnershipSource, httpSolanaHistoryRpc } from "@metafarm/chain";
+import { combineOwnershipSources, createBubblegumOwnershipSource, createToken2022OwnershipSource, httpSolanaHistoryRpc, verifyClusterIdentity } from "@metafarm/chain";
 import { createObjectContentStore, createStorageFromEnv } from "@metafarm/storage";
 
 // On Railway the platform assigns PORT; the health server uses it unless HEALTH_PORT is set.
@@ -75,6 +75,22 @@ const ownershipEventSource: OwnershipEventSource | undefined =
         ),
       )
     : undefined;
+
+// Y0: the RPC ownership source is bound to a verified cluster identity (getGenesisHash). Registered here,
+// verified again before every batch; a source that cannot be verified indexes nothing.
+const ownershipIdentityGuard: SourceIdentityGuard | undefined =
+  ownershipEventSource && env.RWA_SOLANA_RPC_URL
+    ? { verifiedBy: "worker:ownership-index", verify: () => verifyClusterIdentity({ url: env.RWA_SOLANA_RPC_URL!, network: env.RWA_SOLANA_NETWORK, label: "RPC" }) }
+    : undefined;
+if (ownershipIdentityGuard)
+  await registerOwnershipSource(pool, ownershipIdentityGuard, env.RWA_SOLANA_NETWORK).then(
+    (id) => logger.info({ sourceIdentityId: id.id.toString(), network: id.network, endpoint: `${id.endpointScheme}://${id.endpointHost}` }, "ownership source cluster identity registered"),
+    (err: unknown) =>
+      logger.error(
+        { code: (err as { code?: string }).code ?? "unknown", ...((err as { details?: object }).details ?? {}), err: err instanceof Error ? `${err.name}: ${err.message}` : String(err) },
+        "ownership source cluster identity not verified; every batch will be refused until it is",
+      ),
+  );
 
 // Object storage for twin snapshots, created only when they are enabled.
 const twinObjectStorage = env.TWIN_SNAPSHOTS_ENABLED ? createStorageFromEnv(env) : undefined;
@@ -152,7 +168,7 @@ const processors: Record<string, Processor> = {
       const view = { id: job.id, name: job.name, attemptsMade: job.attemptsMade, opts: job.opts, discard: () => job.discard(), data: { bucket, idempotencyKey: `ownership-index-sweep:${bucket}` } };
       return wrapHandler("ownership-index-sweep", ownershipIndexSweepHandler(pool, enqueue), deps)(view);
     }
-    return wrapHandler(QUEUES.ownershipIndex, ownershipIndexHandler(pool, source), deps)(job);
+    return wrapHandler(QUEUES.ownershipIndex, ownershipIndexHandler(pool, source, ownershipIdentityGuard), deps)(job);
   }) as Processor,
   [QUEUES.chain]: (async (job) => {
     if (!chainReader) {
