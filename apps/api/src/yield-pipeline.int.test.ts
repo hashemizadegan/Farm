@@ -18,7 +18,9 @@ import {
   createPool,
   createTenantWithOwner,
   insertOwnershipEvents,
+  createYieldCycle,
   migrateUp,
+  transitionYieldCycle,
   proposePartyLink,
   upsertUserBySubject,
   withSystem,
@@ -27,7 +29,7 @@ import {
 } from "@metafarm/db";
 import { base58Encode } from "@metafarm/chain";
 import type { ChainAssetRef, OwnershipEvent, Role } from "@metafarm/domain";
-import { SHA256_RFC9162_HASHER, calculationPolicyHash, canonicalSimulationDossier, verifyClaimLeafProof } from "@metafarm/domain/yield";
+import { SHA256_RFC9162_HASHER, buildClaimIntentBatch, calculationPolicyHash, canonicalSimulationDossier, verifyClaimLeafProof } from "@metafarm/domain/yield";
 import { buildTestApp, tokenFor } from "./test/helpers";
 import { POLICY, dossierFor, h } from "./test/yield-dossier";
 import { createPipelineYieldEngine } from "./lib/yield-pipeline-engine";
@@ -41,6 +43,8 @@ const unhex = (x: string) => Uint8Array.from(x.match(/../g)!.map((b) => parseInt
 d("yield pipeline engine through the workflow (line join)", () => {
   let pool: Pool;
   let app: FastifyInstance;
+  let intentsOff: FastifyInstance;
+  let ownerId: string;
   const sfx = Math.random().toString(36).slice(2, 8);
   const who = (r: Role | "holder" | "holder2") => `yp-${r}-${sfx}`;
   let tenantId: string;
@@ -103,11 +107,14 @@ d("yield pipeline engine through the workflow (line join)", () => {
       await advanceOwnershipCursor(tx, chainAsset, 500n, "fixture");
     });
     secondAssetId = await withTenant(pool, tenantId, async (tx) => (await tx.query<{ id: string }>(`INSERT INTO business_assets (tenant_id, farm_id, kind, name) SELECT tenant_id, farm_id, 'farm_share', 'Second' FROM business_assets WHERE id = $1 RETURNING id`, [assetId])).rows[0]!.id);
-    ({ app } = await buildTestApp({ pool, env: { YIELD_WORKFLOW_ENABLED: "true", PARTY_LINKS_ENABLED: "true", HOLDER_YIELD_ENABLED: "true" }, deps: { yieldEngine: createPipelineYieldEngine() } }));
+    ({ app } = await buildTestApp({ pool, env: { YIELD_WORKFLOW_ENABLED: "true", PARTY_LINKS_ENABLED: "true", HOLDER_YIELD_ENABLED: "true", YIELD_CLAIM_INTENTS_ENABLED: "true" }, deps: { yieldEngine: createPipelineYieldEngine() } }));
+    ({ app: intentsOff } = await buildTestApp({ pool, env: { YIELD_WORKFLOW_ENABLED: "true" }, deps: { yieldEngine: createPipelineYieldEngine() } }));
+    ownerId = ids.owner!;
     const reg = async (n: number) => (await call("POST", "/evidence", "manager", { contentSha256: h(n), evidenceType: "sales_invoice", classification: "confidential" })).json().id as string;
     evidence = { e1: await reg(1), e2: await reg(2) };
   });
   afterAll(async () => {
+    await intentsOff?.close();
     await app?.close();
     await pool?.end();
   });
@@ -227,5 +234,108 @@ d("yield pipeline engine through the workflow (line join)", () => {
     const aPlain = BigInt(plain.allocations.find((r) => r.partyId === pa)!.amount);
     expect(aNow - aPlain).toBe(deferredA);
     expect((await call("GET", `/cycles/${m.id}/reconciliation`, "manager")).json()).toMatchObject({ consistent: true });
+  });
+
+  // ── Y13: unsigned simulation claim intents, from persisted leaves only (migration 0029) ──
+
+  /** A published simulation cycle (calculated, attested, approved by someone else, published). */
+  async function publishedCycle(version: number) {
+    const { id } = await preparedCycle(version);
+    const c = (await call("POST", `/cycles/${id}/calculate`, "manager", {})).json();
+    await call("POST", `/cycles/${id}/submit`, "manager", {});
+    await call("POST", `/cycles/${id}/attestations`, "verifier", { artifactSetId: c.artifactSetId, attestedHash: c.artifactSetHash, statement: "ok" });
+    await call("POST", `/cycles/${id}/approve`, "admin", {});
+    expect((await call("POST", `/cycles/${id}/publish`, "admin", {})).json().status).toBe("published");
+    return { id, setId: c.artifactSetId as string, setHash: c.artifactSetHash as string };
+  }
+
+  it("builds an unsigned intent batch from the stored leaves: deterministic, verifiable, once per set, replayed on retry", async () => {
+    const p = await publishedCycle(21);
+    const key = "00000000-0000-4000-8000-" + randomBytes(6).toString("hex");
+    const first = await call("POST", `/cycles/${p.id}/claim-intents`, "admin", {}, { "idempotency-key": key });
+    expect(first.statusCode, first.body).toBe(201);
+    const view = first.json();
+    expect(view).toMatchObject({ artifactSetId: p.setId, setNumber: 1, batchSha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(view.batch).toMatchObject({ scheme: "metafarm-yield-claim-intent-batch/1", signed: false, simulation: true, network: "simulation", artifactSetHash: p.setHash, cycleId: p.id });
+
+    // Every intent is a stored leaf with a proof that verifies against the set root.
+    const stored = (await call("GET", `/cycles/${p.id}/artifact-sets/${p.setId}/leaves`, "manager")).json();
+    expect(view.intentCount).toBe(stored.items.length);
+    for (const [i, it] of (view.batch.intents as { leafIndex: number; leafHash: string; leafBytes: string; amount: string; signed: boolean; proof: { path: string[] } }[]).entries()) {
+      const l = stored.items[i];
+      expect([it.leafIndex, it.leafHash, it.leafBytes, it.amount, it.signed]).toEqual([l.leafIndex, l.leafHash, l.leafBytes, l.amount, false]);
+      expect(await verifyClaimLeafProof(SHA256_RFC9162_HASHER, unhex(it.leafBytes), { leafIndex: it.leafIndex, treeSize: stored.size, leafHash: it.leafHash, path: it.proof.path, root: stored.root }, { root: stored.root, treeSize: stored.size })).toBe(true);
+    }
+    // Determinism: the same stored set rebuilds the same batch byte for byte.
+    const rebuilt = await buildClaimIntentBatch({
+      network: "simulation",
+      cycleId: p.id,
+      cycleVersion: 21,
+      setNumber: 1,
+      artifactSetHash: p.setHash,
+      merkleRoot: stored.root,
+      createdAt: view.batch.createdAt,
+      payoutMint: SETTLE,
+      economicAssetId: chainAsset.id,
+      leaves: stored.items.map((l: { leafIndex: number; leafHash: string; leafBytes: string; partyId: string; recipient: string; payoutWallet: string; amount: string; hasherId: string; proof: { treeSize: number; path: string[] } }) => ({ ...l, treeSize: l.proof.treeSize, path: l.proof.path, amount: BigInt(l.amount) })),
+    });
+    expect(rebuilt.sha256).toBe(view.batchSha256);
+
+    // A retry with the same key replays; a new generate for the same set is refused; reads return the stored batch.
+    const replay = await call("POST", `/cycles/${p.id}/claim-intents`, "admin", {}, { "idempotency-key": key });
+    expect(replay.headers["idempotent-replayed"]).toBe("true");
+    expect(replay.json()).toEqual(view);
+    const again = await call("POST", `/cycles/${p.id}/claim-intents`, "admin", {});
+    expect([again.statusCode, again.json().error]).toEqual([409, "intents_exist"]);
+    expect((await call("GET", `/cycles/${p.id}/claim-intents`, "verifier")).json()).toEqual(view);
+    expect((await call("POST", `/cycles/${p.id}/claim-intents`, "manager", {})).statusCode).toBe(403);
+  });
+
+  it("refuses unpublished, disputed and real cycles, and is off unless enabled", async () => {
+    const { id } = await preparedCycle(22);
+    await call("POST", `/cycles/${id}/calculate`, "manager", {});
+    const r = await call("POST", `/cycles/${id}/claim-intents`, "admin", {});
+    expect([r.statusCode, r.json().error]).toEqual([409, "invalid_state"]);
+
+    const p = await publishedCycle(23);
+    await withTenant(pool, tenantId, (tx) => transitionYieldCycle(tx, p.id, { to: "disputed", actorUserId: ownerId, reason: "query" }));
+    expect((await call("POST", `/cycles/${p.id}/claim-intents`, "admin", {})).json().error).toBe("payouts_paused");
+
+    const real = await withTenant(pool, tenantId, (tx) => createYieldCycle(tx, { businessAssetId: assetId, periodStart: "2025-01-01", periodEnd: "2025-03-31", simulation: false, network: "solana-devnet", rail: "SOLANA_TOKEN_2022", chainAssetId: chainAsset.id, createdBy: ownerId }));
+    expect((await call("POST", `/cycles/${real.id}/claim-intents`, "admin", {})).json().error).toBe("real_gate");
+
+    const off = await intentsOff.inject({ method: "POST", url: `/v1/tenants/${tenantId}/yield/cycles/${p.id}/claim-intents`, headers: { authorization: `Bearer ${await tokenFor(who("admin"))}` }, payload: {} });
+    expect(off.statusCode).toBe(404);
+    expect((await call("GET", `/cycles/${id}/claim-intents`, "manager")).statusCode).toBe(404);
+  });
+
+  it("refuses a tampered or missing stored leaf, and stores nothing", async () => {
+    // Stored rows are append-only; only the database owner, with the trigger off, can tamper (as an attacker with owner rights would).
+    const tamper = async (sql: string, setId: string) => {
+      const c = await pool.connect();
+      try {
+        await c.query("BEGIN");
+        await c.query("ALTER TABLE yield_claim_leaves DISABLE TRIGGER yield_claim_leaves_append_only");
+        await c.query(sql, [setId]);
+        await c.query("ALTER TABLE yield_claim_leaves ENABLE TRIGGER yield_claim_leaves_append_only");
+        await c.query("COMMIT");
+      } catch (e) {
+        await c.query("ROLLBACK");
+        throw e;
+      } finally {
+        c.release();
+      }
+    };
+    const a = await publishedCycle(24);
+    await tamper(`UPDATE yield_claim_leaves SET proof_path = ARRAY['${"0".repeat(64)}'] WHERE artifact_set_id = $1`, a.setId);
+    const r1 = await call("POST", `/cycles/${a.id}/claim-intents`, "admin", {});
+    expect([r1.statusCode, r1.json().error]).toEqual([409, "proof_invalid"]);
+    expect((await call("GET", `/cycles/${a.id}/claim-intents`, "admin")).statusCode).toBe(404);
+
+    const b = await publishedCycle(25);
+    await tamper(`DELETE FROM yield_claim_leaves WHERE artifact_set_id = $1`, b.setId);
+    const r2 = await call("POST", `/cycles/${b.id}/claim-intents`, "admin", {});
+    expect([r2.statusCode, r2.json().error]).toEqual([409, "artifact_mismatch"]);
+    expect((await call("GET", `/cycles/${b.id}/claim-intents`, "admin")).statusCode).toBe(404);
   });
 });

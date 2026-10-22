@@ -12,6 +12,7 @@
  * The public summary (`/v1/public/yield/...`, plan §7.4) is deliberately not registered: it waits for D-30.
  * Holder-facing endpoints wait for D-29 (Y12/Y13). Nothing here contacts a chain.
  */
+import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   InvalidCursorError,
@@ -23,6 +24,9 @@ import {
   createYieldCycle,
   getYieldCarry,
   latestSimulationDossier,
+  getClaimIntentBatch,
+  getFrozenArtifact,
+  recordClaimIntentBatch,
   listYieldClaimLeaves,
   yieldCarryIn,
   listYieldInputs,
@@ -55,10 +59,14 @@ import {
   CarryLedgerError,
   EMPTY_CARRY_LEDGER,
   SHA256_RFC9162_HASHER,
+  SIMULATION_NETWORK_IDS,
   SimulationDossierError,
+  buildClaimIntentBatch,
   canonicalSimulationDossier,
   carryLedgerHash,
   parseCarryLedger,
+  decodeClaimLeaf,
+  decodeKey32,
   parseSimulationDossier,
   simulationDossierHash,
   verifyClaimLeafProof,
@@ -281,6 +289,8 @@ const STATUS_OF: Partial<Record<YieldStoreErrorCode, number>> = {
   real_gate: 409,
   cycle_not_draft: 409,
   artifact_missing: 409,
+  invalid_state: 409,
+  intents_exist: 409,
   artifact_mismatch: 409,
   carry_source_mismatch: 409,
   carry_source_missing: 409,
@@ -526,6 +536,105 @@ export async function yieldWorkflowRoutes(app: FastifyInstance) {
       return addYieldAttestation(tx, { artifactSetId: b.artifactSetId, attesterUserId: userId, kind: b.kind, attestedHash: b.attestedHash, statement: b.statement });
     });
     return reply.status(201).send({ id });
+  });
+
+  // ── Y13: unsigned simulation claim intents (data only), from persisted leaves ─────────────
+
+  const intentsEnabled = () => {
+    if (!env.YIELD_CLAIM_INTENTS_ENABLED) throw new HttpError(404, "not_found", "route not found");
+  };
+  const hexOf = (b: Uint8Array) => [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  const refuse = (code: string, message: string): never => {
+    throw new HttpError(409, code, message);
+  };
+
+  /**
+   * Builds a cycle's batch from **stored** data only: the published cycle's approved set, its frozen artifact (the
+   * artifact's SHA-256 must be the set hash) and its persisted leaves, every proof re-verified against the set root
+   * and every decoded leaf checked against the artifact and the cycle. Any failure refuses; nothing is stored.
+   */
+  const buildIntents = async (tx: TenantTx, cycleId: string) => {
+    const cycle = await getYieldCycle(tx, cycleId, true);
+    if (!cycle) throw notFound("yield cycle");
+    if (!cycle.simulation) refuse("real_gate", "claim intents are built for simulation cycles only");
+    if (cycle.status === "disputed") refuse("payouts_paused", "the cycle is disputed: payouts are paused");
+    if (cycle.status !== "published") refuse("invalid_state", `claim intents need a published cycle (it is ${cycle.status})`);
+    const set = (await listYieldArtifactSets(tx, cycleId)).find((s) => s.status === "approved" && s.setHash === cycle.artifactSetHash);
+    if (!set) refuse("artifact_missing", "the published cycle has no approved set with its hash");
+    const art = await getFrozenArtifact(tx, set!.id);
+    if (!art) refuse("artifact_missing", "the approved set has no persisted artifact");
+    if (art!.sha256 !== set!.setHash || createHash("sha256").update(art!.body, "utf8").digest("hex") !== set!.setHash) refuse("artifact_mismatch", "the persisted artifact does not hash to its set");
+    let doc: { scheme?: string; cycle?: { id?: string; version?: number; simulation?: boolean }; ownership?: { networkId?: string }; claimTree?: { root?: string; size?: number; hasherId?: string; leaves?: { leafIndex: number; leafHash: string; leafBytes: string; amount: string; partyId: string }[] } | null };
+    try {
+      doc = JSON.parse(art!.body);
+    } catch {
+      return refuse("artifact_mismatch", "the persisted artifact is not JSON");
+    }
+    if (doc.cycle?.id !== cycle.id || doc.cycle?.version !== cycle.version || doc.cycle?.simulation !== true) refuse("artifact_mismatch", "the artifact is not this simulation cycle's");
+    const network = doc.ownership?.networkId ?? "";
+    if (!(SIMULATION_NETWORK_IDS as readonly string[]).includes(network)) refuse("non_simulation_network", `the artifact names network ${network}: intents are simulation-only`);
+    const tree = doc.claimTree;
+    if (!tree || !tree.leaves?.length) refuse("nothing_payable", "the set has no claim leaves");
+    if (tree!.root !== set!.merkleRoot || tree!.size !== art!.leafCount) refuse("artifact_mismatch", "the artifact's tree is not the set's");
+    const stored = await listYieldClaimLeaves(tx, set!.id);
+    if (stored.length !== art!.leafCount) refuse("artifact_mismatch", `${stored.length} stored leaves for ${art!.leafCount} in the artifact`);
+    const mint = hexOf(decodeKey32("settlement mint", cycle.settlementMint));
+    const assetBytes = hexOf(decodeKey32("chain asset", cycle.chainAssetId));
+    const cycleIdHex = cycle.id.replace(/-/g, "");
+    for (const l of stored) {
+      await assertStoredProof(l, set!.merkleRoot);
+      const a = tree!.leaves!.find((x) => x.leafIndex === l.leafIndex);
+      if (!a || a.leafHash !== l.leafHash || a.leafBytes !== l.leafBytes || a.amount !== l.amount.toString() || a.partyId !== l.partyId) refuse("leaf_mismatch", `stored leaf ${l.leafIndex} differs from the artifact`);
+      const f = await decodeClaimLeaf(Uint8Array.from(l.leafBytes.match(/../g) ?? [], (x) => parseInt(x, 16)));
+      if (f.amount !== l.amount || hexOf(f.recipient) !== l.recipient || hexOf(f.payoutMint) !== mint || hexOf(f.economicAssetId) !== assetBytes || hexOf(f.cycleId) !== cycleIdHex || f.cycleVersion !== cycle.version || f.leafIndex !== l.leafIndex)
+        refuse("leaf_mismatch", `stored leaf ${l.leafIndex} does not encode its recorded fields`);
+    }
+    const built = await buildClaimIntentBatch({
+      network,
+      cycleId: cycle.id,
+      cycleVersion: cycle.version,
+      setNumber: set!.setNumber,
+      artifactSetHash: set!.setHash,
+      merkleRoot: set!.merkleRoot,
+      createdAt: art!.createdAt.toISOString(),
+      payoutMint: cycle.settlementMint!,
+      economicAssetId: cycle.chainAssetId,
+      leaves: stored,
+    });
+    return { set: set!, ...built };
+  };
+  const toBatchView = (b: { setNumber: number; artifactSetId: string; sha256: string; body: string; intentCount: number }) => ({
+    artifactSetId: b.artifactSetId,
+    setNumber: b.setNumber,
+    batchSha256: b.sha256,
+    intentCount: b.intentCount,
+    // The canonical body as stored (bigints as decimal strings).
+    batch: JSON.parse(b.body) as unknown,
+  });
+
+  /** Generates (once per approved set) the cycle's unsigned simulation claim-intent batch. */
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/claim-intents", async (req, reply) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    intentsEnabled();
+    const out = await run(req, "yield:approve", async (tx, userId) => {
+      const b = await buildIntents(tx, cycleId);
+      if (await getClaimIntentBatch(tx, cycleId, b.set.id)) refuse("intents_exist", "this set's intent batch already exists; a new batch needs a new frozen set");
+      const row = await recordClaimIntentBatch(tx, cycleId, { artifactSetId: b.set.id, setNumber: b.set.setNumber, body: b.canonical, sha256: b.sha256, intentCount: b.batch.intents.length, createdBy: userId });
+      return toBatchView(row);
+    });
+    return reply.status(201).send(out);
+  });
+
+  /** The cycle's stored batch, re-hashed on read (409 artifact_mismatch if it no longer matches). */
+  app.get("/v1/tenants/:tenantId/yield/cycles/:cycleId/claim-intents", async (req) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    intentsEnabled();
+    return run(req, "yield:read", async (tx) => {
+      const row = await getClaimIntentBatch(tx, cycleId);
+      if (!row) throw notFound("claim-intent batch");
+      if (createHash("sha256").update(row.body, "utf8").digest("hex") !== row.sha256) refuse("artifact_mismatch", "the stored batch does not hash to its recorded hash");
+      return toBatchView(row);
+    });
   });
 
   /** Four-eyes approval (the database refuses the cycle's creator or preparer) after the simulation quorum. */

@@ -39,6 +39,8 @@ export const YIELD_STORE_ERROR_CODES = [
   "evidence_retention_unapproved",
   "artifact_missing",
   "artifact_mismatch",
+  "invalid_state",
+  "intents_exist",
   "carry_source_mismatch",
   "carry_source_missing",
   "carry_mismatch",
@@ -64,6 +66,8 @@ const CONSTRAINT_CODES: Record<string, YieldStoreErrorCode> = {
   yield_evidence_simulation_only: "evidence_retention_unapproved",
   yield_ownership_snapshots_source_identity: "unverified_source",
   yield_ownership_snapshots_source_identity_id_network_fkey: "unverified_source",
+  yield_claim_intent_batches_artifact_set_id_key: "intents_exist",
+  yield_claim_intent_batches_cycle_id_set_number_batch_sha256_key: "intents_exist",
   yield_frozen_artifacts_content_hash: "artifact_mismatch",
   yield_frozen_artifacts_artifact_set_id_key: "duplicate",
   yield_carry_ledgers_in_hash: "carry_mismatch",
@@ -846,13 +850,13 @@ export async function getYieldCarry(tx: TenantTx, artifactSetId: string): Promis
   return x ? { artifactSetId: x.artifact_set_id, sourceSetId: x.source_set_id, ledgerIn: { body: x.ledger_in, sha256: x.ledger_in_sha256 }, ledgerOut: { body: x.ledger_out, sha256: x.ledger_out_sha256 } } : undefined;
 }
 
-export async function getFrozenArtifact(tx: TenantTx, artifactSetId: string): Promise<{ scheme: string; body: string; sha256: string; leafCount: number } | undefined> {
-  const r = await tx.query<{ scheme: string; body: string; artifact_sha256: string; leaf_count: number }>(
-    `SELECT scheme, body, artifact_sha256, leaf_count FROM yield_frozen_artifacts WHERE tenant_id = $1 AND artifact_set_id = $2`,
+export async function getFrozenArtifact(tx: TenantTx, artifactSetId: string): Promise<{ scheme: string; body: string; sha256: string; leafCount: number; createdAt: Date } | undefined> {
+  const r = await tx.query<{ scheme: string; body: string; artifact_sha256: string; leaf_count: number; created_at: Date }>(
+    `SELECT scheme, body, artifact_sha256, leaf_count, created_at FROM yield_frozen_artifacts WHERE tenant_id = $1 AND artifact_set_id = $2`,
     [tx.tenantId, artifactSetId],
   );
   const x = r.rows[0];
-  return x ? { scheme: x.scheme, body: x.body, sha256: x.artifact_sha256, leafCount: x.leaf_count } : undefined;
+  return x ? { scheme: x.scheme, body: x.body, sha256: x.artifact_sha256, leafCount: x.leaf_count, createdAt: x.created_at } : undefined;
 }
 
 export interface YieldClaimLeafRow extends YieldFrozenLeafRecord {
@@ -886,4 +890,41 @@ export async function listYieldClaimLeaves(tx: TenantTx, artifactSetId: string):
 export async function getYieldClaimLeafOfParty(tx: TenantTx, artifactSetId: string, partyId: string): Promise<YieldClaimLeafRow | undefined> {
   const r = await tx.query<LeafDb>(`${LEAF_SELECT} WHERE tenant_id = $1 AND artifact_set_id = $2 AND party_id = $3`, [tx.tenantId, artifactSetId, partyId]);
   return r.rows[0] ? toLeaf(r.rows[0]) : undefined;
+}
+
+
+// ── Unsigned claim-intent batches (Y13, migration 0029) ─────────────────
+
+export interface ClaimIntentBatchRow {
+  artifactSetId: string;
+  setNumber: number;
+  sha256: string;
+  body: string;
+  intentCount: number;
+  createdBy: string;
+  createdAt: Date;
+}
+
+/** Stores a canonical batch (built and hashed by the yield domain). One per approved set; append-only. */
+export async function recordClaimIntentBatch(tx: TenantTx, cycleId: string, b: { artifactSetId: string; setNumber: number; body: string; sha256: string; intentCount: number; createdBy: string }): Promise<ClaimIntentBatchRow> {
+  hash("batch sha256", b.sha256);
+  await atomically(tx, () =>
+    tx.query(
+      `INSERT INTO yield_claim_intent_batches (tenant_id, cycle_id, artifact_set_id, set_number, batch_sha256, body, intent_count, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [tx.tenantId, cycleId, b.artifactSetId, b.setNumber, b.sha256, b.body, b.intentCount, b.createdBy],
+    ),
+  );
+  await writeAudit(tx, { actorUserId: b.createdBy, actorType: "user", action: "yield.claim_intents.generate", targetType: "yield_cycle", targetId: cycleId, metadata: { artifactSet: b.artifactSetId, setNumber: b.setNumber, sha256: b.sha256, intents: b.intentCount } });
+  return (await getClaimIntentBatch(tx, cycleId, b.artifactSetId))!;
+}
+
+/** A cycle's batch for a set (or its latest), or undefined. */
+export async function getClaimIntentBatch(tx: TenantTx, cycleId: string, artifactSetId?: string): Promise<ClaimIntentBatchRow | undefined> {
+  const r = await tx.query<{ artifact_set_id: string; set_number: number; batch_sha256: string; body: string; intent_count: number; created_by: string; created_at: Date }>(
+    `SELECT artifact_set_id, set_number, batch_sha256, body, intent_count, created_by, created_at FROM yield_claim_intent_batches
+      WHERE tenant_id = $1 AND cycle_id = $2 AND ($3::uuid IS NULL OR artifact_set_id = $3) ORDER BY set_number DESC LIMIT 1`,
+    [tx.tenantId, cycleId, artifactSetId ?? null],
+  );
+  const x = r.rows[0];
+  return x ? { artifactSetId: x.artifact_set_id, setNumber: x.set_number, sha256: x.batch_sha256, body: x.body, intentCount: x.intent_count, createdBy: x.created_by, createdAt: x.created_at } : undefined;
 }

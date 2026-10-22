@@ -27,3 +27,4 @@ export * from "./ownership-source";
 export * from "./claim-read-model";
 export * from "./simulation-dossier";
 export * from "./carry-ledger";
+export * from "./claim-intent";

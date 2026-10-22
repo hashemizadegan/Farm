@@ -3598,6 +3598,27 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/BadRequest" }
 
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/claim-intents:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Generate the published simulation cycle's unsigned claim-intent batch from its persisted leaves (once per approved set; data only, nothing signed) (yield:approve). Off unless YIELD_WORKFLOW_ENABLED and YIELD_CLAIM_INTENTS_ENABLED (404); refused when deployed."
+      operationId: generateYieldClaimIntents
+      responses:
+        "201": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/YieldClaimIntentBatchView" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+    get:
+      tags: [yield]
+      summary: "The cycle's stored claim-intent batch, re-hashed on read (yield:read). Off unless YIELD_WORKFLOW_ENABLED and YIELD_CLAIM_INTENTS_ENABLED (404)."
+      operationId: getYieldClaimIntents
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/YieldClaimIntentBatchView" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3686,6 +3707,15 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    YieldClaimIntentBatchView:
+      type: object
+      required: [artifactSetId, setNumber, batchSha256, intentCount, batch]
+      properties:
+        artifactSetId: { type: string, format: uuid }
+        setNumber: { type: integer }
+        batchSha256: { type: string, description: "SHA-256 of the canonical batch text (metafarm-yield-claim-intent-batch/1)." }
+        intentCount: { type: integer }
+        batch: { type: object, description: "The canonical batch; amounts as decimal strings; signed is always false." }
     YieldCycleStatus:
       type: string
       enum: [draft, inputs_locked, calculated, under_review, approved, published, funded, distributing, disputed, closed, cancelled, abandoned, superseded]

@@ -1156,6 +1156,99 @@ export interface YieldCalculationResult {
 - a leaf that does not pay its party's allocated amount;
 - a result that ignored the platform's carry-in.
 
+## 9. Unsigned simulation claim intents (Y13, migration 0029)
+
+`packages/domain/src/yield/claim-intent.ts` (types `UnsignedClaimIntent`, `ClaimIntentBatch`; builder
+`buildClaimIntentBatch`). Schemes `metafarm-yield-claim-intent/1` and `metafarm-yield-claim-intent-batch/1`, both at
+`version: 1`.
+
+```ts
+export interface UnsignedClaimIntent {
+  scheme: "metafarm-yield-claim-intent/1";
+  version: 1;
+  signed: false;            // never signed by the platform
+  simulation: true;
+  network: string;          // the artifact's snapshot network; simulation networks only
+  cycleId: string;
+  cycleVersion: number;
+  setNumber: number;
+  artifactSetHash: string;  // binds the intent to its frozen set (= the stored artifact's SHA-256)
+  merkleRoot: string;
+  treeSize: number;
+  leafIndex: number;
+  leafHash: string;
+  leafBytes: string;        // hex of the stored leaf bytes
+  proof: { hasherId: string; path: string[]; pathSha256: string };  // stored RFC 9162 path and its hash
+  partyId: string;
+  recipient: string;        // hex of the leaf's 32 recipient bytes
+  payoutAddress: string;
+  amount: bigint;           // settlement base units, u64 (decimal string in JSON)
+  payoutMint: string;
+  economicAssetId: string;
+  createdAt: string;        // the stored artifact's time, so the batch is identical whenever it is rebuilt
+}
+```
+
+A batch has the same header fields (`scheme`, `version`, `signed: false`, `simulation: true`, `network`, `cycleId`,
+`cycleVersion`, `setNumber`, `artifactSetHash`, `merkleRoot`, `treeSize`, `createdAt`) and `intents`, ordered by leaf
+index.
+
+**Canonical form and hash:** `canonicalYieldArtifact(batch)` and its SHA-256, which is `batchSha256`. One stored set
+gives the same batch byte for byte. `createdAt` is the frozen artifact's own `created_at`, not the request time.
+
+**Minimal example** (one leaf; canonical keys sorted; shown indented):
+
+```json
+{
+  "artifactSetHash": "<64 hex>", "createdAt": "2026-10-22T10:00:00.000Z", "cycleId": "<uuid>", "cycleVersion": 1,
+  "intents": [{
+    "amount": "2295000000", "artifactSetHash": "<64 hex>", "createdAt": "2026-10-22T10:00:00.000Z", "cycleId": "<uuid>",
+    "cycleVersion": 1, "economicAssetId": "<base58 mint>", "leafBytes": "<466 hex>", "leafHash": "<64 hex>", "leafIndex": 0,
+    "merkleRoot": "<64 hex>", "network": "simulation", "partyId": "<uuid>", "payoutAddress": "<64 hex>",
+    "payoutMint": "So11111111111111111111111111111111111111112",
+    "proof": { "hasherId": "sha256-rfc9162", "path": [], "pathSha256": "<64 hex>" },
+    "recipient": "<64 hex>", "scheme": "metafarm-yield-claim-intent/1", "setNumber": 1, "signed": false,
+    "simulation": true, "treeSize": 1, "version": 1
+  }],
+  "merkleRoot": "<64 hex>", "network": "simulation", "scheme": "metafarm-yield-claim-intent-batch/1", "setNumber": 1,
+  "signed": false, "simulation": true, "treeSize": 1, "version": 1
+}
+```
+
+**Generation rules.** `POST …/cycles/{cycleId}/claim-intents` (`yield:approve`; `apps/api/src/routes/yield.ts`,
+`buildIntents`).
+
+The switches: off unless `YIELD_WORKFLOW_ENABLED` and `YIELD_CLAIM_INTENTS_ENABLED` are both set (404 otherwise), and
+the second is refused by configuration in staging and production.
+
+The service reads stored data only and recomputes nothing:
+1. The cycle must be simulation (`real_gate`) and published (`invalid_state`; disputed gives `payouts_paused`).
+2. The approved set must carry the cycle's hash (`artifact_missing`).
+3. The frozen artifact must be stored, and its body must hash to the set hash (`artifact_mismatch`).
+4. The artifact names this cycle and version as simulation, and its snapshot network is a simulation network
+   (`non_simulation_network`).
+5. Its claim tree is the set's (root, size) and has leaves (`nothing_payable`).
+6. Exactly `leaf_count` leaves must be stored (`artifact_mismatch`).
+7. Every stored proof must verify against the set root (`proof_invalid`).
+8. Every stored leaf must equal the artifact's, and decode to its recorded amount, recipient, payout mint, economic
+   asset, cycle id, version and index (`leaf_mismatch`).
+
+One batch per set (`intents_exist`). An idempotent retry replays the stored answer. Refusals store nothing.
+
+**Storage (0029).** `yield_claim_intent_batches` holds the canonical body and its SHA-256, checked by the database.
+The table is unique per `artifact_set_id` and per `(cycle_id, set_number, batch_sha256)`.
+
+The guard trigger allows inserts only for:
+- a published simulation cycle with its approved set;
+- a body that names that set's hash and number and the cycle;
+- a body that is unsigned and simulation;
+- a body with one intent per stored leaf.
+
+The table is append-only with RLS. `GET …/claim-intents` re-hashes the stored body on read (`artifact_mismatch`).
+
+**Not here:** signatures, submission, payout rails, expiry (D-25, D-27), compliance screening (D-15), and holder
+disclosures (D-39).
+
 ## Cross-references
 
 - **Plan:** `docs/delivery/real-yield-distribution-plan.md` (revision 4, plan branch), §4, §6.2, §7.2, §11.1.
