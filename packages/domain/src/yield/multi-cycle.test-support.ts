@@ -72,10 +72,70 @@ export const CHAIN_DEFAULTS: ChainParams = Object.freeze({
 /** Cycle 2's correction: the USD revenue line was under-reported by 500.00 (800,000 → 850,000 minor units). */
 export const CYCLE2_CORRECTED_LINES: EvidenceLine[] = LINES.map((l) => (l.lineId === "rev-usd" ? { ...l, amount: 850_000n } : l));
 
+export type ChainServingErrorCode = "unknown_cycle" | "unknown_version" | "stale_cycle" | "version_gap" | "version_not_monotonic" | "invalid_version";
+
+/** A harness refusal with a stable code; messages have a fixed format (see each throw site). */
+export class ChainServingError extends Error {
+  constructor(
+    readonly code: ChainServingErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ChainServingError";
+  }
+}
+
+/**
+ * The published-versions index: per cycle id, the versions published so far, in order. Strict rule (explicit and
+ * deterministic): a cycle's versions are exactly 1, 2, 3, … with no gaps.
+ * - The first version of a cycle must be 1; each later one must be latest + 1.
+ * - A version above latest + 1 (e.g. v3 without v2) is refused: `version_gap`.
+ * - A version at or below the latest (a repeat or an older version) is refused: `version_not_monotonic`.
+ * - Nothing is ever removed or replaced, so `latest(id)` only moves forward (monotonic), and every earlier version
+ *   stays addressable for audit.
+ */
+export class PublishedVersionsIndex<T extends { cycleId: string; version: number; artifactSha256: string }> {
+  readonly #byCycle = new Map<string, T[]>();
+
+  record(entry: T): T {
+    if (!Number.isSafeInteger(entry.version) || entry.version < 1) throw new ChainServingError("invalid_version", `cycle ${entry.cycleId}: version must be an integer >= 1, got ${String(entry.version)}`);
+    if (!/^[0-9a-f]{64}$/.test(entry.artifactSha256)) throw new ChainServingError("invalid_version", `cycle ${entry.cycleId} v${entry.version}: artifactSha256 must be 64 lowercase hex`);
+    const versions = this.#byCycle.get(entry.cycleId) ?? [];
+    const latest = versions.length;
+    if (entry.version <= latest) throw new ChainServingError("version_not_monotonic", `cycle ${entry.cycleId}: v${entry.version} is not after the latest published v${latest}`);
+    if (entry.version !== latest + 1) throw new ChainServingError("version_gap", `cycle ${entry.cycleId}: v${entry.version} would skip v${latest + 1}`);
+    this.#byCycle.set(entry.cycleId, [...versions, Object.freeze(entry)]);
+    return entry;
+  }
+
+  has(cycleId: string): boolean {
+    return this.#byCycle.has(cycleId);
+  }
+
+  versions(cycleId: string): T[] {
+    return [...(this.#byCycle.get(cycleId) ?? [])];
+  }
+
+  latest(cycleId: string): T {
+    const v = this.#byCycle.get(cycleId);
+    if (!v?.length) throw new ChainServingError("unknown_cycle", `cycle ${cycleId} has not been published`);
+    return v[v.length - 1]!;
+  }
+
+  version(cycleId: string, version: number): T {
+    const v = this.#byCycle.get(cycleId);
+    if (!v?.length) throw new ChainServingError("unknown_cycle", `cycle ${cycleId} has not been published`);
+    const found = v.find((x) => x.version === version);
+    if (!found) throw new ChainServingError("unknown_version", `cycle ${cycleId} has no version ${String(version)}`);
+    return found;
+  }
+}
+
 export class SimulationChain {
   readonly store = new InMemoryClaimReadModelStore();
   readonly #params: ChainParams;
-  readonly #history = new Map<string, PublishedVersion[]>();
+  /** Every published version, through the strict published-versions index. */
+  readonly index = new PublishedVersionsIndex<PublishedVersion>();
 
   constructor(params: ChainParams) {
     if (params.distributionPolicy.status !== "simulation") throw new Error("the multi-cycle harness runs simulation policy records only");
@@ -88,23 +148,21 @@ export class SimulationChain {
   }
 
   history(cycleId: string): PublishedVersion[] {
-    return [...(this.#history.get(cycleId) ?? [])];
+    return this.index.versions(cycleId);
   }
 
   latest(cycleId: string): PublishedVersion {
-    const h = this.#history.get(cycleId);
-    if (!h?.length) throw new Error(`cycle ${cycleId} has not been published`);
-    return h[h.length - 1]!;
+    return this.index.latest(cycleId);
   }
 
   /** The latest version of every published cycle, in chain order. */
   latestChain(): PublishedVersion[] {
-    return this.cycleIds.filter((id) => this.#history.has(id)).map((id) => this.latest(id));
+    return this.cycleIds.filter((id) => this.index.has(id)).map((id) => this.latest(id));
   }
 
   /** Publishes version 1 of every cycle in order, each based on the latest version of its predecessor. */
   async publishAll(): Promise<PublishedVersion[]> {
-    for (let i = 0; i < this.#params.cycles.length; i++) if (!this.#history.has(this.cycleIds[i]!)) await this.#publish(i, this.#params.cycles[i]!.evidenceLines ?? LINES);
+    for (let i = 0; i < this.#params.cycles.length; i++) if (!this.index.has(this.cycleIds[i]!)) await this.#publish(i, this.#params.cycles[i]!.evidenceLines ?? LINES);
     return this.latestChain();
   }
 
@@ -114,9 +172,9 @@ export class SimulationChain {
    */
   async correct(index: number, patch: { evidenceLines: EvidenceLine[] }, options: { rebase: boolean } = { rebase: true }): Promise<PublishedVersion[]> {
     const id = this.cycleIds[index];
-    if (id === undefined || !this.#history.has(id)) throw new Error(`cycle ${index} has not been published`);
+    if (id === undefined || !this.index.has(id)) throw new ChainServingError("unknown_cycle", `cycle ${String(id ?? index)} has not been published`);
     await this.#publish(index, patch.evidenceLines);
-    if (options.rebase) for (let j = index + 1; j < this.cycleIds.length; j++) if (this.#history.has(this.cycleIds[j]!)) await this.#publish(j, this.latest(this.cycleIds[j]!).evidenceLines);
+    if (options.rebase) for (let j = index + 1; j < this.cycleIds.length; j++) if (this.index.has(this.cycleIds[j]!)) await this.#publish(j, this.latest(this.cycleIds[j]!).evidenceLines);
     return this.latestChain();
   }
 
@@ -137,20 +195,20 @@ export class SimulationChain {
    * latest version (built on superseded history).
    */
   async open(cycleId: string, version?: number): Promise<ClaimReadModel> {
-    const h = this.#history.get(cycleId);
-    if (!h?.length) throw new Error(`cycle ${cycleId} has not been published`);
-    const v = version === undefined ? h[h.length - 1]! : h.find((x) => x.version === version);
-    if (!v) throw new Error(`cycle ${cycleId} has no version ${version}`);
+    // Explicit versions are audit reads: any published version, stale or superseded. "Latest" is served only
+    // when it is built on its predecessor's latest version; otherwise `stale_cycle`, message:
+    //   refusing to serve cycle <id> v<n> is stale: based on <pred id> v<m>, latest is v<k>
+    const v = version === undefined ? this.index.latest(cycleId) : this.index.version(cycleId, version);
     if (version === undefined) {
       const stale = this.chainProblems().find((p) => p.startsWith(`cycle ${cycleId} `));
-      if (stale) throw new Error(`refusing to serve ${stale}`);
+      if (stale) throw new ChainServingError("stale_cycle", `refusing to serve ${stale}`);
     }
     return openClaimReadModel(this.store, { cycleId, cycleVersion: v.version, artifactSha256: v.artifactSha256 }, SHA256_RFC9162_HASHER);
   }
 
   async #publish(index: number, evidenceLines: EvidenceLine[]): Promise<PublishedVersion> {
     const spec = this.#params.cycles[index]!;
-    const previous = this.#history.get(spec.cycleId) ?? [];
+    const previous = this.index.versions(spec.cycleId);
     const version = previous.length + 1;
     const predecessor = index === 0 ? null : this.latest(this.cycleIds[index - 1]!);
     const ledgerIn = predecessor ? predecessor.ledgerOut : emptyDistributionLedger();
@@ -183,8 +241,7 @@ export class SimulationChain {
       artifact,
       artifactSha256,
     };
-    this.#history.set(spec.cycleId, [...previous, Object.freeze(published)]);
-    return published;
+    return this.index.record(published);
   }
 }
 

@@ -16,7 +16,7 @@ import { SHA256_RFC9162_HASHER } from "./claim-tree";
 import { createClaimLookup } from "./claim-lookup";
 import { decodeReadModelImage, encodeReadModelImage, projectClaimReadModel } from "./claim-read-model";
 import { pickParties } from "./large-holder.test-support";
-import { CHAIN_DEFAULTS, CYCLE2_CORRECTED_LINES, type PublishedVersion, SimulationChain } from "./multi-cycle.test-support";
+import { CHAIN_DEFAULTS, CYCLE2_CORRECTED_LINES, ChainServingError, type PublishedVersion, PublishedVersionsIndex, SimulationChain } from "./multi-cycle.test-support";
 import { cycleArtifactProblems } from "./pipeline";
 
 const sum = (xs: readonly bigint[]) => xs.reduce((a, b) => a + b, 0n);
@@ -183,5 +183,98 @@ describe("correction of cycle 2 (latest wins) and rebase of cycle 3", () => {
     await expect(projectClaimReadModel(v.artifact, v.artifactSha256, SHA256_RFC9162_HASHER, chain.store)).rejects.toThrow(/already exists/);
     // Non-simulation policy records are refused by the harness before anything runs.
     expect(() => new SimulationChain({ ...CHAIN_DEFAULTS, distributionPolicy: { ...CHAIN_DEFAULTS.distributionPolicy, status: "approved" } })).toThrow(/simulation/);
+  }, 600_000);
+});
+
+const errorOf = async (fn: () => unknown) => {
+  try {
+    await fn();
+  } catch (e) {
+    return e instanceof ChainServingError ? { code: e.code, message: e.message } : { code: "other", message: String(e) };
+  }
+  return { code: "no error", message: "" };
+};
+
+describe("staleness: serving vs audit reads", () => {
+  it("before cycle 3 is rebuilt, serving its latest version fails closed with a stable error; v1 stays readable for audit", async () => {
+    const chain = new SimulationChain({ ...CHAIN_DEFAULTS, holders: 256 });
+    await chain.publishAll();
+    await chain.correct(1, { evidenceLines: CYCLE2_CORRECTED_LINES }, { rebase: false });
+    const [c1, c2, c3] = CHAIN_DEFAULTS.cycles.map((c) => c.cycleId) as [string, string, string];
+    // Serving "latest" of cycle 3: refused with code stale_cycle and an exact message.
+    expect(await errorOf(() => chain.open(c3))).toEqual({ code: "stale_cycle", message: `refusing to serve cycle ${c3} v1 is stale: based on ${c2} v1, latest is v2` });
+    // Its predecessors are not stale and are served (cycle 2 at its corrected version).
+    expect((await chain.open(c1)).header.cycleVersion).toBe(1);
+    expect((await chain.open(c2)).header.cycleVersion).toBe(2);
+    // Audit read: cycle 3 v1 opened by explicit version still works, pinned to its own artifact, and serves claims.
+    const audit = await chain.open(c3, 1);
+    const v1 = chain.history(c3)[0]!;
+    expect([audit.header.cycleVersion, audit.header.artifactSha256]).toEqual([1, v1.artifactSha256]);
+    const leaf = v1.artifact.claimTree!.leaves[0]!;
+    const served = await audit.byPartyId(leaf.partyId);
+    expect(served.status === "claim" && served.claim.amount).toBe(leaf.amount.toString());
+    // Versions that were never published, and unknown cycles, are refused explicitly.
+    expect(await errorOf(() => chain.open(c3, 2))).toEqual({ code: "unknown_version", message: `cycle ${c3} has no version 2` });
+    expect(await errorOf(() => chain.open("00000000-0000-4000-8000-0000000c0009"))).toEqual({ code: "unknown_cycle", message: "cycle 00000000-0000-4000-8000-0000000c0009 has not been published" });
+  }, 600_000);
+});
+
+describe("published-versions index", () => {
+  const entry = (cycleId: string, version: number, fill = String(version % 10)) => ({ cycleId, version, artifactSha256: fill.repeat(64) });
+
+  it("latest is monotonic per cycle id: it only ever moves to latest + 1", () => {
+    const idx = new PublishedVersionsIndex<ReturnType<typeof entry>>();
+    const seen: number[] = [];
+    for (const v of [1, 2, 3, 4]) {
+      idx.record(entry("a", v));
+      seen.push(idx.latest("a").version);
+      if (v <= 2) idx.record(entry("b", v)); // independent per cycle id
+    }
+    expect(seen).toEqual([1, 2, 3, 4]);
+    expect(idx.latest("b").version).toBe(2);
+    expect(idx.versions("a").map((e) => e.version)).toEqual([1, 2, 3, 4]);
+    expect(idx.version("a", 2).artifactSha256).toBe("2".repeat(64)); // earlier versions stay addressable
+  });
+
+  it("refuses gaps and out-of-order versions deterministically, leaving the index unchanged", () => {
+    const idx = new PublishedVersionsIndex<ReturnType<typeof entry>>();
+    expect(() => idx.record(entry("a", 2))).toThrow(new ChainServingError("version_gap", "cycle a: v2 would skip v1"));
+    idx.record(entry("a", 1));
+    idx.record(entry("a", 2));
+    const refusals = [
+      [entry("a", 4), "version_gap", "cycle a: v4 would skip v3"], // v4 published without v3
+      [entry("a", 2, "f"), "version_not_monotonic", "cycle a: v2 is not after the latest published v2"], // a repeat, even with another hash
+      [entry("a", 1), "version_not_monotonic", "cycle a: v1 is not after the latest published v2"], // older
+      [entry("a", 0), "invalid_version", "cycle a: version must be an integer >= 1, got 0"],
+      [entry("a", 3.5), "invalid_version", "cycle a: version must be an integer >= 1, got 3.5"],
+      [{ cycleId: "a", version: 3, artifactSha256: "XYZ" }, "invalid_version", "cycle a v3: artifactSha256 must be 64 lowercase hex"],
+    ] as const;
+    for (const [e, code, message] of refusals) {
+      let caught: unknown;
+      try {
+        idx.record(e);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(ChainServingError);
+      expect([(caught as ChainServingError).code, (caught as ChainServingError).message]).toEqual([code, message]);
+      expect(idx.latest("a")).toEqual(entry("a", 2)); // unchanged after every refusal
+    }
+    expect(() => idx.latest("nope")).toThrow(new ChainServingError("unknown_cycle", "cycle nope has not been published"));
+    expect(() => idx.version("a", 3)).toThrow(new ChainServingError("unknown_version", "cycle a has no version 3"));
+  });
+
+  it("the chain's own index holds contiguous versions, and refuses a forged republish or a gapped version", async () => {
+    const { chain } = await scenario();
+    for (const id of chain.cycleIds) {
+      const versions = chain.history(id).map((v) => v.version);
+      expect(versions).toEqual(versions.map((_, i) => i + 1));
+      expect(chain.latest(id).version).toBe(versions.length);
+    }
+    const c2 = CHAIN_DEFAULTS.cycles[1]!.cycleId;
+    const latest = chain.latest(c2);
+    expect(await errorOf(() => chain.index.record({ ...latest }))).toEqual({ code: "version_not_monotonic", message: `cycle ${c2}: v2 is not after the latest published v2` });
+    expect(await errorOf(() => chain.index.record({ ...latest, version: 4 }))).toEqual({ code: "version_gap", message: `cycle ${c2}: v4 would skip v3` });
+    expect(chain.latest(c2)).toBe(latest);
   }, 600_000);
 });
