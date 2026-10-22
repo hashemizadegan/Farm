@@ -310,4 +310,15 @@ d("yield schema (Y7)", () => {
     expect(await code(inT((tx) => recordCalculation(tx, real, calc({}, { sourceKind: "rpc", sourceIdentityId: identity }))))).toBe("real_gate");
     expect((await pool.query(`SELECT 1 FROM yield_frozen_artifacts WHERE cycle_id = $1 UNION ALL SELECT 1 FROM yield_carry_ledgers WHERE cycle_id = $1`, [real])).rowCount).toBe(0);
   });
+
+  it("0026: the database refuses a simulation dossier for a real cycle, even in draft; a simulation draft accepts one", async () => {
+    const body = JSON.stringify({ scheme: "metafarm-yield-simulation-dossier/1" });
+    const insert = (cycle: string) =>
+      inT((tx) => tx.query(`INSERT INTO yield_simulation_dossiers (tenant_id, cycle_id, revision, body, sha256, created_by) VALUES ($1, $2, 1, $3, $4, $5)`, [tx.tenantId, cycle, body, sha256(body), preparer]));
+    const real = await inT(async (tx) => (await createYieldCycle(tx, { businessAssetId: asset, periodStart: "2024-01-01", periodEnd: "2024-03-31", simulation: false, network: "solana-devnet", rail: "SOLANA_TOKEN_2022", chainAssetId: MINT, createdBy: preparer })).id);
+    expect(await code(insert(real))).toBe("simulation_record_in_real_cycle");
+    expect((await pool.query(`SELECT 1 FROM yield_simulation_dossiers WHERE cycle_id = $1`, [real])).rowCount).toBe(0);
+    const sim = await inT(async (tx) => (await createYieldCycle(tx, { businessAssetId: asset, periodStart: "2024-04-01", periodEnd: "2024-06-30", simulation: true, network: "solana-devnet", rail: "SOLANA_TOKEN_2022", chainAssetId: MINT, createdBy: preparer })).id);
+    expect(await code(insert(sim))).toBe("no error");
+  });
 });
