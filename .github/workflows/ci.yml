@@ -86,7 +86,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "${{ env.NODE_VERSION }}", cache: "${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}" }
       - run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install --no-frozen-lockfile; fi
-      - run: pnpm test:unit
+      - name: pnpm test:unit
+        # On failure, the failing files, tests and errors are surfaced as annotations (readable without log access).
+        run: |
+          set -o pipefail
+          if ! pnpm test:unit 2>&1 | tee unit.log; then
+            # One annotation (GitHub keeps at most 10 per step): the failing lines, newline-encoded.
+            echo "::error title=pnpm test:unit failed::$(grep -E "FAIL|AssertionError|Error|Unhandled|×|✗|Test Files|Tests |expected|received" unit.log | tail -45 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')"
+            exit 1
+          fi
 
   integration:
     name: Integration tests (PostGIS, Redis)
@@ -121,7 +129,15 @@ jobs:
           pnpm db:migrate
           pnpm --filter @metafarm/db migrate:down
           pnpm db:migrate
-      - run: pnpm test:integration
+      - name: pnpm test:integration
+        # On failure, the failing files, tests and errors are surfaced as annotations (readable without log access).
+        run: |
+          set -o pipefail
+          if ! pnpm test:integration 2>&1 | tee integration.log; then
+            # One annotation (GitHub keeps at most 10 per step): the failing lines, newline-encoded.
+            echo "::error title=pnpm test:integration failed::$(grep -E "FAIL|AssertionError|Error|Unhandled|×|✗|Test Files|Tests |expected|received" integration.log | tail -45 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')"
+            exit 1
+          fi
 
   contracts:
     name: Contract tests (Solidity)
