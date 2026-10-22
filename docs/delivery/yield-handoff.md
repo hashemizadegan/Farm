@@ -6,6 +6,71 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 09:45 local (current tip: #80 validated; next milestone)
+
+**Current validated tip of the yield stack: #80, `feature/yield-shared-16k-cycle` @ `703caac`.**
+
+- **CI:** 14/14 passed on run 39715678632, attempts 2–5. Attempt 1's Dependency audit failure was transient.
+- **#80's diff against #79** touches four test files only (`claim-read-model.test.ts`, `large-holder-envelope.test.ts`,
+  `large-holder-memo.test.ts`, `large-holder.test-support.ts`). It changes no production code, configuration or
+  `clients/` files.
+- **Invariants intact:**
+  - leaf layout 2 (233 bytes; layout 1 vectors authoritative);
+  - RFC 9162 proofs and path lengths;
+  - read-model pins: 4,096 holders `79f1704f…` / 4,067,466 bytes; 16,384 holders `4c0ff458…` / 16,412,652 bytes;
+  - the #78 4,096-holder artifact pin `3e374c9b…` / 7,487,231 bytes;
+  - C# cross-stack parity: claim-tree vectors, claim payloads, tiny-holders, large-tree and read-model samples.
+- **Stack status:** all open drafts, none merged; `main` untouched (`b59eaff`).
+
+  | PR | Head |
+  | --- | --- |
+  | #75 | `64187cd` |
+  | #76 | `670d624` |
+  | #77 | `ba3b7f0` |
+  | #78 | `db3bbe0` |
+  | #79 | `cf10f41` |
+  | #80 | `703caac` |
+
+- **Not part of this stack:** three non-draft PRs (#16, #28 "RWA: sign with Google Cloud KMS", #30) predate the yield
+  work. They are listed for awareness only.
+- **Holds unchanged:** execution, signing, TRON and mainnet off; simulation defaults only; fail-closed safeguards in
+  place; no Railway or deployment change (worker hold #45; staged patch `f14b940d` untouched).
+
+### Next milestone (plan revision 4, §11.1)
+
+Every remaining Y-stage needs an owner decision before it may be built:
+
+| Stage | Blocked by |
+| --- | --- |
+| Y0 (cluster identity) | D-16 |
+| Y5 (allocation from verified ownership events) | Y0; D-12, D-17 |
+| Y6 (canonical leaves, final) | D-26 |
+| Y7 (schema, append-only, RLS) | D-31, D-17 |
+| Y8 (operator read API) | D-28 |
+| Y9 (preparer and reviewer workflow) | D-11 confirmation |
+| Y10, Y11 (web and Unity read models) | Y8 |
+| Y12, Y13 (login-to-party link; holder-facing allocations and unsigned intents) | D-29; D-15, D-25, D-27, D-39 |
+| Y14 (simulation and reconciliation tools) | Y9, Y13 |
+| Y15–Y17 (devnet, program, live) | separate approvals |
+
+The Y4 real adapter also needs the [Legal] data-protection review, and D-23 (attester identity) is open.
+
+**Recommended next milestone: owner decisions, group 1 (§12.2)**, in this order:
+1. **D-16** unblocks Y0, the verified ownership index that would replace the supplied snapshot.
+2. **D-12 and D-17** unblock Y5.
+3. **D-26** confirms the claim-tree hash. The simulation code already runs on `sha256-rfc9162-double-leaf/1`, so D-26
+   would ratify or replace it.
+4. **D-31 and D-28** unblock Y7 and Y8.
+5. **D-11** unblocks Y9.
+
+**Decision-free simulation track, if wanted while decisions are pending:** a multi-cycle simulation harness.
+- Chain consecutive simulation cycles (cycle N's ledger out becomes cycle N+1's ledger in).
+- Check conservation across cycles: carried dust, carried remainder, withheld and unattributed amounts.
+- Cover a published correction superseding a cycle (§2.4) and the read model serving the latest version.
+- Pure and simulation-only. It is pre-work towards Y14, which formally depends on Y9 and Y13, so it would be
+  flagged as pre-work and would not claim a plan stage.
+- Not started; it needs the owner's go-ahead.
+
 ## 2026-10-22, 08:30 local (CI timing bisect for #80: runner variance, no code-level overhead)
 
 Owner asked to isolate the ~25–30 s unit-job overhead of #80 (`703caac`) relative to #79 (`cf10f41`).
@@ -47,7 +112,7 @@ All 10 runs passed 14/14.
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
 | --- | --- | --- | --- | --- | --- | --- |
-| #80 | shared, memoized 16,384-holder cycle helper (tests only; `unit-shared-cycle` project dropped) | `feature/yield-shared-16k-cycle` | `703caac` | #79 | 39715678632 (attempts 2, 3) | 14/14 passed |
+| #80 | shared, memoized 16,384-holder cycle helper (tests only; `unit-shared-cycle` project dropped) | `feature/yield-shared-16k-cycle` | `703caac` | #79 | 39715678632 (attempts 2–5) | 14/14 passed |
 
 - **Helper:** `sharedLargeCycle(params)` is memoized on `globalThis`.
   - The key covers holders, seed, profile and dust threshold. Results are deeply frozen, parameters are checked
