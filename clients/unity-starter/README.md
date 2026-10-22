@@ -21,6 +21,7 @@ disabled.
 | `Runtime/Core/Anchoring` (`…Core.Anchoring`) | none | `AnchorPlanReview`: checks an anchor plan (`AnchorModels.cs`) against the root the client verified, refuses any plan that claims to be executable, and words it as "planned only, not anchored" |
 | `Runtime/Core/Sync` (`…Core.Sync`) | none | `SnapshotSync` with `FarmSnapshotState`: verified, incremental sync (list + exact bytes per poll). A candidate replaces the held snapshot only if its bytes hash to the record, its structure checks out for the requested farm, and it is newer than the held one (rollback and equal-time conflicts are refused); the result carries a `SnapshotDiff` by entity. `SnapshotContentVerification` is the content-and-structure check it shares with `SnapshotChain`. `SnapshotChain`: verifies one snapshot link by link (exact bytes against the committed hash, structure, batch inclusion, optional anchor plan) and reports each link's state |
 | `Runtime/Core/Scene` (`…Core.Scene`) | none | `SceneUpdatePlan`: turns a verified diff into ordered scene operations (remove, refresh, place) for asset-registry entities (`asset:<id>`, as in the scene endpoint) and state-only changes for the rest. All decisions are here, so they are unit-tested |
+| `Runtime/Core/Yield` (`…Core.Yield`) | none | Real-yield claim leaves and proofs, **verification only and simulation only** (D-26, the hash function, is open): `ClaimLeafCodec` encodes and decodes the 201-byte canonical leaf of plan §6.2 (layout 1), and the 233-byte layout 2 that appends the ownership snapshot hash the leaf is bound to, byte for byte as `packages/domain/src/yield/claim-tree.ts` does; `ClaimTreeVerifier` recomputes leaf hashes and roots and verifies RFC 9162 proofs (`sha256-rfc9162-double-leaf/1`). `VerifyClaimLeafProof` checks a leaf against the trusted published root and size and the index inside the leaf, because an RFC 9162 path alone does not bind the tree size. `ClaimPayload` and `PublishedClaimTree` are the wire DTOs of `metafarm-yield-claim/1` (served by `packages/domain/src/yield/claim-lookup.ts`), and `ClaimPayloadVerification.Verify` checks a payload against the trusted published tree as the platform does (cycle id and version and ownership snapshot hash inside the leaf, recipient, amount, then `VerifyClaimLeafProof`). Nothing builds, publishes or anchors a tree |
 | `Runtime/Core/Mocks` (`…Core.Mocks`) | none | `SampleTransport` (serves JSON by path, records requests) and `SampleIds` for running without a backend |
 | `Runtime/Unity` (`Metafarm.Twin.Unity`) | Unity | `UnityWebRequestTransport` (https only, bearer token), `LocalFrame` (metres around the farm origin, as in `packages/map-scene`), and the `FarmSceneLoader` MonoBehaviour (draws the scene; `ApplySnapshotPlan` only executes a `SceneUpdatePlan`) |
 | `Samples/` | none | Mock payloads in the API's shape. The farm, assets and addresses are made up. |
@@ -48,6 +49,29 @@ Nothing else: no Solana SDK, no wallet adapter, no Cesium. Those come with later
   classification, disabled transfer previews, and Merkle verification against vectors produced by
   the platform's TypeScript code. They also check by reflection that nothing in Core can sign,
   submit or hold keys, and that the transport has only `GetAsync`.
+- **Claim-tree parity (`ClaimTreeParityTests`)**: the C# leaf bytes, leaf hashes, roots and proofs must
+  equal `Samples/claim-tree-vectors.json` byte for byte (trees of 1, 3, 5, 7 and 8 leaves, 24 proofs,
+  and an edge leaf with every integer field at its maximum). See "Claim-tree vectors" below.
+- **Cross-stack claims (`ClaimPayloadCrossStackTests`)**: the client deserializes
+  `Samples/claim-payloads.sample.json`, the claim payloads served from the frozen artifact of the platform's
+  multi-party simulation cycle (PR #73), and verifies every one with `VerifyClaimLeafProof` and
+  `ClaimPayloadVerification`, rebuilds the published root, and refuses altered payloads and wrong trusted trees.
+- **Zero-allocation policy (`ZeroAllocationCrossStackTests`)**: from `Samples/claim-payloads.tiny-holders.sample.json`
+  (a seeded cycle with many tiny holders, dust threshold 0) the client recomputes the largest-remainder
+  allocation with `BigInteger` and applies the state rule itself (no wallet: withheld; amount 0: deferred,
+  `zero_amount`; below the threshold: deferred, `below_dust_threshold`; otherwise payable). It requires the
+  platform's entries and claims to match exactly, checks conservation, and checks that a zero-amount leaf is
+  refused on encode, decode and verification.
+- **Large tree (`LargeTreeCrossStackTests`)**: `Samples/claim-payloads.large-tree.sample.json` holds 64 seeded
+  holders of a 4,096-holder cycle (about 3,000 leaves, proofs up to 12 deep). The client verifies every claim,
+  computes the same RFC 9162 path lengths, refuses any altered path entry or index, and agrees that holders
+  allocated 0 (`zero_amount`) have no claim. The platform side (`large-holder-envelope.test.ts`) also checks
+  deterministic cost and size envelopes at 4,096 and 16,384 holders.
+- **Read model (`ReadModelCrossStackTests`)**: `Samples/claim-readmodel.sample.json` holds the claims the platform's
+  claim read model (`packages/domain/src/yield/claim-read-model.ts`) serves for the same 64 holders after
+  projecting the cycle into records, persisting it as a byte image and reloading it (each proof rebuilt from
+  stored tree nodes, 2 + path-length record reads per lookup). The client decodes every layout 2 leaf exactly,
+  verifies every claim, and requires each one to be identical to the in-memory lookup's claim for that party.
 - **Vitest (`packages/domain/src/twin/client-samples.test.ts`)**: the sample payloads parse with the
   API's own schemas, and the sample proof verifies with the platform's verifier.
 - **Not checked in CI**: `Runtime/Unity` needs the Unity editor. Open it in Unity 6 and fix anything
@@ -106,6 +130,37 @@ if (r.Accepted) Use(r.Snapshot, r.Diff);     // Initial or Updated; state now ho
 
 A first sync (`Initial`) diffs from nothing, so every entity is added and the scene places every
 asset-registry object. `Unchanged` and `UpToDate` need no scene work.
+
+## Claim-tree vectors
+
+`Samples/claim-tree-vectors.json` is generated from the platform's TypeScript claim tree, not written by
+hand:
+
+- `packages/domain/src/yield/claim-tree.vectors.test-support.ts` builds distribution plans (simulation
+  records only), their claim trees and one edge leaf with `claim-tree.ts`, and writes every leaf's fields,
+  bytes, hash and audit path with each tree's root.
+- `packages/domain/src/yield/claim-tree.vectors.test.ts` (vitest) rebuilds the vectors and requires the
+  committed file to match exactly, so neither side can drift silently. After a deliberate change, regenerate
+  the file by writing `await claimTreeVectorsText()` to it.
+- The vectors were also checked once with an independent Python implementation of plan §6.2 (leaf bytes,
+  leaf hashes, all roots and proofs); that script is not part of the repository.
+
+`Samples/claim-payloads.sample.json` is live pipeline output, not hand-written:
+`packages/domain/src/yield/claim-lookup.sample.test-support.ts` runs the PR #73 multi-party simulation
+cycle end to end (evidence, waterfall with a EUR line at a recorded rate, distribution, claim tree) and serves
+its frozen artifact through the claim lookup. `claim-lookup.sample.test.ts` (vitest) reruns it and requires
+the committed file to match exactly; regenerate by writing `await claimPayloadSampleText()` to the file.
+`Samples/claim-payloads.tiny-holders.sample.json` is generated the same way by
+`packages/domain/src/yield/zero-allocation.sample.test-support.ts` and checked by `zero-allocation.test.ts`
+(regenerate with `await tinyHoldersSampleText()`).
+`Samples/claim-payloads.large-tree.sample.json` comes from `packages/domain/src/yield/large-holder.test-support.ts`
+and is checked by `large-holder-envelope.test.ts` (regenerate with `await largeTreeSampleText()`).
+`Samples/claim-readmodel.sample.json` comes from `packages/domain/src/yield/claim-read-model.sample.test-support.ts`
+and is checked by `claim-read-model.test.ts` (regenerate with `await claimReadModelSampleText()`).
+
+A claim for 0 is never valid: the platform never makes a zero amount payable (it is deferred with
+`deferredReason: "zero_amount"`), and `ClaimLeafCodec` refuses a zero amount when encoding and when decoding,
+so `VerifyClaimLeafProof` and `ClaimPayloadVerification` reject such a leaf.
 
 ## Current limitations
 
