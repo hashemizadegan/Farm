@@ -46,6 +46,20 @@ export const PERMISSIONS = [
   "rwa:operate",
   /** Record KYC outcomes and sanctions screenings. */
   "compliance:review",
+  /**
+   * Real-yield distribution (plan §7.3; D-28: new yield:* permissions, the documented recommendation adopted under
+   * the owner's standing instruction, not a sign-off). See YIELD_PERMISSIONS.
+   */
+  /** See yield cycles, their artifact sets, snapshots, allocations and transition history (operator views). */
+  "yield:read",
+  /** Create cycles, register evidence and input lines, lock, unlock, calculate and submit (preparer). */
+  "yield:prepare",
+  /** Reject a cycle under review (reviewer). */
+  "yield:review",
+  /** Attest to an artifact set's hashes (attester). */
+  "yield:attest",
+  /** Approve (four-eyes, never the preparer), publish, close and cancel (approver). */
+  "yield:approve",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -56,7 +70,9 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   // Field workers run the day-to-day work: their tasks, observations and photos. They cannot change the farm's setup.
   worker: new Set([...READ, "observation:write", "media:upload", "task:work", "harvest:record", "inventory:use", "equipment:use"]),
   // Verifiers upload the evidence file that verification requires.
-  verifier: new Set([...READ, "boundary:verify", "media:upload"]),
+  // Verifiers also act as the yield auditor (D-28: `verifier` extended): read, review and attest, never prepare or
+  // approve. audit:read is not added to verifiers (not needed by the read API; kept to admins and owners).
+  verifier: new Set([...READ, "boundary:verify", "media:upload", "yield:read", "yield:review", "yield:attest"]),
   manager: new Set([
     ...READ,
     "farm:write",
@@ -77,6 +93,9 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "equipment:manage",
     "equipment:use",
     "rwa:read",
+    // Operator (plan §7.3): manager + yield:prepare.
+    "yield:read",
+    "yield:prepare",
   ]),
   admin: new Set([
     ...READ,
@@ -103,6 +122,11 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "rwa:read",
     "rwa:operate",
     "compliance:review",
+    // Admin and asset manager (plan §7.3). Four-eyes is enforced per cycle by the database: an approver is never
+    // the cycle's creator or preparer, whatever their role.
+    "yield:read",
+    "yield:prepare",
+    "yield:approve",
   ]),
   owner: new Set(PERMISSIONS),
 };
@@ -110,3 +134,5 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
 export function can(role: Role, permission: Permission): boolean {
   return ROLE_PERMISSIONS[role].has(permission);
 }
+
+export const YIELD_PERMISSIONS = ["yield:read", "yield:prepare", "yield:review", "yield:attest", "yield:approve"] as const satisfies readonly Permission[];
