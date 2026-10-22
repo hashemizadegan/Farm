@@ -7,3 +7,4 @@ export * from "./snapshot";
 export * from "./content-store";
 export * from "./anchor";
 export * from "./intents";
+export * from "./holding-weights";

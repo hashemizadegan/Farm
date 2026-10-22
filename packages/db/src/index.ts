@@ -23,6 +23,7 @@ export * from "./repositories/cnft";
 export * from "./repositories/twin";
 export * from "./repositories/twin-snapshot";
 export * from "./repositories/ownership-index";
+export * from "./repositories/weighted-ownership";
 export * from "./repositories/idempotency";
 export * from "./repositories/page";
 export * from "./repositories/player-wallets";

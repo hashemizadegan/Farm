@@ -18,7 +18,7 @@
  * Read-only on chain: nothing is signed or submitted. Holdings are not written; readers rebuild them.
  */
 import { ClusterVerificationError, type VerifiedClusterIdentity } from "@metafarm/chain";
-import { advanceOwnershipCursor, insertOwnershipEvents, ownershipCursorOf, ownershipIndexTargets, registerOwnershipSourceIdentity, withSystem, type OwnershipSourceIdentity, type Pool } from "@metafarm/db";
+import { OwnershipProvenanceError, advanceOwnershipCursor, insertOwnershipEvents, ownershipCursorState, ownershipIndexTargets, registerOwnershipSourceIdentity, withSystem, type OwnershipSourceIdentity, type Pool } from "@metafarm/db";
 import { QUEUES, type ChainAssetRef, type OwnershipEventSource, type OwnershipIndexJob } from "@metafarm/domain";
 import type { Handler } from "../runner";
 import type { Enqueue } from "./alerts";
@@ -116,7 +116,14 @@ export function ownershipIndexHandler(pool: Pool, source: OwnershipEventSource, 
       }
     };
     const before = source.name === "rpc" ? await verify() : null;
-    const cursor = await withSystem(pool, (tx) => ownershipCursorOf(tx, asset));
+    // Provenance (D-17; verified RPC takes precedence): a fixture source never touches an asset that has a
+    // verified RPC cursor, and a cursor of the other source (or an unverified pre-0023 one) does not count.
+    const state = await withSystem(pool, (tx) => ownershipCursorState(tx, asset));
+    if (source.name === "fixture" && state?.verified) {
+      log.error({ asset: job.assetId, code: "fixture_after_verified_rpc" }, "ownership batch refused: provenance");
+      throw new OwnershipProvenanceError("fixture_after_verified_rpc", `the fixture source cannot index ${job.assetId}, which has verified RPC history`);
+    }
+    const cursor = state && state.source === source.name && (source.name === "fixture" || state.verified) ? state.indexedThroughSlot : null;
     const { events, throughSlot } = await source.eventsAfter(asset, cursor);
     // Verified again after reading: the events were fetched between two answers from the same cluster.
     const identity = before ? await verify() : null;
