@@ -3042,7 +3042,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, additionalProperties: false, required: [businessAssetId, periodStart, periodEnd, network, rail, chainAssetId], properties: { businessAssetId: { type: string, format: uuid }, periodStart: { type: string, format: date }, periodEnd: { type: string, format: date }, version: { type: integer, minimum: 1 }, simulation: { type: boolean, default: true, description: "false is refused (409 real_gate): real gates of plan §2.1 not approved." }, network: { type: string, enum: [solana-devnet, solana-mainnet] }, rail: { type: string, enum: [SOLANA_TOKEN_2022, SOLANA_BUBBLEGUM_CNFT] }, chainAssetId: { type: string } } }
+            schema: { type: object, additionalProperties: false, required: [businessAssetId, periodStart, periodEnd, network, rail, chainAssetId], properties: { businessAssetId: { type: string, format: uuid }, periodStart: { type: string, format: date }, periodEnd: { type: string, format: date }, version: { type: integer, minimum: 1 }, simulation: { type: boolean, default: true, description: "false is refused (409 real_gate): real gates of plan §2.1 not approved." }, network: { type: string, enum: [solana-devnet, solana-mainnet], description: "solana-mainnet is refused (409 simulation_network_label) while every cycle is a simulation." }, rail: { type: string, enum: [SOLANA_TOKEN_2022, SOLANA_BUBBLEGUM_CNFT] }, chainAssetId: { type: string } } }
       responses:
         "201": { description: OK, content: { application/json: { schema: { type: object } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
