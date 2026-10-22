@@ -156,11 +156,18 @@ export function createBubblegumOwnershipSource(
   };
 }
 
-/** One source over several: the first that covers an asset answers for it. */
+/**
+ * One source over several: the first that covers an asset answers for it. All members must be of one kind: a
+ * fixture member behind an `rpc` name would have its events stored as RPC events and bound to the verified cluster
+ * identity (Y0 review F2; D-17), so mixing kinds is refused, as is an empty list.
+ */
 export function combineOwnershipSources(...sources: OwnershipEventSource[]): OwnershipEventSource {
+  if (sources.length === 0) throw new OwnershipHistoryError("no ownership sources to combine");
+  const kinds = new Set(sources.map((s) => s.name));
+  if (kinds.size > 1) throw new OwnershipHistoryError("fixture and RPC ownership sources cannot be combined (D-17)");
   const pick = (asset: ChainAssetRef) => sources.find((s) => s.covers(asset));
   return {
-    name: sources.every((s) => s.name === "fixture") ? "fixture" : "rpc",
+    name: sources[0]!.name,
     covers: (asset) => pick(asset) !== undefined,
     async eventsAfter(asset, afterSlot) {
       const s = pick(asset);
