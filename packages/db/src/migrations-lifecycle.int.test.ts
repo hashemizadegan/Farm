@@ -108,14 +108,15 @@ d("migrations 0019–0029: lifecycle and catalog", () => {
   const latest = async () => (await pool.query<{ version: string }>("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1")).rows[0]?.version;
   const tableExists = async (t: string) => Boolean((await pool.query<{ t: string | null }>("SELECT to_regclass($1)::text AS t", [`public.${t}`])).rows[0]?.t);
 
+  // Sorted: recreated objects come back in creation (OID) order, which differs after down → up.
   async function catalog() {
     const rls = (
       await pool.query<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>(
-        `SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1)`,
+        `SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1) ORDER BY relname`,
         [TENANT_TABLES],
       )
     ).rows;
-    const policies = (await pool.query<{ tablename: string; policyname: string }>(`SELECT tablename, policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = ANY($1)`, [TENANT_TABLES])).rows;
+    const policies = (await pool.query<{ tablename: string; policyname: string }>(`SELECT tablename, policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = ANY($1) ORDER BY tablename, policyname`, [TENANT_TABLES])).rows;
     const grants: Record<string, string[]> = {};
     for (const t of Object.keys(GRANTS)) {
       grants[t] = [];
