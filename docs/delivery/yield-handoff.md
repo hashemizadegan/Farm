@@ -6,6 +6,62 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 12:30 local (Y0 implemented: verified cluster identity, D-16 option A)
+
+| PR | Scope | Branch | Head | Base | CI run | Checks |
+| --- | --- | --- | --- | --- | --- | --- |
+| #85 | Y0: verified cluster identity for ownership sources | `feature/ownership-cluster-identity` | `243191b` | #59 (`ebb3f56`, contains J7 #50–#52 unmodified) | 39741042292 (attempt 3) | 14/14 passed |
+
+**Owner decision:** D-16 approved as **option A** (the brief, `decision-brief-d16-cluster-identity.md`). The brief's
+status line is left as written, as the record of what was proposed. **Y0 is on the ownership-index line, not on
+the yield stack (#75–#84).**
+
+Commits: `5628678` (chain), `f8281fe` (db, migration 0023), `243191b` (worker, tests, docs).
+
+**Y0 scope covered (plan §11.1 row Y0):**
+- **Verify the RPC cluster:** `verifyClusterIdentity` (`packages/chain/src/solana/cluster.ts`) reuses the existing
+  `getGenesisHash` check. It returns `{ network, genesisHash, endpointScheme, endpointHost }`; a mismatch carries
+  the expected and actual hashes. `verifySolanaCluster` is unchanged in behaviour.
+- **Record the verified identity:** migration `0023_ownership_source_identities`.
+  - Columns: network, genesis hash, endpoint scheme, endpoint host, `verified_at`, `verified_by`,
+    `last_verified_at`.
+  - No credentials, tokens, paths or query strings: the host check refuses `/`, `?`, `#`, `@` and whitespace.
+  - The genesis hash is pinned per network label by a check.
+  - Read-only for the application role. Down migration included.
+- **Bind sources and cursors to it:** `source_identity_id` on `chain_ownership_events` and
+  `chain_ownership_cursors`.
+  - A composite foreign key on (id, network) allows only an identity of the row's own network.
+  - `rpc` rows require an identity and `fixture` rows refuse one (`NOT VALID`, so pre-Y0 rows don't block the
+    migration).
+  - `readOwnershipIndex` never serves unbound `rpc` rows.
+- **Reject mismatches:**
+  - The worker registers the identity at start-up. Each batch verifies **before and after** reading (same
+    identity, job's network), then stores the identity, events and cursor in one system transaction.
+  - A missing guard, a mismatched, unavailable or invalid endpoint, another network, or an identity change
+    during the batch writes nothing and does not move the cursor.
+  - The error is `OwnershipSourceIdentityError` with a stable `code` and the expected and actual genesis hashes,
+    which are also logged.
+
+**Tests:**
+- Chain: 18/18 locally.
+- Worker unit: 7/7 locally; refusals happen before the database is touched.
+- Schema from SQL: 5/5 locally.
+- Worker integration: in CI's PostGIS job (passed). Not runnable locally (no `pg` package).
+- Locally against PostgreSQL 16 (migrations 0020 + 0023):
+  - 28 constraint checks;
+  - pre-Y0 rows tolerated;
+  - repository statements (idempotent registration, forward-only cursor, unbound rows not served);
+  - down → up.
+  - This caught an index-name clash with 0020 before the push.
+
+**CI note:** attempts 1 and 2 failed in all four Docker builds (`pnpm install` inside the image). No manifest,
+lockfile or Dockerfile changed, a control re-run of #84's Docker build passed, and attempt 3 passed. Treated as
+transient.
+
+**Still gated:** live use needs the deploy hold lifted and J7 enabled by the owner (`TWIN_OWNERSHIP_INDEX_ENABLED`
+off by default; no RPC contact unless enabled). Proposed security sign-off (§11.2). Y5 also needs D-12 and D-17.
+No execution, signing, TRON, mainnet enablement, Railway or deployment change; drafts only.
+
 ## 2026-10-22, 11:00 local (#84 hardened; D-16 decision brief)
 
 | PR | Head | CI run | Checks |
