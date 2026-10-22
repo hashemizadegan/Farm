@@ -10,7 +10,8 @@
     "migrate": "node dist/migrate.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dev-token": "tsx --env-file-if-exists=../../.env src/scripts/dev-token.ts",
-    "seed:yield": "tsx --env-file-if-exists=../../.env src/scripts/seed-yield-simulation.ts"
+    "seed:yield": "tsx --env-file-if-exists=../../.env src/scripts/seed-yield-simulation.ts",
+    "preview-seed": "tsx src/scripts/preview-seed-runner.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.840.0",

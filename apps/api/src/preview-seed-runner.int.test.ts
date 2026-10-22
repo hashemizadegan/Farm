@@ -1,0 +1,80 @@
+/**
+ * The preview seed runner end to end on a database of its own (created and dropped here): refusals, a full seed of
+ * a fresh migrated database, idempotency, and refusal once the database holds another workspace.
+ */
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createPool, migrateUp, type Pool } from "@metafarm/db";
+import { DEV_SECRET } from "./test/helpers";
+
+const url = process.env.DATABASE_URL;
+const d = url ? describe : describe.skip;
+const DB = `preview_seed_${process.pid}`;
+const apiDir = fileURLToPath(new URL("..", import.meta.url));
+
+d("preview seed runner", () => {
+  let admin: Pool;
+  let previewUrl: string;
+  let preview: Pool;
+
+  const run = (env: Record<string, string | undefined>) => {
+    const childEnv: Record<string, string | undefined> = { ...process.env, DATABASE_URL: previewUrl, DEV_AUTH_SECRET: DEV_SECRET, ...env };
+    for (const [k, v] of Object.entries(childEnv)) if (v === undefined) delete childEnv[k];
+    const r = spawnSync(process.execPath, ["--import", "tsx", "src/scripts/preview-seed-runner.ts"], { cwd: apiDir, env: childEnv as NodeJS.ProcessEnv, encoding: "utf8", timeout: 180_000 });
+    return { code: r.status, out: `${r.stdout}${r.stderr}` };
+  };
+
+  beforeAll(async () => {
+    admin = createPool({ connectionString: url!, max: 1 });
+    await admin.query(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${DB}`);
+    const u = new URL(url!);
+    u.pathname = `/${DB}`;
+    previewUrl = u.toString();
+    preview = createPool({ connectionString: previewUrl, max: 2 });
+  }, 60_000);
+
+  afterAll(async () => {
+    await preview?.end();
+    await admin?.query(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`);
+    await admin?.end();
+  });
+
+  it("refuses deployed or unknown environments before connecting", () => {
+    for (const APP_ENV of ["production", "staging", undefined]) {
+      const r = run({ APP_ENV, DATABASE_URL: "postgres://nobody:nothing@127.0.0.1:1/none" });
+      expect(r.code, String(APP_ENV)).toBe(1);
+      expect(r.out).toContain("refused: APP_ENV must be development or test");
+    }
+  });
+
+  it("refuses an unmigrated database", () => {
+    const r = run({ APP_ENV: "test" });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("migrations must be applied through 0029");
+  });
+
+  it("seeds a fresh migrated database, and a second run changes nothing", async () => {
+    await migrateUp(preview);
+    const first = run({ APP_ENV: "test" });
+    expect(first.code, first.out).toBe(0);
+    expect(first.out).toContain("[preview-seed] done");
+    const cycles = async () =>
+      (await preview.query<{ status: string }>(`SELECT c.status FROM yield_cycles c JOIN business_assets a ON a.id = c.business_asset_id WHERE a.name = 'Yield simulation shares' ORDER BY c.period_start`)).rows.map((r) => r.status);
+    expect(await cycles()).toEqual(["published", "published", "under_review"]);
+    expect((await preview.query(`SELECT count(*)::int AS n FROM yield_claim_intent_batches`)).rows[0].n).toBe(2);
+    const second = run({ APP_ENV: "test" });
+    expect(second.code, second.out).toBe(0);
+    expect(second.out).toContain("already seeded");
+    expect(await cycles()).toEqual(["published", "published", "under_review"]);
+  }, 300_000);
+
+  it("refuses once the database holds a workspace other than the demo one", async () => {
+    await preview.query(`INSERT INTO tenants (slug, name) VALUES ('acme-real', 'A real workspace')`);
+    const r = run({ APP_ENV: "test" });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("not a fresh, isolated preview database");
+    expect(r.out).not.toContain(DEV_SECRET);
+  });
+});

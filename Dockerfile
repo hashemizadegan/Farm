@@ -108,5 +108,17 @@ USER node
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
 
+# ── Preview seed runner (isolated previews only) ──────────────────────────
+# A one-off container that seeds a NEW, isolated preview database with the demo workspace and the simulation
+# yield cycles (apps/api/src/scripts/preview-seed-runner.ts). It is never built for api, web, worker or scheduler:
+# BuildKit builds only the stages the selected APP needs, so their images are unchanged. Select it with
+# APP=seed-runner on a dedicated service of the preview project. The runner refuses unless APP_ENV is development
+# or test, the database holds no workspace other than the demo one, and migrations reach 0029.
+FROM deps AS app-seed-runner
+ENV NODE_ENV=development
+WORKDIR /repo/apps/api
+USER node
+CMD ["node", "--import", "tsx", "src/scripts/preview-seed-runner.ts"]
+
 # ── Select the app ────────────────────────────────────────────────────────
 FROM app-${APP} AS final
