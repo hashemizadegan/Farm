@@ -1,0 +1,20 @@
+-- Reverses 0024 (Y7). Drops only the objects 0024 created; existing tables and audit records are untouched.
+DROP TRIGGER IF EXISTS yield_cycles_guard ON yield_cycles;
+DROP TRIGGER IF EXISTS yield_cycles_created ON yield_cycles;
+DROP TABLE IF EXISTS yield_inputs;
+DROP TABLE IF EXISTS yield_evidence;
+DROP TABLE IF EXISTS yield_attestations;
+DROP TABLE IF EXISTS yield_allocations;
+DROP TABLE IF EXISTS yield_ownership_snapshots;
+DROP TABLE IF EXISTS yield_artifact_sets;
+DROP TABLE IF EXISTS yield_cycle_transitions;
+DROP TABLE IF EXISTS yield_cycles;
+DROP FUNCTION IF EXISTS yield_cycles_guard();
+DROP FUNCTION IF EXISTS yield_cycles_created();
+DROP FUNCTION IF EXISTS yield_inputs_guard();
+DROP FUNCTION IF EXISTS yield_attestations_guard();
+DROP FUNCTION IF EXISTS yield_rows_during_calculate();
+DROP FUNCTION IF EXISTS yield_ownership_snapshots_guard();
+DROP FUNCTION IF EXISTS yield_artifact_sets_insert_guard();
+DROP FUNCTION IF EXISTS yield_artifact_sets_guard();
+DROP FUNCTION IF EXISTS yield_cycle_command(text, text);
