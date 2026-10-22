@@ -6,6 +6,50 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 20:00 local (buildability restored in draft; access gate; review package; preview proposal, not provisioned)
+
+Owner instruction (19:16): restore `main` buildability, prepare an isolated preview, and complete yield
+readiness, without touching the live Railway project.
+
+### Done (all drafts, none merged)
+- **#97 `fix/deterministic-redocly-lockfile` (base `main`, head `6205425`):**
+  - pins `@redocly/cli` to `1.34.21` and commits `pnpm-lock.yaml`;
+  - root cause: no lockfile, and `^1.34.4` resolved to cli 1.34.22, which needs the unpublished
+    `@redocly/respect-core@1.34.22`;
+  - the lockfile was generated on a GitHub runner, because this sandbox has no npm access;
+  - CI 13/13 on `6205425`, including the four Docker image builds (worker included).
+- **#98 `feature/preview-access-gate` (base #97, head `b9b831b`):** `PREVIEW_ACCESS_GATE`, off by default.
+  - API: bearer-only except `/healthz`, `/readyz` and preflights.
+  - Web: HTTP Basic on every path, assets included. With no password it answers 503 (fails closed).
+  - Web `/healthz` added.
+  - Tests and `docs/preview-access-gate.md`. CI 13/13 on `b9b831b`, including Playwright with the gate off.
+- **#99 `preview/yield-simulation` (base #96, head `1c9024e`):** #96 + #97 + #98 merged in, with its own
+  regenerated lockfile. CI 14/14 on `1c9024e`, including the yield Playwright spec and all image builds. Not deployed.
+- **`yield-security-review-package-2026-10-22.md`:**
+  - every item is BLOCKED, READY FOR REVIEW or VERIFIED IN SIMULATION ONLY; nothing is approved;
+  - new finding R1 (Low): the cycle `network` label accepts `solana-mainnet` (simulation-only, nothing
+    contacted); reviewer to decide.
+- **`yield-preview-architecture-proposal.md`:**
+  - a separate Railway project, not provisioned;
+  - prerequisites 1, 2, 5 and 9 are not met.
+
+### Railway
+- Read-only audit at 19:06. Since then, **no Railway call that changes anything**.
+- `melodious-liberation`/`production` is untouched: still `b59eaff`, database at 0018, worker hold #45 in place.
+- No preview project exists.
+
+### Housekeeping for the owner
+- The throwaway branch `tmp/lockfile-gen` (lockfile generator workflow, triggers only on pushes to itself)
+  could not be deleted through this sandbox's proxy. Delete it on GitHub.
+- Merging #97 deploys every live service from `main`, the worker included. Decide on #45 first.
+
+### Blockers
+- Security sign-offs: Y0, Y5, Y7, Y12 and migrations 0026–0029.
+- Approval of the integration branch for preview use.
+- Preview credentials, and a way to run the seed and `dev-token` (the runtime image has no `tsx`).
+- D-39 version approval for deployed display.
+- Real gates D-15, D-25, D-26, D-27, D-30, Unity 6 and devnet (Y15) are unchanged.
+
 ## 2026-10-22, 18:45 local (operator `/yield` preview: D-39 banner, sections, local run; CI 14/14 with Playwright on `565aaee`)
 
 Owner instruction: enable and preview the operator UI locally. **D-39 is adopted for the simulation banner only**,
