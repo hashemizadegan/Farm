@@ -19,3 +19,4 @@ export * from "./rwa";
 export * from "./telemetry";
 export * from "./twin";
 export * from "./chain-events";
+export * from "./events";
