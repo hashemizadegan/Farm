@@ -285,6 +285,16 @@ jobs:
             NEXT_PUBLIC_API_URL=http://localhost:4000
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+      - name: Web build refuses the yield pages for staging/production (D-39 guard reaches Docker builds)
+        if: matrix.app == 'web'
+        run: |
+          set +e
+          docker buildx build --target build-web --build-arg APP=web --build-arg APP_ENV=production \
+            --build-arg NEXT_PUBLIC_YIELD_PAGES_ENABLED=true --cache-from type=gha,scope=web . > web-guard.log 2>&1
+          code=$?
+          set -e
+          tail -5 web-guard.log
+          test "$code" -ne 0 && grep -q "NEXT_PUBLIC_YIELD_PAGES_ENABLED is refused" web-guard.log
       - name: Seed runner refuses deployed environments (no database needed)
         if: matrix.app == 'seed-runner'
         run: |

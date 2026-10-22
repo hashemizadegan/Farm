@@ -19,6 +19,7 @@ export default tseslint.config(
       "packages/contracts/src/generated/**",
       "**/next-env.d.ts",
       ".railway/**",
+      "infra/railway/**", // Railway IaC files (evaluated by the Railway CLI, not part of the build)
     ],
   },
   js.configs.recommended,
