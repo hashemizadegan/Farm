@@ -5,6 +5,14 @@
 **Goal:** show the simulation-only `/yield` operator pages on development data at a protected URL, completely
 separate from the live Railway project.
 
+**Implementation (draft #103, branch `preview/ops-readiness`):**
+- `infra/railway/preview/railway.ts` defines the services below and refuses to render for any project not named
+  `metafarm-yield-preview…` (always for `melodious-liberation`);
+- `.env.preview.example` lists the variables;
+- `docs/preview-runbook.md` has the exact commands.
+
+This proposal remains the rationale; where it differs from those files, the files are authoritative.
+
 ## Hard boundaries
 
 - A **new Railway project**, for example `metafarm-yield-preview`.
@@ -30,7 +38,9 @@ separate from the live Railway project.
 | web | Same branch, `APP=web` | Health check **`/healthz`** (the access gate refuses `/offline`). |
 | seed-runner (one-off) | Same branch, `APP=seed-runner` | Runs once after the migrations; see Data. Restart policy never; no domain. |
 
-**Preview branch:** `preview/yield-simulation` (draft #99, base #96), together with its add-ons #100 (R1) and #101 (seed runner), merged into it before any deployment.
+**Preview branch:** `preview/yield-simulation` (draft #99, base #96), together with its add-ons merged into it
+before any deployment: #100 (R1), #101 (seed runner) and #103 (preview wiring, fail-closed gating, Dockerfile
+build args, e2e and lifecycle tests).
 - It is #96 with #97 (lockfile) and #98 (access gate) merged in, using merge commits.
 - Its lockfile was regenerated for this tree on a GitHub runner (pnpm 10.12.1; frozen reinstall succeeded).
 - Re-generate it whenever a `package.json` on the branch changes.
@@ -49,12 +59,20 @@ separate from the live Railway project.
 - **web:**
   - `APP=web`, `APP_ENV=development`;
   - `NEXT_PUBLIC_API_URL` (the preview API domain);
-  - `NEXT_PUBLIC_YIELD_PAGES_ENABLED=true`;
+  - `NEXT_PUBLIC_YIELD_PAGES_ENABLED=true` (a build arg: the `Dockerfile` declares it as of #103; before #103 it
+    could not reach a Docker build);
   - `PREVIEW_ACCESS_GATE=true`, `PREVIEW_ACCESS_PASSWORD` (new, ≥ 24 characters).
+- **seed-runner:** `APP=seed-runner` and the api block above, including `PREVIEW_ACCESS_GATE=true`. The yield
+  seed builds the API configuration in-process, which refuses a deployed development configuration without the
+  gate.
 
 `APP_ENV=development` is one of the values the existing guards explicitly accept for these switches and for the
-seed. No guard is changed, and no `preview` value is added. The development configuration is what makes the
-access gate mandatory.
+seed. No yield guard is relaxed, and no `preview` value is added. #103 adds one guard: when Railway's
+`RAILWAY_PROJECT_ID` is present with `APP_ENV` development or test,
+- the API refuses to start without `PREVIEW_ACCESS_GATE=true`;
+- the web answers 503 everywhere except `/healthz` unless its gate is on.
+
+The access gate is therefore mandatory in code, not only by procedure.
 
 ## Data: seed runner (recommended approach; #101)
 

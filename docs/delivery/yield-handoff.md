@@ -6,6 +6,44 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 23:30 local (preview line verified end to end in CI: #103 green at `7a9b3af`)
+
+The reviewer asked to finish the preview-ready implementation. #103 (`preview/ops-readiness`, base #99, with #100
+and #101 merged in) already held the wiring:
+- IaC for a separate preview project;
+- fail-closed gating of a deployed development configuration;
+- Dockerfile web build args;
+- remote e2e and the gated-server e2e;
+- migration lifecycle tests;
+- the runbook.
+
+Its head `9a04fb8` failed integration, so Playwright never ran.
+
+Fixed and added:
+- **`8897a56`, test defect:** the unsorted catalog snapshot in `migrations-lifecycle.int.test.ts`.
+- **`cfbad19`, e2e:**
+  - remote runs execute only the preview specs;
+  - `/yield` is always checked remotely;
+  - D-39 is asserted on Q3 too;
+  - no execution controls on any `/yield` view.
+- **`46370d6`:** a database-level test that 0026 refuses a dossier for a real cycle.
+- **`7a9b3af`:**
+  - the seed runner reads the API's `DEV_AUTH_SECRET` by reference;
+  - runbook corrections: always `--file`; first deploys fail closed until the secrets exist; the branch must
+    contain #100, #101 and #103.
+
+**CI on `7a9b3af`:** 15/15. Playwright: 51 passed, 5 skipped by design.
+
+**Railway:** no Railway call. The live project is untouched. Its automatic deploys are still enabled: the operator
+toggle at 20:36 was not done (the dashboard was not signed in; the platform had an outage). No preview project
+exists.
+
+**Blockers:**
+- the reviewer's sign-offs (register unticked);
+- merging #100, #101 and #103 into `preview/yield-simulation` (owner);
+- the preview project and its operator-generated secrets;
+- disabling auto-deploy on the live services before #97 merges.
+
 ## 2026-10-22, 21:00 local (sign-off pack, R1 fixed in draft, preview seed runner; no Railway changes)
 
 Owner instruction (20:00): close the review gaps, prepare the sign-off pack, and de-risk preview enablement,

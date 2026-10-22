@@ -68,6 +68,7 @@ Approver: an independent security reviewer named by the owner. The implementing 
 | ☐ | **R1 fix** (#100) | `apps/api/src/routes/yield.ts`, tests | §5 | |
 | ☐ | **Preview access gate** (#98) | `apps/api/src/plugins/preview-gate.ts`, `apps/web/src/lib/preview-gate.ts`, `apps/web/src/middleware.ts` | `docs/preview-access-gate.md` | |
 | ☐ | **Seed runner** for the preview (#101) | `apps/api/src/scripts/*`, `Dockerfile` target `seed-runner` | `yield-preview-architecture-proposal.md` | |
+| ☐ | **Preview wiring and fail-closed gating** (#103) | `infra/railway/preview/railway.ts` (project guard), `packages/config/src/index.ts` and `apps/web/src/lib/preview-gate.ts` (deployed development needs the gate), `Dockerfile` web build args, `tests/e2e/preview-gate.spec.ts`, `packages/db/src/migrations-lifecycle.int.test.ts` | `docs/preview-runbook.md` | |
 | ☐ | **Preview-use approval** of branch `preview/yield-simulation` (§B) | Everything above | §B | |
 
 Statuses used below:
@@ -424,8 +425,8 @@ modified after being applied (checksum). A database that receives 0026 therefore
 ## B. Preview-only approval (what ticking the register would permit)
 
 If, and only if, every box in the register is ticked, the approval permits:
-- deploying branch `preview/yield-simulation` (#99, plus #100 and #101) to a **new, separate Railway project**, as
-  described in `yield-preview-architecture-proposal.md`;
+- deploying branch `preview/yield-simulation` (#99, plus #100, #101 and #103) to a **new, separate Railway
+  project**, with `infra/railway/preview/railway.ts` and `docs/preview-runbook.md`;
 - running migrations 0019–0029 on that project's **new** database only;
 - `APP_ENV=development` there, with dev auth;
 - `YIELD_WORKFLOW_ENABLED`, `YIELD_CLAIM_INTENTS_ENABLED` and `NEXT_PUBLIC_YIELD_PAGES_ENABLED` set to `true`;
@@ -466,6 +467,7 @@ package changes that.
 | #98 access gate | `b9b831b` | 13/13 |
 | #99 preview branch | `1c9024e` | 14/14 |
 | #100 R1 | `d0d2876` | 14/14 |
+| #103 preview wiring, gating, e2e, lifecycle tests | `7a9b3af` | 15/15; Playwright 51 passed, 5 skipped by design (the gate spec's mobile copies and its remote-only test). The first head `9a04fb8` failed integration on a test defect, fixed in `8897a56`. |
 | #101 seed runner | `b642ec7` | 15/15 (adds the `seed-runner` image and its smoke step; the earlier head `43e7a76` failed integration on a guard defect, fixed in `b642ec7`) |
 
 ## E. Ready-for-sign-off checklist (reviewer procedure)
@@ -490,7 +492,10 @@ for that row is done and nothing is open.
   Use the integration tests `yield-schema.int.test.ts`, `yield-pipeline.int.test.ts` and `yield-read.int.test.ts`
   as evidence, or run them against PostgreSQL 16 with PostGIS.
 - [ ] Run up → down → up on an empty database. Confirm the 0019 down refusal with data, and the 0027 and 0028
-  rollback caution.
+  rollback caution. Automated evidence: `packages/db/src/migrations-lifecycle.int.test.ts` (#103). It checks RLS,
+  exact grants, definer hygiene, append-only triggers, the simulation constraints, and down 0029→0019→up to an
+  identical catalog. `migration-files.test.ts` checks ordering and pairing.
+- [ ] 0026: a dossier for a real cycle is refused by the database itself (`yield-schema.int.test.ts`, "0026: the database refuses…"). 0027 and 0028 are covered by "refuses frozen artifacts and carry rows for real cycles", and 0029 by the API real-gate test in `yield-pipeline.int.test.ts`.
 - [ ] Review the migration owner's rights in the intended deployment: it can disable triggers.
 
 **2. Y0, Y5, Y7, Y12**
@@ -525,6 +530,16 @@ for that row is done and nothing is open.
 - [ ] Web: every path including assets; constant-time compare; 503 without a password; no `NEXT_PUBLIC_`
   exposure (`preview-gate.test.ts`, `middleware.test.ts`).
 - [ ] Off by default; production behaviour unchanged (Playwright green with the gate off).
+
+**5b. Preview wiring (#103)**
+- [ ] `infra/railway/preview/railway.ts` throws for any project not named `metafarm-yield-preview…` and for the live
+  project. It declares no worker, scheduler, bucket, signer, RPC, TRON or mainnet variable.
+- [ ] Deployed development needs the gate: the API refuses to start, and the web answers 503 (tests in
+  `packages/config/src/index.test.ts` and `apps/web/src/lib/preview-gate.test.ts`).
+- [ ] `Dockerfile`: `NEXT_PUBLIC_YIELD_PAGES_ENABLED` and `APP_ENV` reach the web build stage only. The CI step
+  proves a production-labelled build with the yield pages is refused.
+- [ ] `tests/e2e/preview-gate.spec.ts` passes in CI against a gated real server.
+- [ ] `tests/e2e/yield-operator.spec.ts` asserts D-39 on the list, Q2 and Q3 views, and no sign, submit, send, claim, transfer, pay or execute control on any of them. A remote run (`E2E_REMOTE=1`) executes only the two preview specs.
 
 **6. Decide**
 - [ ] Tick register rows individually, with name, date and record.
