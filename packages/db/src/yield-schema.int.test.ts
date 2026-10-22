@@ -25,6 +25,7 @@ import {
   recordCalculation,
   registerYieldEvidence,
   setYieldCycleParameters,
+  toYieldStoreError,
   transitionYieldCycle,
   type YieldCalculationRecord,
   type YieldStoreError,
@@ -42,7 +43,9 @@ async function code(p: Promise<unknown>): Promise<string> {
   try {
     await p;
   } catch (e) {
-    return (e as YieldStoreError).code ?? `uncoded: ${(e as Error).message}`;
+    // Raw SQL in these tests raises PostgreSQL errors: read them through the repository's mapping.
+    const m = toYieldStoreError(e) as YieldStoreError;
+    return m instanceof Error && m.name === "YieldStoreError" ? m.code : `uncoded: ${(e as Error).message}`;
   }
   return "no error";
 }
