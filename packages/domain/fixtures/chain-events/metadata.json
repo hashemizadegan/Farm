@@ -1,0 +1,24 @@
+{
+  "fixture": "metafarm-fixture/1",
+  "deliveryId": "fx-metadata-1",
+  "events": [
+    {
+      "kind": "metadata_update",
+      "network": "solana-devnet",
+      "rail": "SOLANA_BUBBLEGUM_CNFT",
+      "asset": "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV",
+      "tx": {
+        "signature": "5555555555555555555555555555555555555555555555555555555555555555KxKxKxKxKxKxKxKxKxKxKxKx",
+        "slot": "310000901",
+        "ix": 0
+      },
+      "transfer": null,
+      "commitment": "confirmed",
+      "at": "2026-10-23T01:00:00.000Z",
+      "metadata": {
+        "uri": "https://example.com/meta/1.json",
+        "contentSha256": "abababababababababababababababababababababababababababababababab"
+      }
+    }
+  ]
+}

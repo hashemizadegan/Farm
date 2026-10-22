@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { BoundaryGeometry } from "@metafarm/domain/geometry";
 import { createMapLibreAdapter, type MapHandle } from "@metafarm/map-scene/map";
 import { useI18n } from "@/i18n/provider";
+import { mapTilesConfig } from "@/lib/providers";
 
 interface Props {
   boundary?: BoundaryGeometry | null;
@@ -14,8 +15,8 @@ interface Props {
 }
 
 const adapter = createMapLibreAdapter({
-  styleUrl: process.env.NEXT_PUBLIC_MAP_STYLE_URL,
-  attribution: process.env.NEXT_PUBLIC_MAP_ATTRIBUTION,
+  // Only a tile provider that passed the build-time capability check is used; otherwise the offline style.
+  ...mapTilesConfig(),
   // Copied into public/ by scripts/copy-maplibre-worker.mjs before dev/build.
   workerUrl: "/maplibre-gl-worker.mjs",
 });

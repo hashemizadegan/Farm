@@ -40,7 +40,7 @@ describe("openapi.yaml", () => {
 
   it("puts every tenant resource under /v1/tenants/{tenantId}", () => {
     const tenantScoped = Object.keys(spec.paths).filter(
-      (p) => p.startsWith("/v1/") && !p.startsWith("/v1/me") && !p.startsWith("/v1/wallet") && !p.startsWith("/v1/webhooks") && !p.startsWith("/v1/public/") && !p.startsWith("/v1/ingest/"),
+      (p) => p.startsWith("/v1/") && !p.startsWith("/v1/me") && !p.startsWith("/v1/wallet") && !p.startsWith("/v1/webhooks") && !p.startsWith("/v1/public/") && !p.startsWith("/v1/ingest/") && !p.startsWith("/v1/integrations/"),
     );
     expect(tenantScoped.every((p) => p.startsWith("/v1/tenants/{tenantId}/"))).toBe(true);
   });

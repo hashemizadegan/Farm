@@ -24,6 +24,8 @@ export const PERMISSIONS = [
   "member:manage",
   "nft:manage",
   "sensor:manage",
+  /** Register, rotate and revoke integrations (signed external sensor and observation feeds). */
+  "integration:manage",
   /** Create, assign, edit and cancel field tasks. */
   "task:manage",
   /** Start and complete tasks assigned to oneself (or unassigned ones). */
@@ -108,6 +110,7 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "alert:ack",
     "media:upload",
     "sensor:manage",
+    "integration:manage",
     "audit:read",
     "member:manage",
     "nft:manage",

@@ -69,23 +69,25 @@ describe("provider capabilities: states", () => {
     expect(mediaScanningCapability()).toMatchObject({ state: "disabled" });
   });
 
-  it("map tiles: offline default; https only (http on localhost in development); attribution required", () => {
+  it("map tiles: offline default; https only (http on localhost in development); attribution and CSP host required", () => {
+    const tiles = { NEXT_PUBLIC_MAP_STYLE_URL: "https://tiles.example/style.json", NEXT_PUBLIC_MAP_ATTRIBUTION: "© Example", NEXT_PUBLIC_MAP_CONNECT_SRC: "https://tiles.example" };
     expect(mapTilesCapability({})).toMatchObject({ state: "disabled" });
-    expect(mapTilesCapability({ NEXT_PUBLIC_MAP_STYLE_URL: "https://tiles.example/style.json", NEXT_PUBLIC_MAP_ATTRIBUTION: "© Example" })).toMatchObject({ state: "enabled", provider: "tiles.example" });
-    expect(mapTilesCapability({ NEXT_PUBLIC_MAP_STYLE_URL: "https://tiles.example/style.json" })).toMatchObject({ state: "missing", missing: ["NEXT_PUBLIC_MAP_ATTRIBUTION"] });
-    expect(mapTilesCapability({ NEXT_PUBLIC_MAP_STYLE_URL: "http://tiles.example/style.json", NEXT_PUBLIC_MAP_ATTRIBUTION: "x" })).toMatchObject({ state: "invalid" });
-    expect(mapTilesCapability({ ...dev, NEXT_PUBLIC_MAP_STYLE_URL: "http://localhost:8080/style.json", NEXT_PUBLIC_MAP_ATTRIBUTION: "x" })).toMatchObject({ state: "enabled" });
-    expect(mapTilesCapability({ ...prod, NEXT_PUBLIC_MAP_STYLE_URL: "http://localhost:8080/style.json", NEXT_PUBLIC_MAP_ATTRIBUTION: "x" })).toMatchObject({ state: "invalid" });
-    expect(mapTilesCapability({ NEXT_PUBLIC_MAP_STYLE_URL: "not a url", NEXT_PUBLIC_MAP_ATTRIBUTION: "x" })).toMatchObject({ state: "invalid" });
+    expect(mapTilesCapability(tiles)).toMatchObject({ state: "enabled", provider: "tiles.example" });
+    expect(mapTilesCapability({ ...tiles, NEXT_PUBLIC_MAP_ATTRIBUTION: undefined })).toMatchObject({ state: "missing", missing: ["NEXT_PUBLIC_MAP_ATTRIBUTION"] });
+    expect(mapTilesCapability({ ...tiles, NEXT_PUBLIC_MAP_STYLE_URL: "http://tiles.example/style.json" })).toMatchObject({ state: "invalid" });
+    const local = { NEXT_PUBLIC_MAP_STYLE_URL: "http://localhost:8080/style.json", NEXT_PUBLIC_MAP_ATTRIBUTION: "x y", NEXT_PUBLIC_MAP_CONNECT_SRC: "http://localhost:8080" };
+    expect(mapTilesCapability({ ...dev, ...local })).toMatchObject({ state: "enabled" });
+    expect(mapTilesCapability({ ...prod, ...local })).toMatchObject({ state: "invalid" });
+    expect(mapTilesCapability({ ...tiles, NEXT_PUBLIC_MAP_STYLE_URL: "not a url" })).toMatchObject({ state: "invalid" });
   });
 });
 
 describe("provider capabilities: start-up", () => {
   it("passes a complete local configuration and describes it on one line", () => {
     const reports = assertCapabilities(apiCapabilities({ ...dev, DEV_AUTH_SECRET: SECRET }));
-    expect(describeCapabilities(reports)).toBe("auth=enabled(dev,simulated) storage=enabled(memory,simulated) chain-events=disabled media-scanning=disabled");
+    expect(describeCapabilities(reports)).toBe("auth=enabled(dev,simulated) storage=enabled(memory,simulated) chain-events=disabled media-scanning=disabled realtime=disabled integrations=disabled");
     expect(assertCapabilities(workerCapabilities({ ...dev }))).toHaveLength(5);
-    expect(assertCapabilities(webCapabilities({}))).toHaveLength(1);
+    expect(assertCapabilities(webCapabilities({}))).toHaveLength(3);
   });
 
   it("fails closed on missing or invalid configuration, naming variables but never printing values", () => {

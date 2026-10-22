@@ -14,7 +14,7 @@
  */
 
 export type CapabilityState = "enabled" | "disabled" | "missing" | "invalid";
-export type CapabilityCategory = "identity" | "storage" | "imagery" | "chain" | "telemetry" | "media" | "maps";
+export type CapabilityCategory = "identity" | "storage" | "imagery" | "chain" | "telemetry" | "media" | "maps" | "realtime" | "integrations";
 
 export interface CapabilityReport {
   capability: string;
@@ -59,7 +59,7 @@ export function storageCapability(env: Env): CapabilityReport {
   if (env.STORAGE_DRIVER === "s3") {
     const r = requires({ ...base, provider: "s3" }, env, ["S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]);
     if (r.state === "enabled" && deployed(env) && typeof env.S3_ENDPOINT === "string" && env.S3_ENDPOINT.startsWith("http://")) {
-      return { ...r, state: "invalid", problems: ["S3_ENDPOINT must use https when deployed"] };
+      return { ...r, state: "invalid", problems: ["S3_ENDPOINT must use https when deployed (APP_ENV staging/production); an isolated preview (APP_ENV development/test behind PREVIEW_ACCESS_GATE) may use http"] };
     }
     return r;
   }
@@ -99,7 +99,7 @@ export function solanaCapability(env: Env): CapabilityReport {
   }
   const network = typeof env.RWA_SOLANA_NETWORK === "string" ? env.RWA_SOLANA_NETWORK : "solana-devnet";
   if (network === "solana-mainnet" && env.RWA_MAINNET_ENABLED !== true && env.RWA_MAINNET_ENABLED !== "true") {
-    return report({ ...base, state: "invalid", provider: network, problems: ["RWA_SOLANA_NETWORK is solana-mainnet but RWA_MAINNET_ENABLED is off"] });
+    return report({ ...base, state: "invalid", provider: network, problems: ["RWA_SOLANA_NETWORK is solana-mainnet but RWA_MAINNET_ENABLED is off (use solana-devnet, or turn the mainnet switch on only with its sign-off)"] });
   }
   return report({ ...base, state: "enabled", provider: network, note: set(env, "RWA_SOLANA_DAS_URL") ? "with DAS" : "RPC only (no DAS)" });
 }
@@ -107,6 +107,9 @@ export function solanaCapability(env: Env): CapabilityReport {
 /** API only: provider-neutral chain event webhooks (adapters are checked when the routes register). */
 export function chainEventsCapability(env: Env): CapabilityReport {
   const providers = list(env.CHAIN_EVENT_PROVIDERS);
+  if (providers.includes("metafarm-fixture") && deployed(env)) {
+    return report({ capability: "chain-events", category: "chain", state: "invalid", provider: providers.join(","), simulated: true, problems: ["CHAIN_EVENT_PROVIDERS includes the CI fixture adapter (metafarm-fixture), which is refused when deployed"] });
+  }
   return providers.length
     ? report({ capability: "chain-events", category: "chain", state: "enabled", provider: providers.join(","), note: "hints only: tracked assets are re-read from the verified chain source" })
     : report({ capability: "chain-events", category: "chain", state: "disabled", note: "CHAIN_EVENT_PROVIDERS is empty" });
@@ -124,28 +127,115 @@ export function mediaScanningCapability(): CapabilityReport {
   return report({ capability: "media-scanning", category: "media", state: "disabled", note: "no malware scanner integrated; uploads are checked for declared size and content type only (docs/threat-model.md)" });
 }
 
-/** Web: basemap tiles. Unset = the built-in offline style (no imagery, no place names), which is an honest default. */
-export function mapTilesCapability(env: Env): CapabilityReport {
-  const base = { capability: "map-tiles", category: "maps" as const };
-  const url = env.NEXT_PUBLIC_MAP_STYLE_URL;
-  if (!set(env, "NEXT_PUBLIC_MAP_STYLE_URL")) return report({ ...base, state: "disabled", note: "built-in offline style (graticule only)" });
-  let parsed: URL | null = null;
-  try {
-    parsed = new URL(String(url));
-  } catch {
-    parsed = null;
-  }
-  const local = parsed !== null && (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1");
-  if (!parsed || (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && local && !deployed(env)))) {
-    return report({ ...base, state: "invalid", problems: ["NEXT_PUBLIC_MAP_STYLE_URL must be an https URL"] });
-  }
-  if (!set(env, "NEXT_PUBLIC_MAP_ATTRIBUTION")) return report({ ...base, state: "missing", provider: parsed.hostname, missing: ["NEXT_PUBLIC_MAP_ATTRIBUTION"], note: "tile providers require attribution" });
-  return report({ ...base, state: "enabled", provider: parsed.hostname });
+/** API only: the authenticated realtime channel (WebSocket /v1/realtime). Off by default; refused when deployed until reviewed. */
+export function realtimeCapability(env: Env): CapabilityReport {
+  const base = { capability: "realtime", category: "realtime" as const };
+  if (env.REALTIME_EVENTS_ENABLED !== true && env.REALTIME_EVENTS_ENABLED !== "true") return report({ ...base, state: "disabled", note: "clients poll; GET /v1/realtime does not exist" });
+  if (deployed(env)) return report({ ...base, state: "invalid", provider: "websocket", problems: ["REALTIME_EVENTS_ENABLED is refused in staging/production until the channel is security-reviewed"] });
+  return report({ ...base, state: "enabled", provider: "websocket", note: "metafarm-realtime.1 over WebSocket; polling stays available" });
 }
 
-export const apiCapabilities = (env: Env): CapabilityReport[] => [identityCapability(env), storageCapability(env), chainEventsCapability(env), mediaScanningCapability()];
+/** API only: registered integrations (signed sensor and observation feeds). Disabled without a server key. */
+export function integrationsCapability(env: Env): CapabilityReport {
+  const base = { capability: "integrations", category: "integrations" as const };
+  if (!set(env, "INTEGRATION_SECRET_KEY")) return report({ ...base, state: "disabled", note: "no INTEGRATION_SECRET_KEY; integration routes answer 404" });
+  if (String(env.INTEGRATION_SECRET_KEY).length < 32) return report({ ...base, state: "invalid", problems: ["INTEGRATION_SECRET_KEY must be at least 32 characters"] });
+  return report({ ...base, state: "enabled", provider: "hmac", note: "per-integration secrets derived from the server key; workspace from the integration only" });
+}
+
+type ParsedUrl = { ok: true; url: URL } | { ok: false };
+function parseUrl(v: unknown): ParsedUrl {
+  try {
+    return { ok: true, url: new URL(String(v)) };
+  } catch {
+    return { ok: false };
+  }
+}
+const isLocal = (u: URL) => u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]";
+/** https, or http to localhost outside deployed environments. */
+const secureEnough = (u: URL, env: Env) => u.protocol === "https:" || (u.protocol === "http:" && isLocal(u) && !deployed(env));
+const words = (v: unknown) => (typeof v === "string" ? v.split(/\s+/).filter(Boolean) : []);
+/** A CSP source as written in *_CONNECT_SRC: an origin, a scheme-less host (https assumed) or `https://*.example`. */
+const parseSource = (v: string): ParsedUrl => parseUrl(v.includes("://") ? v : `https://${v}`);
+const sourceAllows = (source: URL, target: URL) =>
+  source.protocol === target.protocol &&
+  (source.hostname.startsWith("*.") ? target.hostname.endsWith(source.hostname.slice(1)) : source.host === target.host);
+
+/**
+ * NEXT_PUBLIC_MAP_ATTRIBUTION value declaring that the style itself carries the provider's attribution (MapLibre
+ * displays the sources' attribution). An explicit declaration, so attribution is never left out by accident.
+ */
+export const MAP_ATTRIBUTION_FROM_STYLE = "from-style";
+
+/**
+ * Web: basemap tiles. Unset = the built-in offline style (no imagery, no place names), which is an honest default.
+ * Enabled needs an https style URL, attribution (tile licences require it: the text, or `from-style` when the style
+ * carries it) and the style's origin in NEXT_PUBLIC_MAP_CONNECT_SRC (otherwise the Content-Security-Policy blocks the tiles and the map silently breaks).
+ */
+export function mapTilesCapability(env: Env): CapabilityReport {
+  const base = { capability: "map-tiles", category: "maps" as const };
+  if (!set(env, "NEXT_PUBLIC_MAP_STYLE_URL")) {
+    return set(env, "NEXT_PUBLIC_MAP_ATTRIBUTION") || set(env, "NEXT_PUBLIC_MAP_CONNECT_SRC")
+      ? report({ ...base, state: "missing", missing: ["NEXT_PUBLIC_MAP_STYLE_URL"], note: "attribution or map hosts set without a style URL" })
+      : report({ ...base, state: "disabled", note: "built-in offline style (graticule only)" });
+  }
+  const p = parseUrl(env.NEXT_PUBLIC_MAP_STYLE_URL);
+  if (!p.ok || !secureEnough(p.url, env)) {
+    return report({ ...base, state: "invalid", problems: [`NEXT_PUBLIC_MAP_STYLE_URL must be an https URL${deployed(env) ? " when deployed" : ""}`] });
+  }
+  const missing = ["NEXT_PUBLIC_MAP_ATTRIBUTION", "NEXT_PUBLIC_MAP_CONNECT_SRC"].filter((n) => !set(env, n));
+  if (missing.length) return report({ ...base, state: "missing", provider: p.url.hostname, missing, note: "tile providers require attribution; the CSP must allow the tile hosts" });
+  if (String(env.NEXT_PUBLIC_MAP_ATTRIBUTION).trim().length < 2) return report({ ...base, state: "invalid", provider: p.url.hostname, problems: ["NEXT_PUBLIC_MAP_ATTRIBUTION is blank"] });
+  const hosts = words(env.NEXT_PUBLIC_MAP_CONNECT_SRC).map(parseSource);
+  if (hosts.some((h) => !h.ok || !secureEnough(h.url, env))) return report({ ...base, state: "invalid", provider: p.url.hostname, problems: ["NEXT_PUBLIC_MAP_CONNECT_SRC must list https origins"] });
+  if (!hosts.some((h) => h.ok && sourceAllows(h.url, p.url))) {
+    return report({ ...base, state: "invalid", provider: p.url.hostname, problems: ["NEXT_PUBLIC_MAP_CONNECT_SRC does not include the origin of NEXT_PUBLIC_MAP_STYLE_URL"] });
+  }
+  return report({
+    ...base,
+    state: "enabled",
+    provider: p.url.hostname,
+    note: env.NEXT_PUBLIC_MAP_ATTRIBUTION === MAP_ATTRIBUTION_FROM_STYLE ? "attribution shown from the style's own sources" : "attribution text configured",
+  });
+}
+
+/**
+ * Web: globe imagery and terrain (optional Cesium adapter, packages/map-scene). No imagery or terrain source is
+ * chosen (decision pending) and Cesium is not bundled, so the capability is disabled; switching it on is refused
+ * rather than showing an empty globe or a provider nobody licensed.
+ */
+export function webImageryCapability(env: Env): CapabilityReport {
+  const base = { capability: "globe-imagery", category: "imagery" as const };
+  const on = env.NEXT_PUBLIC_CESIUM_ENABLED === true || env.NEXT_PUBLIC_CESIUM_ENABLED === "true";
+  return on
+    ? report({ ...base, state: "invalid", provider: "cesium", problems: ["NEXT_PUBLIC_CESIUM_ENABLED is on, but no licensed imagery or terrain source is configured (decision pending)"] })
+    : report({ ...base, state: "disabled", note: "2D map only; no globe imagery source chosen" });
+}
+
+/**
+ * Web: direct browser uploads to object storage (presigned PUT). The storage origins must be in
+ * NEXT_PUBLIC_UPLOAD_CONNECT_SRC for the CSP to allow them; unset = uploads disabled in the browser.
+ */
+export function webMediaCapability(env: Env): CapabilityReport {
+  const base = { capability: "media-uploads", category: "media" as const };
+  if (!set(env, "NEXT_PUBLIC_UPLOAD_CONNECT_SRC")) return report({ ...base, state: "disabled", note: "no upload origin allowed by the CSP; browser uploads are unavailable" });
+  const hosts = words(env.NEXT_PUBLIC_UPLOAD_CONNECT_SRC).map(parseSource);
+  if (hosts.some((h) => !h.ok || !secureEnough(h.url, env) || h.url.pathname !== "/")) {
+    return report({ ...base, state: "invalid", problems: [`NEXT_PUBLIC_UPLOAD_CONNECT_SRC must list origins only${deployed(env) ? ", https when deployed" : " (https, or http on localhost)"}`] });
+  }
+  return report({ ...base, state: "enabled", provider: hosts.map((h) => (h.ok ? h.url.hostname : "")).join(",") });
+}
+
+export const apiCapabilities = (env: Env): CapabilityReport[] => [
+  identityCapability(env),
+  storageCapability(env),
+  chainEventsCapability(env),
+  mediaScanningCapability(),
+  realtimeCapability(env),
+  integrationsCapability(env),
+];
 export const workerCapabilities = (env: Env): CapabilityReport[] => [storageCapability(env), imageryCapability(env), evmChainCapability(env), solanaCapability(env), telemetryCapability(env)];
-export const webCapabilities = (env: Env): CapabilityReport[] => [mapTilesCapability(env)];
+export const webCapabilities = (env: Env): CapabilityReport[] => [mapTilesCapability(env), webImageryCapability(env), webMediaCapability(env)];
 
 /** One line for the start-up log: `auth=enabled(oidc) storage=enabled(memory,simulated) imagery=disabled …`. */
 export function describeCapabilities(reports: CapabilityReport[]): string {
