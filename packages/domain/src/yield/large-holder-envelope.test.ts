@@ -44,7 +44,7 @@ const SEED = 0xe17e10e5n;
 const hasher4k = countingHasher();
 let run4k: ReturnType<typeof largeHolderCycle> | undefined;
 const cycle4k = () => (run4k ??= largeHolderCycle(4_096, SEED, hasher4k));
-// The 16,384-holder cycle is the one shared with the read-model tests (memoized in-process, deeply frozen).
+// The 16,384-holder cycle uses the shared parameters (SHARED_16K) of the read-model tests; built once per file, deeply frozen.
 const cycle16k = sharedCycle16k;
 
 // Pinned for the seeded 4,096-holder cycle: any change to the artifact's content or serialization shows here.

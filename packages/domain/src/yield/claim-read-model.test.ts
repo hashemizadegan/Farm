@@ -129,7 +129,7 @@ const PINNED_SUBSET: [string, string, string[]] = ["holder-000004", "holder-0163
 
 let bigState: ReturnType<typeof buildBig> | undefined;
 async function buildBig() {
-  // The 16,384-holder cycle shared with the #78 envelope tests (memoized in-process, deeply frozen).
+  // The shared 16,384-holder cycle parameters (SHARED_16K), as in the #78 envelope tests; built once per file, deeply frozen.
   const r = await sharedCycle16k();
   const projection = countingHasher();
   const persisted = await persist(r, projection);

@@ -92,9 +92,11 @@ function deepFreeze<T>(v: T): T {
 export type SharedLargeCycle = Awaited<ReturnType<typeof largeHolderCycle>>;
 
 /**
- * The in-process memo, on globalThis so it survives module re-evaluation. Shared across test files only when
- * they run in one non-isolated process (the `unit-shared-cycle` vitest project); otherwise each file builds its
- * own copy, with the same bytes. Nothing is written to files, databases or the network.
+ * The in-process memo, on globalThis so it survives module re-evaluation. vitest isolates modules per test file
+ * and runs files in parallel workers, so each file that needs a cycle builds it once (same parameters, same
+ * frozen bytes in every file); within a file, every test reuses that build. Sharing one build across files would
+ * need them in one process, which serializes them and was measured slower in CI (#80). Nothing is written to
+ * files, databases or the network.
  */
 const MEMO = Symbol.for("metafarm.yield.test.sharedLargeCycles");
 const memo = (): Map<string, Promise<SharedLargeCycle>> => ((globalThis as Record<symbol, unknown>)[MEMO] ??= new Map()) as Map<string, Promise<SharedLargeCycle>>;
