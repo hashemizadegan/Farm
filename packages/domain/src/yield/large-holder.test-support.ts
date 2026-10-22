@@ -81,7 +81,7 @@ function assertLargeCycleParams(p: LargeCycleParams): void {
   if (typeof p.dustThreshold !== "bigint" || p.dustThreshold < 0n) throw new Error("dustThreshold must be a non-negative bigint");
 }
 
-function deepFreeze<T>(v: T): T {
+function _deepFreeze<T>(v: T): T {
   if (v && typeof v === "object" && !Object.isFrozen(v)) {
     Object.freeze(v);
     for (const x of Object.values(v as object)) deepFreeze(x);
