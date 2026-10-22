@@ -85,7 +85,11 @@ const ownershipIdentityGuard: SourceIdentityGuard | undefined =
 if (ownershipIdentityGuard)
   await registerOwnershipSource(pool, ownershipIdentityGuard, env.RWA_SOLANA_NETWORK).then(
     (id) => logger.info({ sourceIdentityId: id.id.toString(), network: id.network, endpoint: `${id.endpointScheme}://${id.endpointHost}` }, "ownership source cluster identity registered"),
-    (err: unknown) => logger.error({ code: (err as { code?: string }).code ?? "unknown", ...((err as { details?: object }).details ?? {}) }, "ownership source cluster identity not verified; every batch will be refused until it is"),
+    (err: unknown) =>
+      logger.error(
+        { code: (err as { code?: string }).code ?? "unknown", ...((err as { details?: object }).details ?? {}), err: err instanceof Error ? `${err.name}: ${err.message}` : String(err) },
+        "ownership source cluster identity not verified; every batch will be refused until it is",
+      ),
   );
 
 // Object storage for twin snapshots, created only when they are enabled.

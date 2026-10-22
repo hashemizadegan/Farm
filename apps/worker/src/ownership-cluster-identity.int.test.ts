@@ -6,7 +6,7 @@
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, insertOwnershipEvents, migrateUp, readOwnershipIndex, registerOwnershipSourceIdentity, withSystem, type Pool } from "@metafarm/db";
-import { SOLANA_GENESIS_HASHES, base58Encode, verifyClusterIdentity } from "@metafarm/chain";
+import { IndexOwnershipReader, SOLANA_GENESIS_HASHES, base58Encode, verifyClusterIdentity } from "@metafarm/chain";
 import type { ChainAssetRef, OwnershipEvent, OwnershipEventSource, OwnershipIndexJob } from "@metafarm/domain";
 import { createLogger } from "@metafarm/observability";
 import { OwnershipSourceIdentityError, ownershipIndexHandler, registerOwnershipSource, type SourceIdentityGuard } from "./handlers/ownership-index";
@@ -178,5 +178,67 @@ d("ownership index: verified cluster identity (Y0)", () => {
     expect(await code(withSystem(pool, (tx) => insertOwnershipEvents(tx, [mainnetAsset], "rpc", id)))).toBe("23503");
     expect(await code(withSystem(pool, (tx) => registerOwnershipSourceIdentity(tx, { network: "solana-devnet", genesisHash: MAINNET, endpointScheme: "https", endpointHost: host, verifiedBy: "w" })))).toBe("23514");
     expect(await code(withSystem(pool, (tx) => registerOwnershipSourceIdentity(tx, { network: "solana-devnet", genesisHash: DEVNET, endpointScheme: "https", endpointHost: `${host}/path`, verifiedBy: "w" })))).toBe("23514");
+  });
+
+  it("re-indexes an asset with pre-0023 rows from a verified source: identical rows are bound, the old cursor is replaced, nothing unverified is served", async () => {
+    // Rows as J7 wrote them before migration 0023 (RPC, no identity). The NOT VALID checks refuse such rows
+    // now, so they are dropped and re-added around the inserts, in one transaction (integration test files
+    // run one at a time).
+    const legacy: ChainAssetRef = { ...asset, id: b58(32) };
+    const holder = b58(32);
+    const buyer = b58(32);
+    const mint: OwnershipEvent = { asset: legacy, kind: "mint", from: null, to: holder, amount: 1_000n, slot: 100n, txIndex: 0, ixIndex: 0, signature: b58(64) };
+    const unverifiedBurn: OwnershipEvent = { asset: legacy, kind: "burn", from: holder, to: null, amount: 7n, slot: 850n, txIndex: 0, ixIndex: 0, signature: b58(64) };
+    const check = (t: string) => `ALTER TABLE ${t} ADD CONSTRAINT ${t}_identity_check CHECK ((source = 'rpc' AND source_identity_id IS NOT NULL) OR (source = 'fixture' AND source_identity_id IS NULL)) NOT VALID`;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const t of ["chain_ownership_events", "chain_ownership_cursors"]) await client.query(`ALTER TABLE ${t} DROP CONSTRAINT ${t}_identity_check`);
+      for (const e of [mint, unverifiedBurn])
+        await client.query(
+          `INSERT INTO chain_ownership_events (network, rail, asset_id, kind, from_address, to_address, amount, slot, tx_index, ix_index, signature, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 0, $9, 'rpc')`,
+          [legacy.network, legacy.rail, legacy.id, e.kind, e.from, e.to, e.amount.toString(), e.slot.toString(), e.signature],
+        );
+      // A pre-0023 cursor above what the verified source will cover.
+      await client.query(`INSERT INTO chain_ownership_cursors (network, rail, asset_id, indexed_through_slot, source) VALUES ($1, $2, $3, 900, 'rpc')`, [legacy.network, legacy.rail, legacy.id]);
+      for (const t of ["chain_ownership_events", "chain_ownership_cursors"]) await client.query(check(t));
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+    // Before: nothing about the asset is served.
+    expect(await readOwnershipIndex(pool, legacy)).toBeNull();
+
+    // A verified batch: the old cursor does not count, so the source is read from the start.
+    const transfer: OwnershipEvent = { asset: legacy, kind: "transfer", from: holder, to: buyer, amount: 400n, slot: 600n, txIndex: 0, ixIndex: 0, signature: b58(64) };
+    const afters: (bigint | null)[] = [];
+    const src = {
+      name: "rpc" as const,
+      covers: (a: ChainAssetRef) => a.id === legacy.id,
+      eventsAfter: async (_a: ChainAssetRef, after: bigint | null) => {
+        afters.push(after);
+        return { events: [mint, transfer], throughSlot: 700n };
+      },
+    };
+    const legacyJob: OwnershipIndexJob = { ...job, assetId: legacy.id };
+    // The mint is the same row as the pre-0023 one: bound to the identity, not counted as added.
+    expect(await ownershipIndexHandler(pool, src, guard())(legacyJob, ctx)).toEqual({ status: "indexed", inserted: 1, indexedThroughSlot: "700" });
+    expect(afters).toEqual([null]);
+
+    const rows = await pool.query<{ kind: string; bound: boolean }>(`SELECT kind, source_identity_id IS NOT NULL AS bound FROM chain_ownership_events WHERE asset_id = $1 ORDER BY slot`, [legacy.id]);
+    expect(rows.rows).toEqual([
+      { kind: "mint", bound: true },
+      { kind: "transfer", bound: true },
+      { kind: "burn", bound: false }, // never re-observed by a verified source: kept, never served
+    ]);
+    // After: the cursor is the verified 700 (not the old 900), and only verified events are served.
+    const index = (await readOwnershipIndex(pool, legacy))!;
+    expect(index.indexedThroughSlot).toBe(700n);
+    expect(index.events.map((e) => e.kind)).toEqual(["mint", "transfer"]);
+    const reading = (await new IndexOwnershipReader((a) => readOwnershipIndex(pool, a)).holdersOf(legacy))!;
+    expect(reading.holders).toEqual([{ owner: holder, amount: 600n }, { owner: buyer, amount: 400n }].sort((a, b) => (a.owner < b.owner ? -1 : 1)));
   });
 });
