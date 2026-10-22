@@ -6,6 +6,74 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 18:00 local (Y13 unsigned simulation claim intents on #96; CI 14/14 on `b5d40a7`)
+
+**State verified:**
+- #96: draft, unmerged; head was `bba14cc` before this slice and is `b5d40a7` after.
+- main `b59eaff` is untouched.
+
+**Commit `b5d40a7`** (based on `bba14cc`):
+
+- **Intent shape (domain):** `packages/domain/src/yield/claim-intent.ts` defines `UnsignedClaimIntent` and
+  `ClaimIntentBatch`.
+  - Schemes `metafarm-yield-claim-intent/1` and `-batch/1`, both `version 1`, always `signed: false` and
+    `simulation: true`.
+  - Each intent references: cycle, version, set number, `artifactSetHash`, root, tree size, leaf index, hash and bytes,
+    the stored proof path with its SHA-256, party, recipient, payout address, amount, payout mint, economic asset and
+    network.
+  - `createdAt` is the stored artifact's own time, so the batch is deterministic.
+- **Migration 0029:** `yield_claim_intent_batches`.
+  - Holds the canonical body; its SHA-256 is checked by the database.
+  - One batch per approved set; unique on `(cycle_id, set_number, batch_sha256)`.
+  - Its guard accepts only a published simulation cycle with its approved set, a body that names that set and cycle,
+    is unsigned and simulation, and has one intent per stored leaf.
+  - Append-only, with RLS.
+- **API:** `POST` / `GET …/cycles/{cycleId}/claim-intents` (`yield:approve` to generate, `yield:read` to read).
+  - Requires both `YIELD_WORKFLOW_ENABLED` and the new `YIELD_CLAIM_INTENTS_ENABLED`. Both are off by default
+    (404); the new one is refused in staging and production by configuration.
+  - Generation reads stored data only and recomputes nothing: the frozen artifact (its hash must equal the set hash),
+    a simulation network, the tree matching the set, the stored leaf count, every proof re-verified, and every leaf
+    decoded and matched to the artifact and the cycle.
+  - `GET` re-hashes the stored body.
+- **New stable codes:** `invalid_state`, `payouts_paused`, `non_simulation_network`, `nothing_payable`,
+  `leaf_mismatch`, `intents_exist`. Reused: `real_gate`, `artifact_missing`, `artifact_mismatch`, `proof_invalid`.
+  Refusals store nothing.
+- **Documentation:** `docs/delivery/yield-adapter-shapes.md` §9 (shape, canonical example, rules, storage).
+
+**Tests:**
+- **Domain unit** (`claim-intent.test.ts`, 2/2): byte-identical output regardless of leaf order; a bound field
+  changes the hash; malformed input refused.
+- **Config:** the flag is off by default and refused in staging and production.
+- **PostgreSQL end-to-end** (`apps/api/src/yield-pipeline.int.test.ts`, CI):
+  - generate, with every intent equal to a stored leaf and its proof verifying;
+  - rebuilding from the stored set gives the same SHA-256;
+  - an idempotent retry replays; a second generate is refused with `intents_exist`; `GET` returns the stored batch;
+    a role without `yield:approve` gets 403;
+  - unpublished (`invalid_state`), disputed (`payouts_paused`) and real (`real_gate`) cycles are refused, and the
+    routes are off (404) when not enabled;
+  - a tampered stored proof (`proof_invalid`) and a deleted stored leaf (`artifact_mismatch`) are refused, with
+    nothing stored. The tampering is done with owner rights and the append-only trigger off.
+- **Not applicable:** a dossier-mismatch test. Intent generation reads no dossier; dossier mismatches are refused
+  earlier, at `calculate` (tested in the engine suite).
+- **Local:** unit suites green; 0029 up/down/up and its guard on scratch PostgreSQL 16; targeted tsc clean apart
+  from known stub artifacts.
+- **CI:** 14/14 on `b5d40a7`.
+
+**Defects:** none found in this slice.
+
+**Gates (unchanged; none crossed; no sign-off recorded):**
+- D-26 [Ext] (Y6 final; the leaf context is simulation-only);
+- D-15, D-25, D-27 and D-39 before any non-simulation intent, any holder-facing intent, signing or submission;
+- D-30;
+- confirmations of D-11, D-28, D-29 and D-31; the D-12 Real gate;
+- proposed security sign-offs for Y0, Y5, Y7, Y12 and 0026–0029;
+- Unity 6 validation;
+- Y15 devnet approval and the deploy hold (#45);
+- Y16 and Y17.
+
+**Next action:** owner review of #96. Every safe simulation slice of Y5–Y15 is now built. What remains is behind the
+gates above.
+
 ## 2026-10-22, 17:30 local (G1–G3 complete on #96; CI 14/14 on `bba14cc`)
 
 **State verified:**
