@@ -21,8 +21,9 @@ const D39 =
 test.skip(process.env.NEXT_PUBLIC_YIELD_PAGES_ENABLED !== "true", "the yield pages are off in this build");
 
 test.beforeAll(() => {
-  // Idempotent: the seed reports existing cycles and changes nothing on a second run.
-  execSync("pnpm --filter @metafarm/api seed:yield", { cwd: root, stdio: "inherit", env: process.env });
+  // Idempotent: the seed reports existing cycles and changes nothing on a second run. Against a deployed preview
+  // (E2E_REMOTE=1) the preview's own seed runner has seeded it; nothing is written from here.
+  if (process.env.E2E_REMOTE !== "1") execSync("pnpm --filter @metafarm/api seed:yield", { cwd: root, stdio: "inherit", env: process.env });
   mkdirSync(shots, { recursive: true });
 });
 
