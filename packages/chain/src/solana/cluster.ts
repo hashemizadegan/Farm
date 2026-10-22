@@ -37,6 +37,10 @@ export class ClusterVerificationError extends Error {
     /** Scheme and host only. */
     readonly endpoint: string,
     message: string,
+    /** The genesis hash the configured network requires (null when the network is unknown). */
+    readonly expectedGenesisHash: string | null = null,
+    /** The genesis hash the endpoint returned (only for `mismatch` with an answer). */
+    readonly actualGenesisHash: string | null = null,
   ) {
     super(message);
     this.name = "ClusterVerificationError";
@@ -71,9 +75,46 @@ export interface ClusterCheck {
 
 /** Resolves when the endpoint serves the configured cluster; otherwise throws ClusterVerificationError. */
 export async function verifySolanaCluster(c: ClusterCheck): Promise<void> {
+  await verifyClusterIdentity(c);
+}
+
+/**
+ * A verified cluster identity: the network, the genesis hash the endpoint actually returned (equal to the
+ * network's), and the endpoint as scheme and host only (never credentials, path, query or fragment).
+ */
+export interface VerifiedClusterIdentity {
+  network: SolanaNetwork;
+  genesisHash: string;
+  endpointScheme: "https" | "http";
+  /** Host, with the port when one is given; lowercase. */
+  endpointHost: string;
+}
+
+/**
+ * The scheme and host of an endpoint URL, the only parts of it ever stored. Refuses anything that is not an
+ * http(s) URL. Credentials, path, query and fragment are dropped, never returned.
+ */
+export function endpointIdentity(url: string): { endpointScheme: "https" | "http"; endpointHost: string } {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new ClusterVerificationError("invalid_response", "[invalid URL]", "the endpoint is not a valid URL");
+  }
+  const scheme = u.protocol.replace(/:$/, "");
+  if (scheme !== "https" && scheme !== "http") throw new ClusterVerificationError("invalid_response", `${u.protocol}//${u.host}`, `the endpoint must be http or https, not ${scheme}`);
+  return { endpointScheme: scheme, endpointHost: u.host.toLowerCase() };
+}
+
+/**
+ * Verifies that the endpoint serves the configured cluster (`getGenesisHash`) and returns the verified
+ * identity. Throws ClusterVerificationError otherwise; a mismatch carries the expected and actual hashes.
+ */
+export async function verifyClusterIdentity(c: ClusterCheck): Promise<VerifiedClusterIdentity> {
   const endpoint = redactEndpoint(c.url);
   const expected = (SOLANA_GENESIS_HASHES as Partial<Record<Network, string>>)[c.network];
   if (!expected) throw new ClusterVerificationError("mismatch", endpoint, `${c.label} endpoint: ${c.network} is not a Solana cluster this platform knows`);
+  const { endpointScheme, endpointHost } = endpointIdentity(c.url);
   const attempts = Math.max(1, c.attempts ?? 3);
   let last: ClusterVerificationError | undefined;
   for (let i = 0; i < attempts; i++) {
@@ -86,9 +127,9 @@ export async function verifySolanaCluster(c: ClusterCheck): Promise<void> {
     }
     if (got !== expected) {
       const other = Object.entries(SOLANA_GENESIS_HASHES).find(([, h]) => h === got)?.[0];
-      throw new ClusterVerificationError("mismatch", endpoint, `${c.label} endpoint ${endpoint} serves ${other ?? "an unknown cluster"}, not ${c.network}`);
+      throw new ClusterVerificationError("mismatch", endpoint, `${c.label} endpoint ${endpoint} serves ${other ?? "an unknown cluster"}, not ${c.network}`, expected, got);
     }
-    return;
+    return { network: c.network as SolanaNetwork, genesisHash: got, endpointScheme, endpointHost };
   }
   throw last!;
 }

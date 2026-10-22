@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { base58Decode } from "./base58";
-import { ClusterVerificationError, PROBE_CATEGORIES, SOLANA_GENESIS_HASHES, classifyRpcError, probeSolanaMethod, redactEndpoint, verifySolanaCluster, type MethodProbe } from "./cluster";
+import { base58Decode, base58Encode } from "./base58";
+import { ClusterVerificationError, PROBE_CATEGORIES, SOLANA_GENESIS_HASHES, classifyRpcError, endpointIdentity, probeSolanaMethod, redactEndpoint, verifyClusterIdentity, verifySolanaCluster, type MethodProbe } from "./cluster";
 
 // A made-up credential: it must never appear in any message.
 const KEY = "k3y-not-real-0000";
@@ -187,3 +187,50 @@ describe("JSON-RPC method probe", () => {
     expect(classifyRpcError({ message: "plan" })).toBe("unknown");
   });
 });
+
+/** A 32-byte value that is no known cluster's genesis hash. */
+const base58Encode32 = (fill: number) => base58Encode(new Uint8Array(32).fill(fill));
+
+describe("verified cluster identity (Y0, D-16 option A)", () => {
+  const identity = (f: ReturnType<typeof fakeFetch>, network: "solana-devnet" | "solana-mainnet" | "tron-nile" = "solana-devnet", url = URL_WITH_KEY) =>
+    verifyClusterIdentity({ url, network, label: "RPC", fetchImpl: f.fetchImpl, retryDelayMs: 1, timeoutMs: 50 });
+
+  it("returns the network, the genesis hash the endpoint returned, and the endpoint as scheme and host only", async () => {
+    const f = fakeFetch({ body: { jsonrpc: "2.0", id: 1, result: DEVNET } });
+    const id = await identity(f);
+    expect(id).toEqual({ network: "solana-devnet", genesisHash: DEVNET, endpointScheme: "https", endpointHost: "devnet.rpc.invalid" });
+    expect(JSON.stringify(id)).not.toContain(KEY);
+    expect(f.calls.map((c) => JSON.parse(c.body).method)).toEqual(["getGenesisHash"]);
+  });
+
+  it("is deterministic for a stubbed answer, and verifySolanaCluster keeps resolving without a value", async () => {
+    const a = await identity(fakeFetch({ body: { result: MAINNET } }), "solana-mainnet", "https://Main.RPC.invalid:8899/x?k=1");
+    const b = await identity(fakeFetch({ body: { result: MAINNET } }), "solana-mainnet", "https://main.rpc.invalid:8899/other#frag");
+    expect(a).toEqual(b);
+    expect(a.endpointHost).toBe("main.rpc.invalid:8899");
+    await expect(check(fakeFetch({ body: { result: DEVNET } }))).resolves.toBeUndefined();
+  });
+
+  it("a mismatch carries the expected and actual genesis hashes, and no credential", async () => {
+    const err = await failure(identity(fakeFetch({ body: { result: MAINNET } })));
+    expect([err.reason, err.expectedGenesisHash, err.actualGenesisHash, err.endpoint]).toEqual(["mismatch", DEVNET, MAINNET, "https://devnet.rpc.invalid/[redacted]"]);
+    expect(err.message).not.toContain(KEY);
+    const unknown = await failure(identity(fakeFetch({ body: { result: base58Encode32(7) } })));
+    expect([unknown.reason, unknown.actualGenesisHash]).toEqual(["mismatch", base58Encode32(7)]);
+    expect(unknown.message).toMatch(/an unknown cluster/);
+  });
+
+  it("refuses unknown networks, invalid answers, unavailable endpoints and non-http(s) URLs", async () => {
+    expect((await failure(identity(fakeFetch({ body: { result: DEVNET } }), "tron-nile"))).reason).toBe("mismatch");
+    expect((await failure(identity(fakeFetch({ body: { result: "not-a-hash" } })))).reason).toBe("invalid_response");
+    expect((await failure(identity(fakeFetch({ status: 503 })))).reason).toBe("unavailable");
+    expect((await failure(identity(fakeFetch({ body: { result: DEVNET } }), "solana-devnet", "wss://devnet.rpc.invalid"))).reason).toBe("invalid_response");
+  });
+
+  it("endpointIdentity keeps scheme and host only", () => {
+    expect(endpointIdentity("https://user:pass@RPC.example.invalid:443/v2/key?api-key=x#f")).toEqual({ endpointScheme: "https", endpointHost: "rpc.example.invalid" });
+    expect(endpointIdentity("http://127.0.0.1:8899")).toEqual({ endpointScheme: "http", endpointHost: "127.0.0.1:8899" });
+    expect(() => endpointIdentity("not a url")).toThrow(ClusterVerificationError);
+  });
+});
+
