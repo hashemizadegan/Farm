@@ -160,12 +160,21 @@ export const apiEnvSchema = z
      * real-yield plan (§11.1). Nothing is funded, signed or submitted either way.
      */
     YIELD_WORKFLOW_ENABLED: bool.default("false"),
+    /**
+     * Y12 (D-29): explicit, consented, authorised, revocable account-to-party links. Off (default): those routes
+     * answer 404. Refused in production: the consent wording is not legally approved (D-39) and the security
+     * sign-off is outstanding.
+     */
+    PARTY_LINKS_ENABLED: bool.default("false"),
     ...rwa,
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {
     if (env.YIELD_WORKFLOW_ENABLED && env.APP_ENV === "production") {
       ctx.addIssue({ code: "custom", path: ["YIELD_WORKFLOW_ENABLED"], message: "the yield workflow is simulation-only and not approved for production" });
+    }
+    if (env.PARTY_LINKS_ENABLED && env.APP_ENV === "production") {
+      ctx.addIssue({ code: "custom", path: ["PARTY_LINKS_ENABLED"], message: "account-to-party links are not approved for production (D-29, D-39)" });
     }
   });
 

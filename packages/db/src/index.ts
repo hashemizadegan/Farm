@@ -28,3 +28,4 @@ export * from "./repositories/idempotency";
 export * from "./repositories/page";
 export * from "./repositories/player-wallets";
 export * from "./repositories/yield";
+export * from "./repositories/party-links";

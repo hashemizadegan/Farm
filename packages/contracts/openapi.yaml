@@ -3413,6 +3413,116 @@ paths:
         "409": { $ref: "#/components/responses/BadRequest" }
         "422": { $ref: "#/components/responses/BadRequest" }
 
+  /v1/tenants/{tenantId}/rwa/parties/{partyId}/account-links:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      tags: [rwa]
+      summary: "Propose linking an existing party to a member account (rwa:operate). Off unless PARTY_LINKS_ENABLED (404); refused in production (D-29, D-39)."
+      operationId: proposePartyAccountLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [userId], properties: { userId: { type: string, format: uuid } } }
+      responses:
+        "201": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+    get:
+      tags: [rwa]
+      summary: "A party's account links with their audit events (rwa:read). Off unless PARTY_LINKS_ENABLED (404); refused in production (D-29, D-39)."
+      operationId: listPartyAccountLinks
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/rwa/account-links/{linkId}/authorise:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { name: linkId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      tags: [rwa]
+      summary: "Authorise a consented link; never the proposer or the linked member (compliance:review). Off unless PARTY_LINKS_ENABLED (404); refused in production (D-29, D-39)."
+      operationId: authorisePartyAccountLink
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/rwa/account-links/{linkId}/revoke:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { name: linkId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      tags: [rwa]
+      summary: "Revoke a link (rwa:operate); terminal. Off unless PARTY_LINKS_ENABLED (404); refused in production (D-29, D-39)."
+      operationId: revokePartyAccountLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/me/party-links:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [rwa]
+      summary: "The signed-in member's links and the current consent text (not legally approved). Off unless PARTY_LINKS_ENABLED (404); refused in production (D-29, D-39)."
+      operationId: listMyPartyLinks
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/me/party-links/{linkId}/consent:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { name: linkId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      tags: [rwa]
+      summary: "The linked member consents to the current consent text (version and SHA-256 must match). Off unless PARTY_LINKS_ENABLED (404); refused in production (D-29, D-39)."
+      operationId: consentToPartyLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [consentVersion, consentSha256], properties: { consentVersion: { type: string }, consentSha256: { type: string } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/me/party-links/{linkId}/revoke:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { name: linkId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      tags: [rwa]
+      summary: "The linked member revokes their own link; terminal. Off unless PARTY_LINKS_ENABLED (404); refused in production (D-29, D-39)."
+      operationId: revokeMyPartyLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+
 components:
   securitySchemes:
     bearerAuth:
