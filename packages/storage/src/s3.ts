@@ -12,7 +12,7 @@ export interface S3StorageOptions {
 }
 
 /**
- * S3-compatible storage. TODO(provider-config): set S3_* variables for your
+ * S3-compatible storage. Capability `storage` (packages/config capabilities.ts; docs/provider-capabilities.md): set S3_* variables for your
  * provider and configure the bucket's CORS policy to allow PUT from the web
  * origin with the `content-type` header. Keep the bucket private; reads go
  * through presigned GET URLs.

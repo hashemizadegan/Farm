@@ -160,6 +160,19 @@ export const apiEnvSchema = z
     SELF_SERVE_WORKSPACES: bool.default("true"),
     /** Cap on workspaces one user may own through self-service (abuse guard). */
     MAX_OWNED_WORKSPACES: z.coerce.number().int().min(1).max(100).default(3),
+    /**
+     * Providers allowed to post chain events (POST /v1/webhooks/<provider>), comma-separated; each must have an
+     * adapter (packages/domain chain-events: today only "metafarm-relay"). Empty (default): chain events are
+     * refused. Events are hints only: they ask the ownership indexer to re-read a tracked asset from the verified
+     * chain source; they never write ownership themselves.
+     */
+    CHAIN_EVENT_PROVIDERS: csv.default(""),
+    /**
+     * Realtime event delivery (metafarm-event/1, packages/domain events.ts). Off by default and refused when deployed:
+     * no client push endpoint exists yet; the envelope and its authorization rule are prepared and tested first.
+     * Turning it on changes nothing today (no route reads it); clients keep polling.
+     */
+    REALTIME_EVENTS_ENABLED: bool.default("false"),
     WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(15_000),
     /** Serve Swagger UI at /docs. Unset: on in development and test, off in staging and production. */
@@ -202,6 +215,9 @@ export const apiEnvSchema = z
     }
     if (env.YIELD_CLAIM_INTENTS_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
       ctx.addIssue({ code: "custom", path: ["YIELD_CLAIM_INTENTS_ENABLED"], message: "claim intents are simulation-only and refused when deployed (D-15, D-25, D-27, D-39)" });
+    }
+    if (env.REALTIME_EVENTS_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
+      ctx.addIssue({ code: "custom", path: ["REALTIME_EVENTS_ENABLED"], message: "realtime events have no reviewed push endpoint yet (authentication, replay, ordering, reconnection)" });
     }
     if (env.HOLDER_YIELD_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
       ctx.addIssue({ code: "custom", path: ["HOLDER_YIELD_ENABLED"], message: "holder-facing yield views need approved disclosures (D-39) before any deployed use" });
@@ -373,3 +389,4 @@ export const webPublicEnvSchema = z.object({
   NEXT_PUBLIC_YIELD_PAGES_ENABLED: bool.default("false"),
 });
 export type WebPublicEnv = z.infer<typeof webPublicEnvSchema>;
+export * from "./capabilities";

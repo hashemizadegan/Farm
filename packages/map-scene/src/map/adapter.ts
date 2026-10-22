@@ -22,7 +22,7 @@ export interface MapAdapter {
 /** Basemap configuration. Both values come from NEXT_PUBLIC_* env vars. */
 export interface BasemapConfig {
   /**
-   * TODO(provider-config): URL of a MapLibre style JSON from your tile provider
+   * Capability `map-tiles` (packages/config capabilities.ts; docs/provider-capabilities.md): URL of a MapLibre style JSON from your tile provider
    * (or a self-hosted style). When empty, the built-in offline mock style is
    * used: a plain background and a graticule, with no imagery or place names.
    */

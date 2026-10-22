@@ -14,7 +14,7 @@ export interface ImageryScene {
 /**
  * Imagery provider integration point.
  *
- * TODO(provider-config): implement this interface for your chosen imagery
+ * Capability `imagery` (packages/config capabilities.ts; decision pending in docs/provider-capabilities.md): implement this interface for the chosen imagery
  * provider. Accuracy, revisit time, resolution and licence terms are entirely
  * determined by that provider; this application makes no claims about them.
  * Provider endpoints must be fixed configuration — never derived from request
