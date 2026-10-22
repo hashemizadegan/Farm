@@ -6,6 +6,26 @@ is blocked and why, and the next action. The plan is
 §11.1 gates decide what may be built. This record is separate from [`handoff.md`](handoff.md), which
 belongs to the frozen #40–#59 stack.
 
+## 2026-10-22, 11:00 local (#84 hardened; D-16 decision brief)
+
+| PR | Head | CI run | Checks |
+| --- | --- | --- | --- |
+| #84 | `0a5783c` | 39735597866 | 14/14 passed (unit job 149 s, test step 118 s) |
+
+- **#84 hardening** (tests only; no pin changes and no new pins):
+  - `ChainServingError` with stable codes and messages: `stale_cycle`, `unknown_cycle`, `unknown_version`,
+    `version_gap`, `version_not_monotonic`, `invalid_version`.
+  - `PublishedVersionsIndex`: per cycle id, versions must be exactly 1, 2, 3, …. A gap (v3 without v2) is refused
+    with `version_gap`; a repeat or an older version with `version_not_monotonic`. Nothing is removed, so the
+    latest version is monotonic.
+  - Serving a stale cycle 3 (cycle 2 v2 published, cycle 3 not rebuilt) fails with `stale_cycle`, message:
+    `refusing to serve cycle <c3> v1 is stale: based on <c2> v1, latest is v2`. Cycle 3 v1 opened by explicit
+    version still serves verified claims (audit read).
+- **D-16 brief:** `decision-brief-d16-cluster-identity.md`, OPEN — FOR REVIEW ONLY.
+  - Recommends **Option A**: a genesis-hash identity table referenced by cursors and events, NOT NULL for `rpc`
+    rows, verified at registration and before every batch.
+  - Approving it unblocks Y0 on the J7 line (base #59, on top of #50–#52), not on the yield stack.
+
 ## 2026-10-22, 10:30 local (multi-cycle simulation harness; cycle 2 correction)
 
 | PR | Scope | Branch | Head | Base | CI run | Checks |
