@@ -87,6 +87,9 @@ importers:
       '@metafarm/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@metafarm/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       bullmq:
         specifier: ^5.56.0
         version: 5.81.5
@@ -210,6 +213,12 @@ importers:
 
   apps/worker:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.840.0
+        version: 3.1155.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.840.0
+        version: 3.1155.0
       '@metafarm/chain':
         specifier: workspace:*
         version: link:../../packages/chain
@@ -225,6 +234,9 @@ importers:
       '@metafarm/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@metafarm/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       bullmq:
         specifier: ^5.56.0
         version: 5.81.5
@@ -373,6 +385,18 @@ importers:
       pino-pretty:
         specifier: ^13.0.0
         version: 13.2.0
+
+  packages/storage:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.840.0
+        version: 3.1155.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.840.0
+        version: 3.1155.0
+      '@metafarm/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/ui:
     dependencies:
