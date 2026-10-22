@@ -598,3 +598,71 @@ export async function activeYieldAttesters(tx: TenantTx, artifactSetId: string):
   );
   return r.rows.map((x) => x.attester_user_id);
 }
+
+// ── Holder-facing reads (Y13) ──────────────────────────────────────────
+
+export interface HolderAllocationRow {
+  cycleId: string;
+  periodStart: string;
+  periodEnd: string;
+  version: number;
+  simulation: boolean;
+  status: YieldCycleStatus;
+  artifactSetId: string;
+  setHash: string;
+  merkleRoot: string;
+  kind: "allocated" | "withheld";
+  weight: bigint;
+  amount: bigint;
+  settlementMint: string | null;
+  settlementDecimals: number | null;
+}
+
+/**
+ * One party's allocations in published (or disputed) cycles, from their approved artifact set only. Read for the
+ * party of an active account link (party-links.ts activePartyOfUser); never by wallet or login. Unattributed and
+ * dust rows are never returned.
+ */
+export async function listPartyYieldAllocations(tx: TenantTx, partyId: string, opts: { simulationOnly: boolean }): Promise<HolderAllocationRow[]> {
+  const r = await tx.query<{
+    cycle_id: string;
+    period_start: string;
+    period_end: string;
+    version: number;
+    simulation: boolean;
+    status: YieldCycleStatus;
+    artifact_set_id: string;
+    set_hash: string;
+    merkle_root: string;
+    kind: "allocated" | "withheld";
+    weight: string;
+    amount: string;
+    settlement_mint: string | null;
+    settlement_decimals: number | null;
+  }>(
+    `SELECT c.id AS cycle_id, c.period_start::text, c.period_end::text, c.version, c.simulation, c.status, s.id AS artifact_set_id, s.set_hash, s.merkle_root,
+            a.kind, a.weight::text, a.amount::text, c.settlement_mint, c.settlement_decimals
+       FROM yield_allocations a
+       JOIN yield_artifact_sets s ON s.id = a.artifact_set_id AND s.status = 'approved'
+       JOIN yield_cycles c ON c.tenant_id = a.tenant_id AND c.id = a.cycle_id AND c.status IN ('published', 'disputed')
+      WHERE a.tenant_id = $1 AND a.party_id = $2 AND a.kind IN ('allocated', 'withheld') AND ($3::boolean = false OR c.simulation)
+      ORDER BY c.period_end DESC, c.version DESC, c.id`,
+    [tx.tenantId, partyId, opts.simulationOnly],
+  );
+  return r.rows.map((x) => ({
+    cycleId: x.cycle_id,
+    periodStart: x.period_start,
+    periodEnd: x.period_end,
+    version: x.version,
+    simulation: x.simulation,
+    status: x.status,
+    artifactSetId: x.artifact_set_id,
+    setHash: x.set_hash,
+    merkleRoot: x.merkle_root,
+    kind: x.kind,
+    weight: BigInt(x.weight),
+    amount: BigInt(x.amount),
+    settlementMint: x.settlement_mint,
+    settlementDecimals: x.settlement_decimals,
+  }));
+}
