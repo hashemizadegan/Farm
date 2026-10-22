@@ -154,9 +154,20 @@ export const apiEnvSchema = z
     API_DOCS_ENABLED: bool.optional(),
     /** Digital twin: report ownership from the platform's ownership index (migration 0020). Off by default: ownership then reads `not_indexed`. Read-only. */
     TWIN_OWNERSHIP_INDEX_ENABLED: bool.default("false"),
+    /**
+     * Y9: the yield preparer and reviewer workflow (POST /v1/tenants/{tenantId}/yield/...), for simulation cycles
+     * only. Off (default): those routes answer 404. Refused in production: real cycles need the approvals of the
+     * real-yield plan (§11.1). Nothing is funded, signed or submitted either way.
+     */
+    YIELD_WORKFLOW_ENABLED: bool.default("false"),
     ...rwa,
   })
-  .superRefine(productionGuards);
+  .superRefine(productionGuards)
+  .superRefine((env, ctx) => {
+    if (env.YIELD_WORKFLOW_ENABLED && env.APP_ENV === "production") {
+      ctx.addIssue({ code: "custom", path: ["YIELD_WORKFLOW_ENABLED"], message: "the yield workflow is simulation-only and not approved for production" });
+    }
+  });
 
 /** Whether the API serves its interactive docs: an explicit setting wins, else only outside deployed environments. */
 export function apiDocsEnabled(env: { APP_ENV: string; API_DOCS_ENABLED?: boolean }): boolean {

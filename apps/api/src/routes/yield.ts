@@ -5,13 +5,30 @@
  *   transition history, and an artifact set's allocations (party ids and holder keys: operators only).
  * - `audit:read`: the audit events about a cycle (D-31: audit_events).
  *
+ * Y9 (yieldWorkflowRoutes): the preparer and reviewer workflow for simulation cycles, behind YIELD_WORKFLOW_ENABLED
+ * (off by default: 404). D-11: the freeze point is `calculate` (the documented recommendation). Disputes,
+ * corrections, supersession and expiry are not exposed: they wait for D-22 (dispute authority) and D-10.
+ *
  * The public summary (`/v1/public/yield/...`, plan §7.4) is deliberately not registered: it waits for D-30.
  * Holder-facing endpoints wait for D-29 (Y12/Y13). Nothing here contacts a chain.
  */
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   InvalidCursorError,
+  OwnershipProvenanceError,
+  YieldStoreError,
   activeYieldAttesters,
+  addYieldAttestation,
+  addYieldInput,
+  createYieldCycle,
+  listYieldInputs,
+  loadWeightedOwnershipInput,
+  recordCalculation,
+  registerYieldEvidence,
+  setYieldCycleParameters,
+  transitionYieldCycle,
+  type YieldStoreErrorCode,
+  type YieldTransitionRequest,
   getYieldCycle,
   getYieldOwnershipSnapshot,
   listYieldAllocations,
@@ -22,9 +39,10 @@ import {
   type TenantTx,
   type YieldCycleRow,
 } from "@metafarm/db";
-import { uuid } from "@metafarm/domain";
+import { HoldingWeightError, uuid, type ChainAssetRef, type Permission } from "@metafarm/domain";
 import { z } from "zod";
 import { HttpError, notFound, parse } from "../lib/http";
+import { engineOutputProblems, type YieldCalculationRequest, type YieldCalculationResult } from "../lib/yield-engine";
 
 const STATUSES = ["draft", "inputs_locked", "calculated", "under_review", "approved", "published", "funded", "distributing", "disputed", "closed", "cancelled", "abandoned", "superseded"] as const;
 const tenantParams = z.object({ tenantId: uuid });
@@ -153,6 +171,264 @@ export async function yieldRoutes(app: FastifyInstance) {
         [tx.tenantId, cycleId],
       );
       return { items: r.rows.map((e) => ({ id: e.id, actorUserId: e.actor_user_id, actorType: e.actor_type, action: e.action, outcome: e.outcome, metadata: e.metadata, at: iso(e.created_at) })) };
+    });
+  });
+}
+
+// ── Y9: the preparer and reviewer workflow (simulation cycles) ──────────────
+
+/**
+ * Attestations an approval needs on a simulation cycle. Real cycles need an approved quorum record for the
+ * asset class (D-23, open), so they are refused before this is consulted. A simulation-only default, not a policy.
+ */
+export const SIMULATION_ATTESTATION_QUORUM = 1;
+
+const STATUS_OF: Partial<Record<YieldStoreErrorCode, number>> = {
+  not_found: 404,
+  forbidden: 403,
+  four_eyes: 403,
+  duplicate: 409,
+  double_counted: 409,
+  invalid_transition: 409,
+  frozen: 409,
+  immutable: 409,
+  not_calculating: 409,
+  artifact_set_changed: 409,
+  future_phase: 409,
+  real_gate: 409,
+  cycle_not_draft: 409,
+};
+
+/** Domain and store refusals as HTTP errors with their stable codes; anything else is rethrown. */
+export function yieldHttpError(e: unknown): unknown {
+  if (e instanceof YieldStoreError) return new HttpError(STATUS_OF[e.code] ?? 422, e.code, e.message);
+  if (e instanceof HoldingWeightError) return new HttpError(e.code === "not_indexed" || e.code === "incomplete_history" ? 409 : 422, e.code, e.message);
+  if (e instanceof OwnershipProvenanceError) return new HttpError(409, e.code, e.message);
+  return e;
+}
+
+const hex64 = z.string().regex(/^[0-9a-f]{64}$/, "lowercase SHA-256 hex");
+const b58 = z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, "a base58 address");
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
+const slot = z.string().regex(/^\d{1,19}$/, "a slot number");
+const reason = z.string().trim().min(1).max(2000);
+const createCycleSchema = z
+  .object({
+    businessAssetId: uuid,
+    periodStart: date,
+    periodEnd: date,
+    version: z.number().int().min(1).max(1_000_000).optional(),
+    simulation: z.boolean().default(true),
+    network: z.enum(["solana-devnet", "solana-mainnet"]),
+    rail: z.enum(["SOLANA_TOKEN_2022", "SOLANA_BUBBLEGUM_CNFT"]),
+    chainAssetId: b58,
+  })
+  .strict();
+const parametersSchema = z
+  .object({
+    entitlementRef: hex64.optional(),
+    policyHash: hex64.optional(),
+    formulaVersion: z.string().regex(/^[a-z0-9][a-z0-9._:/-]{0,63}$/).optional(),
+    accountingCurrency: z.string().regex(/^[A-Z]{3}$/).optional(),
+    settlementMint: b58.optional(),
+    settlementDecimals: z.number().int().min(0).max(18).optional(),
+    slotStart: slot.optional(),
+    slotEnd: slot.optional(),
+  })
+  .strict();
+const evidenceSchema = z
+  .object({ contentSha256: hex64, evidenceType: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/), classification: z.enum(["public", "internal", "confidential", "personal"]), supersedes: uuid.optional() })
+  .strict();
+const inputSchema = z
+  .object({
+    side: z.enum(["revenue", "expense"]),
+    kind: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+    amount: z.string().regex(/^\d{1,78}$/, "a non-negative integer in minor units"),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    completeness: z.enum(["known", "zero", "estimated"]),
+    evidenceId: uuid.optional(),
+    sourceKind: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+    sourceRef: z.string().min(1).max(200),
+  })
+  .strict();
+const reasonSchema = z.object({ reason: reason.optional() }).strict();
+const closeSchema = z.object({ reason: z.enum(["no_distribution", "loss", "unfunded", "simulation"]), note: reason.optional() }).strict();
+const cancelSchema = z.object({ reason }).strict();
+const attestSchema = z.object({ artifactSetId: uuid, kind: z.enum(["attest", "revoke"]).default("attest"), attestedHash: hex64, statement: reason }).strict();
+
+export async function yieldWorkflowRoutes(app: FastifyInstance) {
+  const { env } = app.deps;
+  const enabled = () => {
+    if (!env.YIELD_WORKFLOW_ENABLED) throw new HttpError(404, "not_found", "route not found");
+  };
+  /** Runs `fn` in the tenant with `permission`, turning yield refusals into HTTP errors (nothing is changed). */
+  const run = async <T>(req: FastifyRequest, permission: Permission, fn: (tx: TenantTx, userId: string) => Promise<T>): Promise<T> => {
+    enabled();
+    try {
+      return await app.inTenant(req, permission, (tx) => fn(tx, req.user!.id));
+    } catch (e) {
+      throw yieldHttpError(e);
+    }
+  };
+  /** Simulation cycles only: a real cycle cannot be worked on until its gates are approved (plan §2.1). */
+  const simulationCycle = async (tx: TenantTx, cycleId: string, forUpdate = false) => {
+    const c = await getYieldCycle(tx, cycleId, forUpdate);
+    if (!c) throw notFound("yield cycle");
+    if (!c.simulation) throw new HttpError(409, "real_gate", "non-simulation cycles are refused until the real gates of the plan (§2.1) are approved");
+    return c;
+  };
+  const move = (permission: Permission, to: YieldTransitionRequest["to"], schema: z.ZodTypeAny = reasonSchema) => async (req: FastifyRequest) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    const body = parse(schema, req.body ?? {}) as { reason?: string };
+    return run(req, permission, async (tx, userId) => {
+      await simulationCycle(tx, cycleId, true);
+      const r = await transitionYieldCycle(tx, cycleId, { to, actorUserId: userId, reason: body.reason });
+      return toYieldCycle(r.cycle);
+    });
+  };
+
+  /** Loads what `calculate` and `preview` hand to the engine, refusing (no change) anything not calculable. */
+  const calculationRequest = async (tx: TenantTx, cycleId: string): Promise<YieldCalculationRequest> => {
+    const cycle = await simulationCycle(tx, cycleId, true);
+    if (cycle.status !== "inputs_locked") throw new HttpError(409, "invalid_transition", `calculate needs an inputs_locked cycle (it is ${cycle.status})`);
+    if (cycle.slotStart === null || cycle.slotEnd === null) throw new HttpError(422, "calculation_incomplete", "set the slot range first");
+    const asset = { network: cycle.network, rail: cycle.rail, id: cycle.chainAssetId } as ChainAssetRef;
+    const ownership = await loadWeightedOwnershipInput(app.deps.pool, tx.tenantId, { asset, window: { startSlot: cycle.slotStart, endSlot: cycle.slotEnd }, simulation: cycle.simulation });
+    return { cycle, inputs: await listYieldInputs(tx, cycleId), ownership };
+  };
+  const engine = () => {
+    if (!app.deps.yieldEngine) throw new HttpError(503, "calculation_engine_unavailable", "no yield calculation engine is configured on this line (integration with the yield domain is pending)");
+    return app.deps.yieldEngine;
+  };
+  const runEngine = async (request: YieldCalculationRequest): Promise<YieldCalculationResult> => {
+    const out = await engine().calculate(request);
+    const problems = engineOutputProblems(request, out);
+    if (problems.length) throw new HttpError(502, "engine_output_invalid", "the calculation engine returned allocations that do not match the ownership input", problems);
+    return out;
+  };
+
+  app.post("/v1/tenants/:tenantId/yield/cycles", async (req, reply) => {
+    parse(tenantParams, req.params);
+    enabled();
+    const b = parse(createCycleSchema, req.body);
+    const out = await run(req, "yield:prepare", async (tx, userId) => {
+      if (!b.simulation) throw new HttpError(409, "real_gate", "only simulation cycles can be created until the real gates of the plan (§2.1) are approved");
+      return toYieldCycle(await createYieldCycle(tx, { ...b, simulation: true, createdBy: userId }));
+    });
+    return reply.status(201).send(out);
+  });
+
+  app.patch("/v1/tenants/:tenantId/yield/cycles/:cycleId", async (req) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    const b = parse(parametersSchema, req.body);
+    return run(req, "yield:prepare", async (tx, userId) => {
+      await simulationCycle(tx, cycleId, true);
+      const { slotStart, slotEnd, ...rest } = b;
+      const c = await setYieldCycleParameters(tx, cycleId, { ...rest, ...(slotStart ? { slotStart: BigInt(slotStart) } : {}), ...(slotEnd ? { slotEnd: BigInt(slotEnd) } : {}) }, userId);
+      return toYieldCycle(c);
+    });
+  });
+
+  app.post("/v1/tenants/:tenantId/yield/evidence", async (req, reply) => {
+    parse(tenantParams, req.params);
+    const b = parse(evidenceSchema, req.body);
+    const id = await run(req, "yield:prepare", (tx, userId) => registerYieldEvidence(tx, { ...b, simulation: true, createdBy: userId }));
+    return reply.status(201).send({ id, simulation: true });
+  });
+
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/inputs", async (req, reply) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    const b = parse(inputSchema, req.body);
+    const id = await run(req, "yield:prepare", async (tx, userId) => {
+      await simulationCycle(tx, cycleId, true);
+      return addYieldInput(tx, cycleId, { ...b, amount: BigInt(b.amount), createdBy: userId });
+    });
+    return reply.status(201).send({ id });
+  });
+
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/lock", move("yield:prepare", "inputs_locked"));
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/unlock", async (req) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    const body = parse(reasonSchema, req.body ?? {});
+    return run(req, "yield:prepare", async (tx, userId) => {
+      const c = await simulationCycle(tx, cycleId, true);
+      const to = c.status === "inputs_locked" ? "draft" : "inputs_locked";
+      return toYieldCycle((await transitionYieldCycle(tx, cycleId, { to, actorUserId: userId, reason: body.reason })).cycle);
+    });
+  });
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/submit", move("yield:prepare", "under_review"));
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/reject", move("yield:review", "inputs_locked", cancelSchema));
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/publish", move("yield:approve", "published"));
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/cancel", move("yield:approve", "cancelled", cancelSchema));
+
+  /** Non-mutating calculation: the engine's numbers for the cycle as it stands. Stores nothing (plan §2.1). */
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/preview", async (req) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    return run(req, "yield:prepare", async (tx) => {
+      const request = await calculationRequest(tx, cycleId);
+      const out = await runEngine(request);
+      return {
+        preview: true,
+        ownership: { commitment: request.ownership.commitment, sourceKind: request.ownership.provenance.sourceKind, totalWeight: request.ownership.totalWeight.toString() },
+        hashes: { calculation: out.calculationHash, allocation: out.allocationHash, evidenceBundle: out.evidenceBundleHash, merkleRoot: out.merkleRoot, set: out.setHash },
+        totals: out.totals,
+        allocations: out.allocations.map((a) => ({ kind: a.kind, partyId: a.partyId ?? null, holderKey: a.holderKey ?? null, weight: a.weight.toString(), amount: a.amount.toString() })),
+      };
+    });
+  });
+
+  /** Authoritative calculation: freezes the artifact set (D-11: the freeze point is `calculate`). */
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/calculate", async (req) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    return run(req, "yield:prepare", async (tx, userId) => {
+      const request = await calculationRequest(tx, cycleId);
+      const out = await runEngine(request);
+      const o = request.ownership;
+      const r = await recordCalculation(tx, cycleId, {
+        calculationHash: out.calculationHash,
+        allocationHash: out.allocationHash,
+        evidenceBundleHash: out.evidenceBundleHash,
+        merkleRoot: out.merkleRoot,
+        setHash: out.setHash,
+        snapshot: { sourceKind: o.provenance.sourceKind, sourceIdentityId: o.provenance.sourceIdentity?.id ?? null, cursorSlot: o.provenance.cursorSlot, holdingModel: "slot_weighted", inputCommitment: o.commitment, totalWeight: o.totalWeight },
+        allocations: out.allocations,
+        actorUserId: userId,
+      });
+      return { ...(await yieldCycleDetail(tx, cycleId)), artifactSetId: r.artifactSetId };
+    });
+  });
+
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/attestations", async (req, reply) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    const b = parse(attestSchema, req.body);
+    const id = await run(req, "yield:attest", async (tx, userId) => {
+      await simulationCycle(tx, cycleId);
+      if (!(await listYieldArtifactSets(tx, cycleId)).some((s) => s.id === b.artifactSetId)) throw notFound("artifact set");
+      return addYieldAttestation(tx, { artifactSetId: b.artifactSetId, attesterUserId: userId, kind: b.kind, attestedHash: b.attestedHash, statement: b.statement });
+    });
+    return reply.status(201).send({ id });
+  });
+
+  /** Four-eyes approval (the database refuses the cycle's creator or preparer) after the simulation quorum. */
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/approve", async (req) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    const body = parse(reasonSchema, req.body ?? {});
+    return run(req, "yield:approve", async (tx, userId) => {
+      const c = await simulationCycle(tx, cycleId, true);
+      const live = (await listYieldArtifactSets(tx, cycleId)).find((s) => s.status === "frozen" && s.setHash === c.artifactSetHash);
+      const attesters = live ? await activeYieldAttesters(tx, live.id) : [];
+      if (attesters.length < SIMULATION_ATTESTATION_QUORUM)
+        throw new HttpError(409, "quorum_not_met", `approval needs ${SIMULATION_ATTESTATION_QUORUM} attestation(s) of the artifact set; it has ${attesters.length}`);
+      return toYieldCycle((await transitionYieldCycle(tx, cycleId, { to: "approved", actorUserId: userId, reason: body.reason })).cycle);
+    });
+  });
+
+  app.post("/v1/tenants/:tenantId/yield/cycles/:cycleId/close", async (req) => {
+    const { cycleId } = parse(cycleParams, req.params);
+    const b = parse(closeSchema, req.body);
+    return run(req, "yield:approve", async (tx, userId) => {
+      await simulationCycle(tx, cycleId, true);
+      return toYieldCycle((await transitionYieldCycle(tx, cycleId, { to: "closed", actorUserId: userId, closeReason: b.reason, reason: b.note })).cycle);
     });
   });
 }

@@ -28,7 +28,7 @@ import { rwaRoutes } from "./routes/rwa";
 import { twinRoutes } from "./routes/twin";
 import { twinSnapshotRoutes } from "./routes/twin-snapshots";
 import { twinAnchorRoutes } from "./routes/twin-anchors";
-import { yieldRoutes } from "./routes/yield";
+import { yieldRoutes, yieldWorkflowRoutes } from "./routes/yield";
 
 export interface BuildOptions {
   deps: Deps;
@@ -100,6 +100,7 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(twinSnapshotRoutes);
   await app.register(twinAnchorRoutes);
   await app.register(yieldRoutes);
+  await app.register(yieldWorkflowRoutes);
 
   return app;
 }

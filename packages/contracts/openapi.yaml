@@ -3034,6 +3034,22 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [yield]
+      summary: "Create a simulation cycle in draft (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: createYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [businessAssetId, periodStart, periodEnd, network, rail, chainAssetId], properties: { businessAssetId: { type: string, format: uuid }, periodStart: { type: string, format: date }, periodEnd: { type: string, format: date }, version: { type: integer, minimum: 1 }, simulation: { type: boolean, default: true, description: "false is refused (409 real_gate): real gates of plan §2.1 not approved." }, network: { type: string, enum: [solana-devnet, solana-mainnet] }, rail: { type: string, enum: [SOLANA_TOKEN_2022, SOLANA_BUBBLEGUM_CNFT] }, chainAssetId: { type: string } } }
+      responses:
+        "201": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
   /v1/tenants/{tenantId}/yield/cycles/{cycleId}:
     parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
     get:
@@ -3054,6 +3070,22 @@ paths:
                       artifactSets: { type: array, items: { $ref: "#/components/schemas/YieldArtifactSet" } }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [yield]
+      summary: "Set calculation parameters; the slot range also while inputs_locked (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: setYieldCycleParameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { entitlementRef: { type: string }, policyHash: { type: string }, formulaVersion: { type: string }, accountingCurrency: { type: string }, settlementMint: { type: string }, settlementDecimals: { type: integer }, slotStart: { type: string }, slotEnd: { type: string } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
   /v1/tenants/{tenantId}/yield/cycles/{cycleId}/transitions:
     parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
     get:
@@ -3145,6 +3177,241 @@ paths:
                         at: { type: string, format: date-time }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/yield/evidence:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    post:
+      tags: [yield]
+      summary: "Register simulation evidence metadata (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: registerYieldEvidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [contentSha256, evidenceType, classification], properties: { contentSha256: { type: string }, evidenceType: { type: string }, classification: { type: string, enum: [public, internal, confidential, personal] }, supersedes: { type: string, format: uuid } } }
+      responses:
+        "201": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/inputs:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Add a revenue or expense line to a draft cycle (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: addYieldInput
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [side, kind, amount, currency, completeness, sourceKind, sourceRef], properties: { side: { type: string, enum: [revenue, expense] }, kind: { type: string }, amount: { type: string }, currency: { type: string }, completeness: { type: string, enum: [known, zero, estimated] }, evidenceId: { type: string, format: uuid }, sourceKind: { type: string }, sourceRef: { type: string } } }
+      responses:
+        "201": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/lock:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Lock the inputs (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: lockYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/unlock:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Unlock: back to draft, or from calculated back to inputs_locked (the frozen set is invalidated, kept) (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: unlockYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/preview:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Non-mutating calculation; stores nothing. 503 calculation_engine_unavailable without an engine (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: previewYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/calculate:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Authoritative calculation; freezes the artifact set (D-11). 503 calculation_engine_unavailable without an engine (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: calculateYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/submit:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Submit for review (yield:prepare). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: submitYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/reject:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Reject under review; the set is invalidated (yield:review). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: rejectYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [reason], properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/attestations:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Attest to (or revoke an attestation of) the frozen artifact set's hash (yield:attest). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: attestYieldArtifactSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [artifactSetId, attestedHash, statement], properties: { artifactSetId: { type: string, format: uuid }, kind: { type: string, enum: [attest, revoke] }, attestedHash: { type: string }, statement: { type: string } } }
+      responses:
+        "201": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/approve:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Four-eyes approval after the simulation attestation quorum; never the creator or preparer (yield:approve). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: approveYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/publish:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Publish the approved simulation cycle (yield:approve). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: publishYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/close:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Close a published cycle with a reason (yield:approve). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: closeYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [reason], properties: { reason: { type: string, enum: [no_distribution, loss, unfunded, simulation] }, note: { type: string } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/yield/cycles/{cycleId}/cancel:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }, { $ref: "#/components/parameters/YieldCycleId" }]
+    post:
+      tags: [yield]
+      summary: "Cancel before publication (yield:approve). Off unless YIELD_WORKFLOW_ENABLED (404); simulation cycles only."
+      operationId: cancelYieldCycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [reason], properties: { reason: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
 
 components:
   securitySchemes:
