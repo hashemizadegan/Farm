@@ -1,0 +1,33 @@
+name: tmp-preview-shots
+# Temporary: copies review screenshots of the isolated preview from short-lived pre-signed URLs into a run artifact.
+# No secret is read or stored; the URLs expire within minutes. Delete this branch after use.
+on:
+  push:
+    branches: [tmp/preview-shots]
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "space-separated name=presigned-url pairs (expire in minutes)"
+        required: true
+permissions:
+  contents: read
+jobs:
+  fetch:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download
+        env:
+          URLS: ${{ inputs.urls }}
+        run: |
+          mkdir shots
+          for pair in $URLS; do
+            name="${pair%%=*}"; url="${pair#*=}"
+            curl -fsS -o "shots/$name.jpg" "$url"
+          done
+          ls -la shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-shots
+          path: shots
+          retention-days: 3
