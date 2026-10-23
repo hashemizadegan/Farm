@@ -79,7 +79,7 @@ const localServers = [
  * operations journey over the seeded simulation data). The preview is not a general test bed, so the rest of the suite
  * (which creates farms, uploads and jobs) stays local unless E2E_REMOTE_ALL=1 asks for it explicitly.
  */
-const REMOTE_SPECS = ["preview-gate.spec.ts", "yield-operator.spec.ts", "preview-journey.spec.ts"];
+const REMOTE_SPECS = ["preview-gate.spec.ts", "yield-operator.spec.ts", "preview-journey.spec.ts", "preview-live.spec.ts"];
 
 export default defineConfig({
   testDir: "./e2e",

@@ -167,8 +167,22 @@ The suite checks:
 - **Farm operations journey:** the seeded farm's current conditions in every freshness state, an integration
   observation's source, and the integration management page filtered to the farm.
 
-In remote mode the config runs `preview-gate.spec.ts`, `yield-operator.spec.ts` and `preview-journey.spec.ts` (the
-farm operations journey over the seeded data; it creates nothing): the rest of the suite creates unrelated data. `E2E_REMOTE_ALL=1` overrides that deliberately.
+**From inside the preview project** (no workstation, secrets never leave the project): create a temporary service
+`acceptance-runner` from the same repo and branch with restart policy **Never** and these variables, deploy it once,
+read its log, then delete the service:
+
+```text
+APP=acceptance
+E2E_WEB_URL=https://${{web.RAILWAY_PUBLIC_DOMAIN}}
+E2E_API_URL=https://${{api.RAILWAY_PUBLIC_DOMAIN}}
+E2E_PREVIEW_ACCESS_PASSWORD=${{web.PREVIEW_ACCESS_PASSWORD}}
+DEV_AUTH_SECRET=${{api.DEV_AUTH_SECRET}}
+```
+
+In remote mode the config runs `preview-gate.spec.ts`, `yield-operator.spec.ts`, `preview-journey.spec.ts` (the
+farm operations journey over the seeded data; it creates nothing) and `preview-live.spec.ts` (§8 step 7: registers its
+own simulation feed, sends signed simulation readings for Soil probe A, checks the live update and the polling fallback,
+then revokes that feed and checks the refusal; the seeded feed is untouched): the rest of the suite creates unrelated data. `E2E_REMOTE_ALL=1` overrides that deliberately.
 Nothing is seeded from the workstation in remote mode. Screenshots go to `tests/yield-screenshots/`; traces, videos
 and screenshots of failures go to `tests/test-results/` and the HTML report to `tests/playwright-report/`.
 
@@ -214,7 +228,7 @@ owner; it is not a security sign-off and grants nothing for production.**
 | Scope | Isolated preview only. Extends the yield preview approval ("no worker or scheduler") to a worker and a scheduler that run against the preview's own PostGIS and Redis. |
 | Railway project | `metafarm-yield-preview` (id `bb34f176-9bb2-4d4a-8b74-0b710554b84b`), environment `preview` (id `f4d7114d-2138-461f-9ee1-631412ec79fc`), workspace "hashemizadegan's Projects". Not `melodious-liberation` (id `79dfa6d8-…`). |
 | Branch and commit | `preview/yield-simulation`, fast-forwarded from `1c9024e` to the head of draft PR #109, which contains #104 → #105 → #106 → #107 → #108 → #109 (the exact deployed commit is shown in each Railway deployment). |
-| Services | `postgres` (postgis/postgis:16-3.4, volume `postgres-data`), `redis`, `api`, `web`, `worker`, `scheduler`, `seed-runner` (one-off). |
+| Services | `postgres` (postgis/postgis:16-3.4, volume `postgres-data`), `redis`, `api`, `web`, `worker`, `scheduler`, `seed-runner` (one-off); `acceptance-runner` (temporary, §6; deleted after the run). |
 | Isolation | New project; its own database, redis, domains and secrets, generated for this project only and never copied from production. No reference crosses projects. Queue prefix `preview`. |
 | Simulation-only restrictions | `APP_ENV=development`; access gate on (web HTTP Basic, API bearer-only); storage in memory; yield claim intents are unsigned simulations. No signer, RPC, DAS, TRON, Solana mainnet, bucket or OIDC variable; `PARTY_LINKS_ENABLED`, `HOLDER_YIELD_ENABLED` unset. Execution, signing and every real-money operation stay disabled. |
 | Production | No change: `melodious-liberation` untouched, live database stays at 0018, worker deploy hold #45 stays in force, no PR merged (all drafts). |
