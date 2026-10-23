@@ -202,3 +202,19 @@ Unresolved external dependencies for an operational preview: the preview-only ap
 worker and scheduler), the preview project and its secrets (§2), and a preview branch containing this work
 (`PREVIEW_BRANCH` in the IaC file; merging into it is the owner's decision).
 
+
+## 9. Preview-only approval record (worker and scheduler)
+
+Recorded before the worker and scheduler configuration was applied. **This is a preview-only approval given by the
+owner; it is not a security sign-off and grants nothing for production.**
+
+| Item | Value |
+|---|---|
+| Approved by | Repository owner (hashemizadegan), instruction of 2026-10-23: "Proceed to Railway now, but only for the isolated preview environment" |
+| Scope | Isolated preview only. Extends the yield preview approval ("no worker or scheduler") to a worker and a scheduler that run against the preview's own PostGIS and Redis. |
+| Railway project | `metafarm-yield-preview` (id `bb34f176-9bb2-4d4a-8b74-0b710554b84b`), environment `preview` (id `f4d7114d-2138-461f-9ee1-631412ec79fc`), workspace "hashemizadegan's Projects". Not `melodious-liberation` (id `79dfa6d8-…`). |
+| Branch and commit | `preview/yield-simulation`, fast-forwarded from `1c9024e` to the head of draft PR #109, which contains #104 → #105 → #106 → #107 → #108 → #109 (the exact deployed commit is shown in each Railway deployment). |
+| Services | `postgres` (postgis/postgis:16-3.4, volume `postgres-data`), `redis`, `api`, `web`, `worker`, `scheduler`, `seed-runner` (one-off). |
+| Isolation | New project; its own database, redis, domains and secrets, generated for this project only and never copied from production. No reference crosses projects. Queue prefix `preview`. |
+| Simulation-only restrictions | `APP_ENV=development`; access gate on (web HTTP Basic, API bearer-only); storage in memory; yield claim intents are unsigned simulations. No signer, RPC, DAS, TRON, Solana mainnet, bucket or OIDC variable; `PARTY_LINKS_ENABLED`, `HOLDER_YIELD_ENABLED` unset. Execution, signing and every real-money operation stay disabled. |
+| Production | No change: `melodious-liberation` untouched, live database stays at 0018, worker deploy hold #45 stays in force, no PR merged (all drafts). |
