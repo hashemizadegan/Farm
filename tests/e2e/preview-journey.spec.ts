@@ -50,7 +50,10 @@ test.describe("preview acceptance: farm operations", () => {
     await signIn(page);
     await page.goto("/farms");
     await page.getByRole("link", { name: FARM }).click();
-    await page.getByRole("region", { name: "Current conditions" }).getByRole("link", { name: /Drip line in block 1 checked/ }).click();
+    await expect(page.getByRole("heading", { level: 1, name: FARM })).toBeVisible();
+    // The full list, not "Latest observations" (five rows): later readings (preview-live.spec.ts) push the note out of it.
+    await page.goto(`${new URL(page.url()).pathname}/observations`);
+    await page.getByRole("row").filter({ hasText: "Drip line in block 1 checked" }).getByRole("link").click();
     const source = page.getByRole("region", { name: /Source/ });
     await expect(source).toContainText("Entered by a person");
     // The person's current display name (sign-in may update it); never an integration or a sensor.

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, request as playwrightRequest, test, type APIRequestContext } from "@playwright/test";
 import { signIn } from "./helpers";
 
 /**
@@ -26,11 +26,24 @@ async function someAsset(request: APIRequestContext): Promise<string> {
   return m![0];
 }
 
+/**
+ * A request context that never carries the gate's credentials. The suite's own `request` fixture cannot be used for the
+ * refusals: in remote mode the config sends HTTP Basic credentials to the web origin on every request (use.httpCredentials,
+ * send: "always"), which is the very origin under test here.
+ */
+let bare: APIRequestContext;
+test.beforeAll(async () => {
+  bare = await playwrightRequest.newContext({ httpCredentials: undefined, extraHTTPHeaders: {} });
+});
+test.afterAll(async () => {
+  await bare?.dispose();
+});
+
 test.describe("preview access gate", () => {
   test("refuses pages and assets without credentials, with a Basic challenge", async ({ request }) => {
     const asset = await someAsset(request);
     for (const path of ["/", "/yield", "/sign-in", "/offline", "/manifest.webmanifest", asset]) {
-      const r = await request.get(`${TARGET}${path}`, { maxRedirects: 0 });
+      const r = await bare.get(`${TARGET}${path}`, { maxRedirects: 0 });
       expect(r.status(), path).toBe(401);
       expect(r.headers()["www-authenticate"], path).toMatch(/^Basic realm=/);
       expect(r.headers()["cache-control"], path).toBe("no-store");
@@ -38,11 +51,11 @@ test.describe("preview access gate", () => {
     }
   });
 
-  test("refuses wrong credentials and serves the health check without any", async ({ request }) => {
+  test("refuses wrong credentials and serves the health check without any", async () => {
     for (const authorization of [basic("preview", `${PASSWORD}x`), basic("admin", PASSWORD!), `Bearer ${PASSWORD}`]) {
-      expect((await request.get(`${TARGET}/`, { headers: { authorization } })).status()).toBe(401);
+      expect((await bare.get(`${TARGET}/`, { headers: { authorization } })).status()).toBe(401);
     }
-    const health = await request.get(`${TARGET}/healthz`);
+    const health = await bare.get(`${TARGET}/healthz`);
     expect(health.status()).toBe(200);
     expect(await health.text()).toBe("ok");
   });
@@ -63,9 +76,9 @@ test.describe("preview access gate", () => {
     await context.close();
   });
 
-  test("remote only: the preview API refuses unauthenticated requests except health checks", async ({ request }) => {
+  test("remote only: the preview API refuses unauthenticated requests except health checks", async () => {
     test.skip(!REMOTE, "the local API runs without its gate");
-    for (const path of ["/v1/me", "/docs", "/no-such-route"]) expect((await request.get(`${API}${path}`)).status(), path).toBe(401);
-    expect((await request.get(`${API}/healthz`)).status()).toBe(200);
+    for (const path of ["/v1/me", "/docs", "/no-such-route"]) expect((await bare.get(`${API}${path}`)).status(), path).toBe(401);
+    expect((await bare.get(`${API}/healthz`)).status()).toBe(200);
   });
 });
