@@ -55,7 +55,8 @@ export async function realtimeRoutes(app: FastifyInstance, opts: { limits?: Part
     "/v1/realtime",
     {
       websocket: true,
-      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      // Connection attempts per client address: a twentieth of the general limit (60 at the default 1200).
+      config: { rateLimit: { max: Math.max(10, Math.floor(app.deps.env.RATE_LIMIT_MAX / 20)), timeWindow: "1 minute" } },
       preValidation: async (req, reply) => {
         adoptProtocolBearer(req);
         try {
