@@ -603,6 +603,78 @@
       ]
     },
     {
+      "method": "GET",
+      "path": "/v1/tenants/{tenantId}/market/listings",
+      "operationId": "listMarketListings",
+      "consumers": [
+        "web"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenants/{tenantId}/market/listings",
+      "operationId": "createMarketListing",
+      "consumers": [
+        "web"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenants/{tenantId}/market/listings/{listingId}",
+      "operationId": "getMarketListing",
+      "consumers": [
+        "web"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenants/{tenantId}/market/listings/{listingId}/withdraw",
+      "operationId": "withdrawMarketListing",
+      "consumers": [
+        "web"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenants/{tenantId}/market/eligible-items",
+      "operationId": "listMarketEligibleItems",
+      "consumers": [
+        "web"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenants/{tenantId}/market/orders",
+      "operationId": "listMarketOrders",
+      "consumers": [
+        "web"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenants/{tenantId}/market/orders",
+      "operationId": "placeMarketOrder",
+      "consumers": [
+        "web"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenants/{tenantId}/market/orders/{orderId}",
+      "operationId": "getMarketOrder",
+      "consumers": [
+        "web"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenants/{tenantId}/market/orders/{orderId}/actions",
+      "operationId": "actOnMarketOrder",
+      "consumers": [
+        "web"
+      ]
+    },
+    {
       "method": "POST",
       "path": "/v1/integrations/{integrationId}/events",
       "operationId": "ingestIntegrationEvent",
@@ -1209,8 +1281,8 @@
   ],
   "undocumentedCalls": [],
   "summary": {
-    "endpoints": 167,
-    "consumedByWeb": 90,
+    "endpoints": 176,
+    "consumedByWeb": 99,
     "consumedByUnity": 13,
     "withoutClientConsumer": 68
   }

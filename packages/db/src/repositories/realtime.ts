@@ -108,7 +108,8 @@ export async function pruneRealtimeEvents(tx: SystemTx, limit = 5_000): Promise<
        DELETE FROM realtime_events e USING doomed d WHERE e.seq = d.seq RETURNING e.tenant_id, e.seq
      ), horizon AS (
        INSERT INTO realtime_retention_horizons (tenant_id, pruned_through_seq)
-       SELECT tenant_id, max(seq) FROM gone GROUP BY tenant_id
+       -- In workspace order: overlapping runs then take the horizon rows' locks in the same order (no deadlock).
+       SELECT tenant_id, max(seq) FROM gone GROUP BY tenant_id ORDER BY tenant_id
        ON CONFLICT (tenant_id) DO UPDATE
          SET pruned_through_seq = GREATEST(realtime_retention_horizons.pruned_through_seq, EXCLUDED.pruned_through_seq), updated_at = now()
        RETURNING tenant_id

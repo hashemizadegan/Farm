@@ -242,3 +242,34 @@ owner; it is not a security sign-off and grants nothing for production.**
 | Isolation | New project; its own database, redis, domains and secrets, generated for this project only and never copied from production. No reference crosses projects. Queue prefix `preview`. |
 | Simulation-only restrictions | `APP_ENV=development`; access gate on (web HTTP Basic, API bearer-only); storage in memory; yield claim intents are unsigned simulations. No signer, RPC, DAS, TRON, Solana mainnet, bucket or OIDC variable; `PARTY_LINKS_ENABLED`, `HOLDER_YIELD_ENABLED` unset. Execution, signing and every real-money operation stay disabled. |
 | Production | No change: `melodious-liberation` untouched, live database stays at 0018, worker deploy hold #45 stays in force, no PR merged (all drafts). |
+
+## 10. Marketplace walkthrough (simulation only)
+
+Variables: `MARKETPLACE_ENABLED=true` on `api` and `seed-runner`, `NEXT_PUBLIC_MARKETPLACE_ENABLED=true` on `web` (a build
+argument: redeploy web after setting it). Both are refused in production. Migration `0033_marketplace` runs with the API's
+pre-deploy step; the seed runner's step 4 (`seed:marketplace`) seeds the demo once.
+
+Two people, two workspaces, two browsers (or a normal and a private window):
+
+| Who | Sign-in token subject | Workspace | Role in the journey |
+|---|---|---|---|
+| Seller | `dev-user` | Demo Tenant | lists produce and registered assets, prepares and dispatches, records the transfer of control |
+| Buyer | `dev-other` | Other Tenant | orders and offers, records the simulated payment, confirms receipt |
+
+Mint each token with the §5 recipe, changing `dev-user` to `dev-other` for the buyer (both occurrences).
+
+| Step | Who | Where | Expected |
+|---|---|---|---|
+| 1 | either | nav **Marketplace** | The SIMULATION ONLY notice; pistachios, saffron, a ewe (fixed price) and a drip irrigation kit (offers), all from Demo Tenant. |
+| 2 | buyer | open the pistachios | Provenance: batch code (with its public traceability record), crop, harvest date, record fingerprint; "Checked now": recorded, not voided. |
+| 3 | buyer | order form | Quantity (up to what is available), delivery method (collect, local delivery, courier arranged by the seller), address; the total updates (items + delivery estimate). **Place order (simulated)**. |
+| 4 | buyer | order page | Awaiting payment → **Record payment (simulated)** → Paid. |
+| 5 | seller | **Your orders → Selling** → the order | The buyer's address; **Start preparing**, then **Mark dispatched** with the courier's name and tracking reference (entered by hand: no carrier is integrated). |
+| 6 | buyer | the order | Tracking reference shown; **Confirm receipt** → Delivered; the History lists every step with who did it. |
+| 7 | buyer | the drip irrigation kit | Provenance: verified by a second person, controlled by the seller, no mainnet token. Make an offer. |
+| 8 | seller | the order | **Accept offer** (other offers are declined); buyer records payment; seller **Record transfer of control (simulated)**. |
+| 9 | both | **Sell an item** | The buyer now sees the kit as eligible ("Acquired on this marketplace"); the seller sees "This workspace does not control it". Ineligible items show why (draft ram: not verified; walnuts: voided). |
+| 10 | either | language switch → فارسی | The same pages in Persian, right to left, with Persian digits and rial amounts. |
+
+Cancellation (unpaid, either side) and refund (paid, before dispatch, seller) release the reserved quantity or the item.
+Nothing in these steps moves money, a token, a title or a parcel.

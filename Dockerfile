@@ -89,6 +89,8 @@ ARG NEXT_PUBLIC_OIDC_AUDIENCE
 # Y10 staff pages (/yield): off unless the service sets it. next.config.ts refuses it at build time when APP_ENV is
 # staging or production, so APP_ENV is passed to the build too (build stage only; the runtime image is separate).
 ARG NEXT_PUBLIC_YIELD_PAGES_ENABLED=false
+# Marketplace pages (simulation only): off unless the service sets it; refused at build time in production.
+ARG NEXT_PUBLIC_MARKETPLACE_ENABLED=false
 ARG APP_ENV
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_MAP_STYLE_URL=$NEXT_PUBLIC_MAP_STYLE_URL \
@@ -102,6 +104,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_OIDC_CLIENT_ID=$NEXT_PUBLIC_OIDC_CLIENT_ID \
     NEXT_PUBLIC_OIDC_AUDIENCE=$NEXT_PUBLIC_OIDC_AUDIENCE \
     NEXT_PUBLIC_YIELD_PAGES_ENABLED=$NEXT_PUBLIC_YIELD_PAGES_ENABLED \
+    NEXT_PUBLIC_MARKETPLACE_ENABLED=$NEXT_PUBLIC_MARKETPLACE_ENABLED \
     APP_ENV=$APP_ENV
 RUN pnpm --filter @metafarm/web build
 

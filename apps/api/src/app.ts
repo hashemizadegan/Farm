@@ -36,6 +36,7 @@ import { twinAnchorRoutes } from "./routes/twin-anchors";
 import { yieldRoutes, yieldWorkflowRoutes } from "./routes/yield";
 import { partyLinkRoutes } from "./routes/party-links";
 import { holderYieldRoutes } from "./routes/holder-yield";
+import { marketplaceRoutes } from "./routes/marketplace";
 
 export interface BuildOptions {
   deps: Deps;
@@ -115,6 +116,7 @@ export async function buildApp({ deps, isDraining = () => false, docs, realtime 
   await app.register(partyLinkRoutes);
   await app.register(holderYieldRoutes);
   await app.register(integrationRoutes);
+  await app.register(marketplaceRoutes);
   // Realtime channel (WebSocket): registered only when switched on, so the route table is unchanged otherwise.
   if (deps.env.REALTIME_EVENTS_ENABLED) {
     await app.register(websocket, {

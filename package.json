@@ -26,9 +26,10 @@
     "format:check": "prettier --check .",
     "postinstall": "pnpm --filter @metafarm/contracts generate",
     "dev:yield": "APP_ENV=development YIELD_WORKFLOW_ENABLED=true YIELD_CLAIM_INTENTS_ENABLED=true NEXT_PUBLIC_YIELD_PAGES_ENABLED=true pnpm dev",
-    "dev:preview": "APP_ENV=development YIELD_WORKFLOW_ENABLED=true YIELD_CLAIM_INTENTS_ENABLED=true NEXT_PUBLIC_YIELD_PAGES_ENABLED=true REALTIME_EVENTS_ENABLED=true NEXT_PUBLIC_REALTIME_URL=ws://localhost:4000/v1/realtime pnpm dev",
+    "dev:preview": "APP_ENV=development YIELD_WORKFLOW_ENABLED=true YIELD_CLAIM_INTENTS_ENABLED=true NEXT_PUBLIC_YIELD_PAGES_ENABLED=true REALTIME_EVENTS_ENABLED=true NEXT_PUBLIC_REALTIME_URL=ws://localhost:4000/v1/realtime MARKETPLACE_ENABLED=true NEXT_PUBLIC_MARKETPLACE_ENABLED=true pnpm dev",
     "seed:yield": "pnpm --filter @metafarm/api seed:yield",
-    "seed:farm-ops": "pnpm --filter @metafarm/api seed:farm-ops"
+    "seed:farm-ops": "pnpm --filter @metafarm/api seed:farm-ops",
+    "seed:marketplace": "pnpm --filter @metafarm/api seed:marketplace"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",

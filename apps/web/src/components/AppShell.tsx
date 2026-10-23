@@ -11,6 +11,7 @@ import { OfflineStatus } from "./OfflineStatus";
 import { ServiceWorker } from "./ServiceWorker";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { yieldPagesEnabled } from "@/lib/yield";
+import { marketplaceEnabled } from "@/lib/market";
 import { useCan } from "@/lib/can";
 import type { Permission } from "@metafarm/domain";
 
@@ -59,7 +60,7 @@ function RouteFocus({ children, className }: { children: ReactNode; className?: 
 
 const NAV: {
   href: string;
-  key: "overview" | "myTasks" | "schedule" | "farms" | "inventory" | "equipment" | "reports" | "rwa" | "yield" | "assets" | "team" | "integrations" | "settings";
+  key: "overview" | "myTasks" | "schedule" | "farms" | "inventory" | "equipment" | "reports" | "market" | "rwa" | "yield" | "assets" | "team" | "integrations" | "settings";
   match?: (p: string) => boolean;
   /** Shown only to members whose role has this permission (the page and the API check it again). */
   permission?: Permission;
@@ -71,6 +72,8 @@ const NAV: {
   { href: "/inventory", key: "inventory" },
   { href: "/equipment", key: "equipment" },
   { href: "/reports", key: "reports" },
+  // Marketplace (simulation only), in builds with NEXT_PUBLIC_MARKETPLACE_ENABLED (off by default; refused in production).
+  ...(marketplaceEnabled() ? [{ href: "/market", key: "market" as const }] : []),
   { href: "/rwa", key: "rwa" },
   // Y10: internal staff pages, only in builds with NEXT_PUBLIC_YIELD_PAGES_ENABLED (off by default).
   ...(yieldPagesEnabled() ? [{ href: "/yield", key: "yield" as const }] : []),
