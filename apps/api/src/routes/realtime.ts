@@ -13,6 +13,7 @@
  *   the WebSocket layer), subscribe timeout.
  * Clients can only subscribe and ping: nothing received here changes any state.
  */
+import { STATUS_CODES } from "node:http";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
 import { findMembershipRole, latestRealtimeCursor, listRealtimeEventsAfter, withTenant, writeSystemAudit } from "@metafarm/db";
@@ -31,7 +32,7 @@ import {
   type RealtimeSubscribe,
   type Role,
 } from "@metafarm/domain";
-import { hashIp } from "../lib/http";
+import { HttpError, hashIp } from "../lib/http";
 
 export type RealtimeLimits = { -readonly [K in keyof typeof REALTIME_LIMITS]: number };
 
@@ -50,9 +51,20 @@ export async function realtimeRoutes(app: FastifyInstance, opts: { limits?: Part
     {
       websocket: true,
       config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
-      preValidation: async (req) => {
+      preValidation: async (req, reply) => {
         adoptProtocolBearer(req);
-        await app.authenticate(req);
+        try {
+          await app.authenticate(req);
+        } catch (err) {
+          if (!(err instanceof HttpError) || !req.ws) throw err;
+          // A refused upgrade: answer on the raw socket and close it gracefully, so the client reliably reads the
+          // status (the WebSocket layer would otherwise destroy the socket right after the error response).
+          reply.hijack();
+          const body = JSON.stringify({ error: err.code, message: err.message });
+          req.raw.socket.end(
+            `HTTP/1.1 ${err.statusCode} ${STATUS_CODES[err.statusCode] ?? "Error"}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
+          );
+        }
       },
     },
     (socket, req) => {
@@ -125,6 +137,7 @@ class RealtimeSession {
   private crash(err: unknown): void {
     this.app.log.error({ err }, "realtime session failed");
     if (!this.closed) {
+      this.send({ op: "error", code: "internal_error", message: "the server could not continue this stream; reconnect with your last cursor", close: true });
       this.stop();
       this.socket.close(1011, "internal_error");
     }

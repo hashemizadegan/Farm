@@ -35,9 +35,11 @@ export function connectRealtime(port: number, token: string, opts: { ping?: bool
   const ws = new WS(`ws://127.0.0.1:${port}/v1/realtime`, ["metafarm-realtime.1", `bearer.${token}`]);
   const messages: Msg[] = [];
   let pinger: NodeJS.Timeout | undefined;
+  let lastClose = "open";
   const closed = new Promise<{ code: number; reason: string }>((resolve) => {
     ws.onclose = (e) => {
       if (pinger) clearInterval(pinger);
+      lastClose = `closed ${e.code} ${e.reason}`;
       resolve({ code: e.code, reason: e.reason });
     };
   });
@@ -54,7 +56,10 @@ export function connectRealtime(port: number, token: string, opts: { ping?: bool
       for (;;) {
         const hit = messages.slice(from).find(pred);
         if (hit) return hit;
-        if (Date.now() > until) throw new Error(`no matching realtime message within ${ms} ms; got ${JSON.stringify(messages).slice(0, 600)}`);
+        if (Date.now() > until) {
+          const seen = messages.map((m) => (m.op === "event" ? `event#${String(m.cursor)}` : m.op === "error" ? `error:${String(m.code)}` : m.op)).join(" ");
+          throw new Error(`no matching realtime message within ${ms} ms; got [${seen}] (${lastClose})`);
+        }
         await new Promise((r) => setTimeout(r, 10));
       }
     },
@@ -93,7 +98,7 @@ export function upgradeStatus(port: number, headers: Record<string, string>): Pr
       res.resume();
       resolve(res.statusCode ?? 0);
     });
-    req.on("error", reject);
+    req.on("error", (e) => reject(new Error(`upgrade with ${Object.keys(headers).join(",") || "no credentials"}: ${e.message}`)));
     req.end();
   });
 }

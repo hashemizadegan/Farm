@@ -85,7 +85,8 @@ export type RealtimeErrorCode =
   | "not_subscribed"
   | "subscribe_timeout"
   | "heartbeat_timeout"
-  | "backpressure";
+  | "backpressure"
+  | "internal_error";
 
 export type RealtimeServerMessage =
   | { op: "subscribed"; tenantId: string; farmId: string | null; types: EventType[]; cursor: string | null }
