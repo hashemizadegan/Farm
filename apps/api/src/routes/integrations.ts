@@ -96,8 +96,10 @@ export async function integrationRoutes(app: FastifyInstance) {
 
   app.get("/v1/tenants/:tenantId/integrations", async (req) => {
     parse(tenantParams, req.params);
+    const { farmId } = parse(z.object({ farmId: uuid.optional() }).strict(), req.query);
     serverKey();
-    return app.inTenant(req, "integration:manage", async (tx) => ({ items: (await listIntegrations(tx)).map(toIntegration) }));
+    // With farmId: only the integrations that have delivered observations to that farm (of this workspace).
+    return app.inTenant(req, "integration:manage", async (tx) => ({ items: (await listIntegrations(tx, { farmId })).map(toIntegration) }));
   });
 
   app.post("/v1/tenants/:tenantId/integrations", async (req, reply) => {

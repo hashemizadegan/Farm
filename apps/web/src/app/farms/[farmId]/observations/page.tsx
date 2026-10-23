@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button, ErrorSummary, Notice, ProvenanceBadge, SelectField, TextField, useAnnounce } from "@metafarm/ui";
@@ -150,7 +151,9 @@ function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }
               {list.data.items.map((o) => (
                 <tr key={o.id}>
                   <td>
-                    <time dateTime={o.observedAt}>{fmt.dateTime(o.observedAt)}</time>
+                    <Link href={`/farms/${farmId}/observations/${o.id}`}>
+                      <time dateTime={o.observedAt}>{fmt.dateTime(o.observedAt)}</time>
+                    </Link>
                   </td>
                   <td>{t.metrics[o.metric] ?? o.metric}</td>
                   <td>{o.value !== null ? `${fmt.number(o.value)} ${t.units[o.unit] ?? o.unit}` : o.text}</td>

@@ -37,10 +37,25 @@ function Integrations({ tenantId }: { tenantId: string }) {
   const allowed = can("integration:manage");
   const [version, setVersion] = useState(0);
   const [secret, setSecret] = useState<{ id: string; name: string; value: string }>();
+  // `?farmId=` (from a farm or an observation): only the integrations that delivered observations to that farm.
+  const [farmId, setFarmId] = useState<string | null>(null);
+  useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get("farmId");
+    setFarmId(f && /^[0-9a-f-]{36}$/i.test(f) ? f : null);
+  }, []);
   // Never fetch without the permission: the page explains instead of showing an API refusal.
-  const list = useQuery(allowed ? `integrations:${tenantId}:${version}` : null, () => unwrap(api.GET("/v1/tenants/{tenantId}/integrations", { params: { path: { tenantId } } })));
+  const list = useQuery(allowed ? `integrations:${tenantId}:${farmId ?? "*"}:${version}` : null, () =>
+    unwrap(api.GET("/v1/tenants/{tenantId}/integrations", { params: { path: { tenantId }, query: farmId ? { farmId } : {} } })),
+  );
+  const farm = useQuery(farmId ? `integrations-farm:${farmId}` : null, () => unwrap(api.GET("/v1/tenants/{tenantId}/farms/{farmId}", { params: { path: { tenantId, farmId: farmId! } } })));
   // Switching workspace drops any secret on screen.
   useEffect(() => setSecret(undefined), [tenantId]);
+  // A link to one integration (#integration-<id>) scrolls to it once the list has loaded.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!list.data || !/^integration-[0-9a-f-]{36}$/i.test(id)) return;
+    document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }, [list.data]);
   const reload = () => setVersion((v) => v + 1);
 
   if (!allowed) return <Notice>{t.notAllowed}</Notice>;
@@ -56,7 +71,13 @@ function Integrations({ tenantId }: { tenantId: string }) {
           {list.error.message}
         </Notice>
       )}
-      {list.data && items.length === 0 && <EmptyState title={t.none} />}
+      {farmId && (
+        <Notice>
+          {t.farmFilter(farm.data?.name ?? "")} {/* A full load: the page reads its filter from the address once. */}
+          <a href="/integrations">{t.showAll}</a>
+        </Notice>
+      )}
+      {list.data && items.length === 0 && <EmptyState title={farmId ? t.noneForFarm : t.none} />}
       {items.length > 0 && (
         <ul className="tasks">
           {items.map((i) => (
@@ -66,7 +87,7 @@ function Integrations({ tenantId }: { tenantId: string }) {
           ))}
         </ul>
       )}
-      {!notEnabled && list.data && (
+      {!notEnabled && list.data && !farmId && (
         <RegisterForm
           tenantId={tenantId}
           onRegistered={(i, value) => {

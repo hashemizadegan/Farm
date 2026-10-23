@@ -15,9 +15,11 @@ const owner = () => ({ authorization: `Bearer ${tokens().owner}` });
 async function workspaceFarmAndSensor(request: APIRequestContext) {
   const me = await (await request.get(`${API}/v1/me`, { headers: owner() })).json();
   const tenantId = me.tenants[0].tenantId as string;
-  const farm = await (await request.post(`${API}/v1/tenants/${tenantId}/farms`, { headers: owner(), data: { name: unique("Feed farm") } })).json();
-  const created = await (await request.post(`${API}/v1/tenants/${tenantId}/farms/${farm.id}/sensors`, { headers: owner(), data: { name: unique("Feed probe"), kind: "soil-moisture" } })).json();
-  return { tenantId, farmId: farm.id as string, sensorId: created.sensor.id as string };
+  const farmName = unique("Feed farm");
+  const farm = await (await request.post(`${API}/v1/tenants/${tenantId}/farms`, { headers: owner(), data: { name: farmName } })).json();
+  const sensorName = unique("Feed probe");
+  const created = await (await request.post(`${API}/v1/tenants/${tenantId}/farms/${farm.id}/sensors`, { headers: owner(), data: { name: sensorName, kind: "soil-moisture" } })).json();
+  return { tenantId, farmId: farm.id as string, farmName, sensorId: created.sensor.id as string, sensorName };
 }
 
 /** One signed `sensor.readings` event, exactly as a provider would send it. */
@@ -94,6 +96,42 @@ test.describe("registered integrations and live updates", () => {
     await expect(page.getByRole("status").filter({ hasText: /refreshing every 10 seconds/ })).toBeVisible({ timeout: 15_000 });
     expect((await postReading(request, { id: r.integration.id, secret: r.secret }, sensorId, 27.3)).status()).toBe(202);
     await expect(page.getByRole("table")).toContainText("27.3", { timeout: 30_000 });
+  });
+
+  test("farm operations: farm → current conditions → an observation's source → the integration feeding the farm", async ({ page, request }) => {
+    const { tenantId, farmId, farmName, sensorId, sensorName } = await workspaceFarmAndSensor(request);
+    const feedName = unique("Field feed");
+    const r = await (
+      await request.post(`${API}/v1/tenants/${tenantId}/integrations`, { headers: owner(), data: { kind: "sensor_feed", provider: "acme-probes", name: feedName, allowedEventTypes: ["sensor.readings"] } })
+    ).json();
+    expect((await postReading(request, { id: r.integration.id, secret: r.secret }, sensorId, 44.2)).status()).toBe(202);
+    // The worker normalizes the reading before the journey starts.
+    await expect(async () => {
+      const items = (await (await request.get(`${API}/v1/tenants/${tenantId}/farms/${farmId}/observations`, { headers: owner() })).json()).items;
+      expect(items.length).toBeGreaterThan(0);
+    }).toPass({ timeout: 30_000 });
+
+    await signIn(page);
+    await page.goto("/farms");
+    await page.getByRole("link", { name: farmName }).click();
+    const conditions = page.getByRole("region", { name: "Current conditions" });
+    await expect(conditions).toContainText(sensorName);
+    await expect(conditions).toContainText("Reporting");
+    await expect(conditions).toContainText(/Last observation /);
+    await conditions.getByRole("link", { name: /Soil moisture: 44\.2/ }).click();
+
+    await expect(page.getByRole("heading", { name: "Observation: Soil moisture" })).toBeVisible();
+    const source = page.getByRole("region", { name: /Source/ });
+    await expect(source).toContainText("Registered integration");
+    await expect(source).toContainText(feedName);
+    await expect(source).toContainText(sensorName);
+    const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+    expect(axe.violations).toEqual([]);
+
+    await source.getByRole("link", { name: "Manage this integration" }).click();
+    await expect(page).toHaveURL(new RegExp(`/integrations\\?farmId=${farmId}`));
+    await expect(page.getByText(`Showing the integrations that have delivered observations to ${farmName}.`)).toBeVisible();
+    await expect(page.getByRole("article", { name: feedName })).toContainText("Active");
   });
 
   test("members without integration:manage get neither the controls nor the data", async ({ page, request }) => {
