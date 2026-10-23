@@ -79,21 +79,33 @@ ARG NEXT_PUBLIC_MAP_STYLE_URL
 ARG NEXT_PUBLIC_MAP_ATTRIBUTION
 ARG NEXT_PUBLIC_MAP_CONNECT_SRC
 ARG NEXT_PUBLIC_UPLOAD_CONNECT_SRC
+# Realtime channel URL (wss://…/v1/realtime); unset = polling only. Refused by the build when APP_ENV is deployed.
+ARG NEXT_PUBLIC_REALTIME_URL
 ARG NEXT_PUBLIC_CESIUM_ENABLED=false
 ARG NEXT_PUBLIC_WALLET_CHAIN_ID
 ARG NEXT_PUBLIC_OIDC_AUTHORITY
 ARG NEXT_PUBLIC_OIDC_CLIENT_ID
 ARG NEXT_PUBLIC_OIDC_AUDIENCE
+# Y10 staff pages (/yield): off unless the service sets it. next.config.ts refuses it at build time when APP_ENV is
+# staging or production, so APP_ENV is passed to the build too (build stage only; the runtime image is separate).
+ARG NEXT_PUBLIC_YIELD_PAGES_ENABLED=false
+# Marketplace pages (simulation only): off unless the service sets it; refused at build time in production.
+ARG NEXT_PUBLIC_MARKETPLACE_ENABLED=false
+ARG APP_ENV
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_MAP_STYLE_URL=$NEXT_PUBLIC_MAP_STYLE_URL \
     NEXT_PUBLIC_MAP_ATTRIBUTION=$NEXT_PUBLIC_MAP_ATTRIBUTION \
     NEXT_PUBLIC_MAP_CONNECT_SRC=$NEXT_PUBLIC_MAP_CONNECT_SRC \
     NEXT_PUBLIC_UPLOAD_CONNECT_SRC=$NEXT_PUBLIC_UPLOAD_CONNECT_SRC \
+    NEXT_PUBLIC_REALTIME_URL=$NEXT_PUBLIC_REALTIME_URL \
     NEXT_PUBLIC_CESIUM_ENABLED=$NEXT_PUBLIC_CESIUM_ENABLED \
     NEXT_PUBLIC_WALLET_CHAIN_ID=$NEXT_PUBLIC_WALLET_CHAIN_ID \
     NEXT_PUBLIC_OIDC_AUTHORITY=$NEXT_PUBLIC_OIDC_AUTHORITY \
     NEXT_PUBLIC_OIDC_CLIENT_ID=$NEXT_PUBLIC_OIDC_CLIENT_ID \
-    NEXT_PUBLIC_OIDC_AUDIENCE=$NEXT_PUBLIC_OIDC_AUDIENCE
+    NEXT_PUBLIC_OIDC_AUDIENCE=$NEXT_PUBLIC_OIDC_AUDIENCE \
+    NEXT_PUBLIC_YIELD_PAGES_ENABLED=$NEXT_PUBLIC_YIELD_PAGES_ENABLED \
+    NEXT_PUBLIC_MARKETPLACE_ENABLED=$NEXT_PUBLIC_MARKETPLACE_ENABLED \
+    APP_ENV=$APP_ENV
 RUN pnpm --filter @metafarm/web build
 
 FROM node:${NODE_VERSION} AS app-web
@@ -107,6 +119,29 @@ COPY --from=build-web --chown=node:node /repo/apps/web/public ./apps/web/public
 USER node
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
+
+# ── Preview seed runner (isolated previews only) ──────────────────────────
+# A one-off container that seeds a NEW, isolated preview database with the demo workspace and the simulation
+# yield cycles (apps/api/src/scripts/preview-seed-runner.ts). It is never built for api, web, worker or scheduler:
+# BuildKit builds only the stages the selected APP needs, so their images are unchanged. Select it with
+# APP=seed-runner on a dedicated service of the preview project. The runner refuses unless APP_ENV is development
+# or test, the database holds no workspace other than the demo one, and migrations reach 0029.
+FROM deps AS app-seed-runner
+ENV NODE_ENV=development
+WORKDIR /repo/apps/api
+USER node
+CMD ["node", "--import", "tsx", "src/scripts/preview-seed-runner.ts"]
+
+# ── Preview acceptance runner (isolated previews only) ────────────────────
+# A one-off container that runs the remote acceptance suite (E2E_REMOTE=1: preview-gate, yield-operator,
+# preview-journey, preview-live) from inside the preview project, against its public web and API domains, so the
+# preview's secrets reach it only as Railway references within that project. Select it with APP=acceptance on a
+# temporary service of the preview project; delete the service after the run. Never built for the other apps.
+FROM deps AS app-acceptance
+RUN pnpm --filter @metafarm/e2e exec playwright install --with-deps chromium
+ENV E2E_REMOTE=1
+WORKDIR /repo/tests
+CMD ["pnpm", "exec", "playwright", "test", "--reporter=list"]
 
 # ── Select the app ────────────────────────────────────────────────────────
 FROM app-${APP} AS final

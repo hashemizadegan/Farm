@@ -20,6 +20,8 @@ export interface ScheduleConfig {
   twinSnapshotBatchCron?: string;
   /** Digital-twin ownership index sweep; no schedule when unset. */
   ownershipIndexCron?: string;
+  /** Realtime outbox retention; no schedule when unset. */
+  realtimeRetentionCron?: string;
 }
 
 /**
@@ -51,6 +53,9 @@ export function buildSchedules(cfg: ScheduleConfig): ScheduleDefinition[] {
   }
   if (cfg.ownershipIndexCron) {
     schedules.push({ id: "ownership-index-sweep", queue: QUEUES.ownershipIndex, jobName: "sweep", pattern: cfg.ownershipIndexCron, data: {} });
+  }
+  if (cfg.realtimeRetentionCron) {
+    schedules.push({ id: "realtime-retention", queue: QUEUES.realtimeRetention, jobName: "prune", pattern: cfg.realtimeRetentionCron, data: {} });
   }
   return schedules;
 }

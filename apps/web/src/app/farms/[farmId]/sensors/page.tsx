@@ -7,6 +7,10 @@ import { RequireTenant } from "@/components/RequireTenant";
 import { useI18n } from "@/i18n/provider";
 import { API_URL, api, unwrap, useQuery, type Schemas } from "@/lib/api";
 import { useCan } from "@/lib/can";
+import { RealtimeStatus, pollWhile } from "@/components/RealtimeStatus";
+import { useRealtimeUpdates } from "@/lib/realtime";
+
+const SENSOR_EVENTS = ["observation.recorded", "sensor.reading.received"];
 
 type Sensor = Schemas["Sensor"];
 
@@ -29,10 +33,12 @@ function Sensors({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   const can = useCan();
   const [version, setVersion] = useState(0);
   const [issued, setIssued] = useState<{ name: string; token: string }>();
+  // Latest readings change when observations are recorded: reload on those events (realtime), poll otherwise.
+  const realtime = useRealtimeUpdates({ tenantId, farmId, types: SENSOR_EVENTS }, () => setVersion((v) => v + 1));
   const list = useQuery(
     `sensors:${farmId}:${version}`,
     () => unwrap(api.GET("/v1/tenants/{tenantId}/farms/{farmId}/sensors", { params: { path: { tenantId, farmId } } })),
-    { pollMs: 30_000 },
+    { pollMs: pollWhile(realtime, 30_000) },
   );
   const reload = () => setVersion((v) => v + 1);
   const items = list.data?.items ?? [];
@@ -40,6 +46,7 @@ function Sensors({ tenantId, farmId }: { tenantId: string; farmId: string }) {
   return (
     <>
       {issued && <TokenPanel name={issued.name} token={issued.token} onDone={() => setIssued(undefined)} />}
+      <RealtimeStatus status={realtime} />
       {list.loading && !list.data && <p role="status">{t.loading}</p>}
       {list.error && (
         <Notice tone="error" title={t.couldNotLoad}>

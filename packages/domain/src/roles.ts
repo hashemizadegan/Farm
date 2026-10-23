@@ -24,6 +24,8 @@ export const PERMISSIONS = [
   "member:manage",
   "nft:manage",
   "sensor:manage",
+  /** Register, rotate and revoke integrations (signed external sensor and observation feeds). */
+  "integration:manage",
   /** Create, assign, edit and cancel field tasks. */
   "task:manage",
   /** Start and complete tasks assigned to oneself (or unassigned ones). */
@@ -60,6 +62,13 @@ export const PERMISSIONS = [
   "yield:attest",
   /** Approve (four-eyes, never the preparer), publish, close and cancel (approver). */
   "yield:approve",
+  /**
+   * Marketplace (simulation only): list items the workspace controls, withdraw them, and act as seller on their
+   * orders (accept or decline offers, record the simulated transfer, prepare, dispatch, refund).
+   */
+  "market:sell",
+  /** Marketplace (simulation only): place orders and offers, record the simulated payment, confirm receipt. */
+  "market:buy",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -96,6 +105,8 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     // Operator (plan §7.3): manager + yield:prepare.
     "yield:read",
     "yield:prepare",
+    "market:sell",
+    "market:buy",
   ]),
   admin: new Set([
     ...READ,
@@ -108,6 +119,7 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "alert:ack",
     "media:upload",
     "sensor:manage",
+    "integration:manage",
     "audit:read",
     "member:manage",
     "nft:manage",
@@ -127,6 +139,8 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "yield:read",
     "yield:prepare",
     "yield:approve",
+    "market:sell",
+    "market:buy",
   ]),
   owner: new Set(PERMISSIONS),
 };

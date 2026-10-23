@@ -49,6 +49,10 @@ tags:
   - name: seasons
   - name: equipment
   - name: sensors
+  - name: integrations
+    description: Registered integrations (signed external sensor and observation feeds); the workspace comes from the integration, never from a payload
+  - name: marketplace
+    description: Simulation-only marketplace between workspaces (listings, offers, orders, simulated payment and transfer of control, manual dispatch and delivery); nothing moves money, tokens, titles or parcels
   - name: notifications
   - name: exports
   - name: reports
@@ -778,6 +782,23 @@ paths:
                   rawObservationId: { type: string, format: uuid }
                   provenance: { $ref: "#/components/schemas/ProvenanceLabel" }
         "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/tenants/{tenantId}/farms/{farmId}/observations/{observationId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: observationId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [observations]
+      summary: One observation and its source (sensor, registered integration or person) (observation:read)
+      operationId: getObservation
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObservationDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/tenants/{tenantId}/farms/{farmId}/alerts:
     parameters:
@@ -1594,6 +1615,334 @@ paths:
                   accepted: { type: integer }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/tenants/{tenantId}/integrations:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+    get:
+      tags: [integrations]
+      summary: Registered integrations of the workspace (integration:manage; 404 when integrations are not enabled)
+      operationId: listIntegrations
+      parameters:
+        - name: farmId
+          in: query
+          required: false
+          description: Only the integrations that have delivered observations to this farm.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Integration" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [integrations]
+      summary: Register an integration; its signing secret is shown once (integration:manage)
+      operationId: registerIntegration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, provider, name, allowedEventTypes]
+              properties:
+                kind: { $ref: "#/components/schemas/IntegrationKind" }
+                provider: { type: string, pattern: "^[a-z0-9][a-z0-9-]{1,39}$" }
+                name: { type: string, minLength: 1, maxLength: 120 }
+                allowedEventTypes: { type: array, minItems: 1, maxItems: 16, items: { $ref: "#/components/schemas/IntegrationEventType" } }
+      responses:
+        "201":
+          description: Registered. The secret is not stored and cannot be shown again.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [integration, secret, signing]
+                properties:
+                  integration: { $ref: "#/components/schemas/Integration" }
+                  secret: { type: string, pattern: "^mfi_" }
+                  signing:
+                    type: object
+                    required: [header, format, toleranceSeconds, url]
+                    properties:
+                      header: { type: string }
+                      format: { type: string }
+                      toleranceSeconds: { type: integer }
+                      url: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/integrations/{integrationId}/rotate:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: integrationId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [integrations]
+      summary: Issue the next signing secret; the previous one stops working at once (integration:manage)
+      operationId: rotateIntegrationSecret
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [integration, secret]
+                properties:
+                  integration: { $ref: "#/components/schemas/Integration" }
+                  secret: { type: string, pattern: "^mfi_" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The integration is revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/tenants/{tenantId}/integrations/{integrationId}/revoke:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: integrationId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [integrations]
+      summary: Revoke an integration (final; integration:manage)
+      operationId: revokeIntegration
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Integration" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenantId}/market/listings:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+    get:
+      tags: [marketplace]
+      summary: "Marketplace catalogue (every workspace's public listings) or this workspace's own listings (any member). Simulation only; 404 unless MARKETPLACE_ENABLED."
+      operationId: listMarketListings
+      parameters:
+        - { name: scope, in: query, required: false, schema: { type: string, enum: [catalogue, mine], default: catalogue } }
+        - { name: kind, in: query, required: false, schema: { $ref: "#/components/schemas/MarketItemKind" } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, notice]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/MarketListing" } }
+                  notice: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [marketplace]
+      summary: "List an eligible registered asset or harvest batch the workspace controls (market:sell). Eligibility is re-checked; 409 not_eligible with the reasons."
+      operationId: createMarketListing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMarketListing" }
+      responses:
+        "201":
+          description: Listed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketListing" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/market/listings/{listingId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: listingId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [marketplace]
+      summary: "A listing with its provenance, the item's current checks and the orders this workspace may see on it (any member)"
+      operationId: getMarketListing
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketListingDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/tenants/{tenantId}/market/listings/{listingId}/withdraw:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: listingId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [marketplace]
+      summary: "Withdraw the workspace's own listing (market:sell); open offers are declined; refused while an order holds it"
+      operationId: withdrawMarketListing
+      responses:
+        "200":
+          description: Withdrawn
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketListing" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/market/eligible-items:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+    get:
+      tags: [marketplace]
+      summary: "Registered assets and harvest batches the workspace could list, each with its eligibility and the reasons when not (market:sell)"
+      operationId: listMarketEligibleItems
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketEligibleItems" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/tenants/{tenantId}/market/orders:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+    get:
+      tags: [marketplace]
+      summary: "The workspace's orders as buyer (market:buy) or as seller (market:sell)"
+      operationId: listMarketOrders
+      parameters:
+        - { name: side, in: query, required: true, schema: { type: string, enum: [buyer, seller] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, notice]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/MarketOrder" } }
+                  notice: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [marketplace]
+      summary: "Order (fixed price) or offer (registered assets listed for offers) on another workspace's listing (market:buy). Produce reserves its quantity; delivery cost is estimated from the listing's options."
+      operationId: placeMarketOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaceMarketOrder" }
+      responses:
+        "201":
+          description: Placed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketOrderDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+  /v1/tenants/{tenantId}/market/orders/{orderId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [marketplace]
+      summary: "An order with its audit trail, for its buyer (market:buy) or seller (market:sell) only; 404 for any other workspace"
+      operationId: getMarketOrder
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketOrderDetail" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/tenants/{tenantId}/market/orders/{orderId}/actions:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [marketplace]
+      summary: "Move an order through its state machine: accept, decline, withdraw_offer, pay (simulated), transfer (recorded transfer of control), prepare, dispatch (manual: carrier and tracking reference entered by the seller), confirm_receipt, cancel (unpaid), refund (simulated). 403 when it is the other party's action; 409 from the wrong state."
+      operationId: actOnMarketOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MarketOrderAction" }
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketOrderDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/BadRequest" }
+  /v1/integrations/{integrationId}/events:
+    parameters:
+      - { name: integrationId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [integrations]
+      security: []
+      summary: A signed event from a registered integration (metafarm-integration-event/1)
+      description: |
+        Signed with the integration's secret: `x-webhook-signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`,
+        within the webhook tolerance. The workspace is the integration's own; a payload naming a workspace is refused.
+        Accepted events become `provider-observation` raw observations in the existing observation pipeline.
+        Idempotent per integration and event `id`: a replay answers `duplicate` and stores nothing.
+      operationId: ingestIntegrationEvent
+      parameters:
+        - { name: x-webhook-signature, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IntegrationEvent" }
+      responses:
+        "200":
+          description: Already received (nothing stored)
+          content:
+            application/json:
+              schema: { type: object, required: [status], properties: { status: { type: string, enum: [duplicate] } } }
+        "202":
+          description: Accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, accepted]
+                properties:
+                  status: { type: string, enum: [accepted] }
+                  accepted: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: The integration is revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: Refused (malformed, workspace in payload, event type not allowed, unknown sensor or farm)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /v1/tenants/{tenantId}/farms/{farmId}/alert-rules:
     parameters:
@@ -2594,7 +2943,14 @@ paths:
       tags: [webhooks]
       security: []
       summary: Receive a signed provider webhook
-      description: Requires `x-webhook-signature` (`t=<unix>,v1=<hex HMAC-SHA256 of "t.body">`) and an `id` in the body for de-duplication.
+      description: >-
+        Requires `x-webhook-signature` (`t=<unix>,v1=<hex HMAC-SHA256 of "t.body">`) and an `id` in the body for
+        de-duplication. Chain event providers (a provider with an adapter, enabled in CHAIN_EVENT_PROVIDERS; today
+        `metafarm-relay`) post `metafarm-chain-event/1` events as `{ id, type: "chain.<kind>", data }`. They are
+        normalized and checked before anything is stored, and refused with 422 `chain_event_malformed`,
+        `chain_event_unsupported_event`, `chain_event_unsupported_network` or `chain_event_network_mismatch`. An
+        adapter that exists but is not enabled answers 404 `provider_not_enabled`. An accepted event is a hint: for a
+        tracked asset it asks the ownership indexer to re-read the asset from the verified chain source.
       operationId: receiveWebhook
       parameters:
         - name: x-webhook-signature
@@ -3042,7 +3398,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, additionalProperties: false, required: [businessAssetId, periodStart, periodEnd, network, rail, chainAssetId], properties: { businessAssetId: { type: string, format: uuid }, periodStart: { type: string, format: date }, periodEnd: { type: string, format: date }, version: { type: integer, minimum: 1 }, simulation: { type: boolean, default: true, description: "false is refused (409 real_gate): real gates of plan §2.1 not approved." }, network: { type: string, enum: [solana-devnet, solana-mainnet] }, rail: { type: string, enum: [SOLANA_TOKEN_2022, SOLANA_BUBBLEGUM_CNFT] }, chainAssetId: { type: string } } }
+            schema: { type: object, additionalProperties: false, required: [businessAssetId, periodStart, periodEnd, network, rail, chainAssetId], properties: { businessAssetId: { type: string, format: uuid }, periodStart: { type: string, format: date }, periodEnd: { type: string, format: date }, version: { type: integer, minimum: 1 }, simulation: { type: boolean, default: true, description: "false is refused (409 real_gate): real gates of plan §2.1 not approved." }, network: { type: string, enum: [solana-devnet, solana-mainnet], description: "solana-mainnet is refused (409 simulation_network_label) while every cycle is a simulation." }, rail: { type: string, enum: [SOLANA_TOKEN_2022, SOLANA_BUBBLEGUM_CNFT] }, chainAssetId: { type: string } } }
       responses:
         "201": { description: OK, content: { application/json: { schema: { type: object } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -3716,6 +4072,318 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    MarketItemKind:
+      type: string
+      enum: [registered_asset, produce]
+    MarketCurrency:
+      type: string
+      enum: [IRR, USD]
+    MarketShippingMethod:
+      type: string
+      enum: [pickup, local_delivery, courier_manual]
+    MarketListingStatus:
+      type: string
+      enum: [active, reserved, sold_out, sold, withdrawn]
+    MarketOrderStatus:
+      type: string
+      enum: [offer_pending, awaiting_payment, paid, preparing, dispatched, delivered, transferred, declined, cancelled, refunded]
+    MarketOrderActionName:
+      type: string
+      enum: [accept, decline, withdraw_offer, pay, transfer, prepare, dispatch, confirm_receipt, cancel, refund]
+    MarketDeliveryOption:
+      type: object
+      additionalProperties: false
+      required: [method, feeMinor, perUnitMinor]
+      properties:
+        method: { $ref: "#/components/schemas/MarketShippingMethod" }
+        feeMinor: { type: integer, minimum: 0 }
+        perUnitMinor: { type: integer, minimum: 0 }
+    MarketDeliveryAddress:
+      type: object
+      additionalProperties: false
+      required: [recipient, line1, city, postalCode, country, phone]
+      properties:
+        recipient: { type: string, minLength: 1, maxLength: 120 }
+        line1: { type: string, minLength: 1, maxLength: 200 }
+        line2: { type: string, maxLength: 200 }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        region: { type: string, maxLength: 100 }
+        postalCode: { type: string, minLength: 3, maxLength: 20 }
+        country: { type: string, pattern: "^[A-Za-z]{2}$" }
+        phone: { type: string }
+    MarketProvenance:
+      description: What was checked when the item was listed (registered asset or harvest batch).
+      type: object
+      required: [kind, checks]
+      properties:
+        kind: { $ref: "#/components/schemas/MarketItemKind" }
+        checks: { type: array, items: { type: string } }
+        assetName: { type: string }
+        assetKind: { type: string }
+        assetStatus: { type: string }
+        externalRef: { type: [string, "null"] }
+        farmName: { type: string }
+        verifiedAt: { type: [string, "null"] }
+        registeredBy: { type: string }
+        controlledBy: { type: string }
+        controlSource: { type: string, enum: [registration, marketplace_transfer] }
+        representations: { type: array, items: { type: object, properties: { network: { type: string }, status: { type: string } } } }
+        code: { type: string }
+        crop: { type: string }
+        harvestedOn: { type: string }
+        batchQuantity: { type: number }
+        unit: { type: string }
+        qualityGrade: { type: [string, "null"] }
+        recordHash: { type: string }
+        anchorStatus: { type: string }
+        producer: { type: string }
+    MarketListing:
+      type: object
+      required: [id, kind, title, description, seller, mine, pricing, currency, priceMinor, unit, quantityListed, quantityAvailable, deliveryOptions, status, provenance, createdAt, updatedAt, simulated]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/MarketItemKind" }
+        title: { type: string }
+        description: { type: [string, "null"] }
+        seller:
+          type: object
+          required: [tenantId, name]
+          properties:
+            tenantId: { type: string, format: uuid }
+            name: { type: string }
+        mine: { type: boolean }
+        pricing: { type: string, enum: [fixed, offers] }
+        currency: { $ref: "#/components/schemas/MarketCurrency" }
+        priceMinor: { type: integer, description: "Minor units; per unit for produce." }
+        unit: { type: string }
+        quantityListed: { type: number }
+        quantityAvailable: { type: number }
+        deliveryOptions: { type: array, items: { $ref: "#/components/schemas/MarketDeliveryOption" } }
+        status: { $ref: "#/components/schemas/MarketListingStatus" }
+        provenance: { $ref: "#/components/schemas/MarketProvenance" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        simulated: { type: boolean, const: true }
+    MarketListingDetail:
+      allOf:
+        - { $ref: "#/components/schemas/MarketListing" }
+        - type: object
+          required: [current, orders, notice]
+          properties:
+            current:
+              type: object
+              required: [checks, controlledBy]
+              properties:
+                checks: { type: object, additionalProperties: { type: boolean } }
+                controlledBy: { type: [string, "null"] }
+            orders: { type: array, items: { $ref: "#/components/schemas/MarketOrder" } }
+            notice: { type: string }
+    CreateMarketListing:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [kind, assetId, pricing, priceMinor, title, currency]
+          properties:
+            kind: { type: string, const: registered_asset }
+            assetId: { type: string, format: uuid }
+            pricing: { type: string, enum: [fixed, offers] }
+            priceMinor: { type: integer, minimum: 1 }
+            title: { type: string, minLength: 1, maxLength: 160 }
+            description: { type: string, maxLength: 2000 }
+            currency: { $ref: "#/components/schemas/MarketCurrency" }
+        - type: object
+          additionalProperties: false
+          required: [kind, harvestBatchId, quantity, priceMinor, deliveryOptions, title, currency]
+          properties:
+            kind: { type: string, const: produce }
+            harvestBatchId: { type: string, format: uuid }
+            quantity: { type: number, exclusiveMinimum: 0 }
+            priceMinor: { type: integer, minimum: 1, description: "Per unit of the batch's unit." }
+            deliveryOptions: { type: array, minItems: 1, maxItems: 3, items: { $ref: "#/components/schemas/MarketDeliveryOption" } }
+            title: { type: string, minLength: 1, maxLength: 160 }
+            description: { type: string, maxLength: 2000 }
+            currency: { $ref: "#/components/schemas/MarketCurrency" }
+    MarketEligibleItems:
+      type: object
+      required: [assets, produce, notice]
+      properties:
+        assets:
+          type: array
+          items:
+            type: object
+            required: [id, name, kind, status, externalRef, farmName, controlSource, registeredHere, eligible, reasons]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              kind: { type: string }
+              status: { type: string }
+              externalRef: { type: [string, "null"] }
+              farmName: { type: string }
+              controlSource: { type: string, enum: [registration, marketplace_transfer] }
+              registeredHere: { type: boolean }
+              eligible: { type: boolean }
+              reasons: { type: array, items: { type: string, enum: [not_verified, suspended_or_retired, kind_not_listable, not_controlled_by_seller, mainnet_representation, already_listed] } }
+        produce:
+          type: array
+          items:
+            type: object
+            required: [id, code, crop, harvestedOn, quantity, unit, available, voided, farmName, eligible, reasons]
+            properties:
+              id: { type: string, format: uuid }
+              code: { type: string }
+              crop: { type: string }
+              harvestedOn: { type: string, format: date }
+              quantity: { type: number }
+              unit: { type: string }
+              available: { type: number }
+              voided: { type: boolean }
+              farmName: { type: string }
+              eligible: { type: boolean }
+              reasons: { type: array, items: { type: string, enum: [voided, nothing_available, not_controlled_by_seller] } }
+        notice: { type: string }
+    PlaceMarketOrder:
+      type: object
+      additionalProperties: false
+      required: [listingId]
+      properties:
+        listingId: { type: string, format: uuid }
+        quantity: { type: number, exclusiveMinimum: 0, description: "Produce only." }
+        offerMinor: { type: integer, minimum: 1, description: "Registered assets listed for offers." }
+        delivery:
+          type: object
+          additionalProperties: false
+          required: [method]
+          properties:
+            method: { $ref: "#/components/schemas/MarketShippingMethod" }
+            address: { $ref: "#/components/schemas/MarketDeliveryAddress" }
+        note: { type: string, maxLength: 500 }
+    MarketOrderAction:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action: { $ref: "#/components/schemas/MarketOrderActionName" }
+        carrier: { type: string, minLength: 2, maxLength: 80, description: "dispatch: as entered by the seller (no carrier is integrated)" }
+        trackingRef: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9 ._/-]{2,63}$" }
+        note: { type: string, maxLength: 500 }
+    MarketOrder:
+      type: object
+      required: [id, listingId, listingTitle, kind, side, buyer, seller, status, quantity, unit, currency, unitPriceMinor, subtotalMinor, deliveryMinor, totalMinor, isOffer, delivery, note, availableActions, createdAt, updatedAt, simulated]
+      properties:
+        id: { type: string, format: uuid }
+        listingId: { type: string, format: uuid }
+        listingTitle: { type: string }
+        kind: { $ref: "#/components/schemas/MarketItemKind" }
+        side: { type: string, enum: [buyer, seller] }
+        buyer:
+          type: object
+          required: [tenantId, name, userName]
+          properties:
+            tenantId: { type: string, format: uuid }
+            name: { type: string }
+            userName: { type: [string, "null"] }
+        seller:
+          type: object
+          required: [tenantId, name]
+          properties:
+            tenantId: { type: string, format: uuid }
+            name: { type: string }
+        status: { $ref: "#/components/schemas/MarketOrderStatus" }
+        quantity: { type: number }
+        unit: { type: string }
+        currency: { $ref: "#/components/schemas/MarketCurrency" }
+        unitPriceMinor: { type: integer }
+        subtotalMinor: { type: integer }
+        deliveryMinor: { type: integer }
+        totalMinor: { type: integer }
+        isOffer: { type: boolean }
+        delivery:
+          type: [object, "null"]
+          required: [method, address, carrier, trackingRef]
+          properties:
+            method: { $ref: "#/components/schemas/MarketShippingMethod" }
+            address: { oneOf: [{ $ref: "#/components/schemas/MarketDeliveryAddress" }, { type: "null" }] }
+            carrier: { type: [string, "null"] }
+            trackingRef: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        availableActions: { type: array, items: { $ref: "#/components/schemas/MarketOrderActionName" } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        simulated: { type: boolean, const: true }
+    MarketOrderEvent:
+      type: object
+      required: [id, actorSide, actorName, action, fromStatus, toStatus, detail, at]
+      properties:
+        id: { type: string }
+        actorSide: { type: string, enum: [buyer, seller, system] }
+        actorName: { type: [string, "null"] }
+        action: { type: string }
+        fromStatus: { type: [string, "null"] }
+        toStatus: { type: string }
+        detail: { type: object, additionalProperties: true }
+        at: { type: string, format: date-time }
+    MarketOrderDetail:
+      allOf:
+        - { $ref: "#/components/schemas/MarketOrder" }
+        - type: object
+          required: [events, notice]
+          properties:
+            events: { type: array, items: { $ref: "#/components/schemas/MarketOrderEvent" } }
+            notice: { type: string }
+    IntegrationKind:
+      type: string
+      enum: [sensor_feed, observation_feed]
+    IntegrationEventType:
+      type: string
+      enum: [sensor.readings, observation.reported]
+    Integration:
+      type: object
+      required: [id, kind, provider, name, status, allowedEventTypes, secretVersion, createdAt, rotatedAt, lastSeenAt, revokedAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/IntegrationKind" }
+        provider: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [active, revoked] }
+        allowedEventTypes: { type: array, items: { $ref: "#/components/schemas/IntegrationEventType" } }
+        secretVersion: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+        rotatedAt: { type: [string, "null"], format: date-time }
+        lastSeenAt: { type: [string, "null"], format: date-time }
+        revokedAt: { type: [string, "null"], format: date-time }
+    IntegrationEvent:
+      description: metafarm-integration-event/1. Exact keys; no workspace identity anywhere.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [scheme, id, type, sensorId, readings]
+          properties:
+            scheme: { type: string, const: metafarm-integration-event/1 }
+            id: { type: string, pattern: "^[A-Za-z0-9._:-]{1,200}$" }
+            type: { type: string, const: sensor.readings }
+            sensorId: { type: string, format: uuid }
+            readings:
+              type: array
+              minItems: 1
+              maxItems: 200
+              items:
+                type: object
+                additionalProperties: false
+                required: [metric, value, unit, observedAt]
+                properties:
+                  metric: { type: string }
+                  value: { type: number }
+                  unit: { type: string, minLength: 1, maxLength: 32 }
+                  observedAt: { type: string, format: date-time }
+        - type: object
+          additionalProperties: false
+          required: [scheme, id, type, farmId, observations]
+          properties:
+            scheme: { type: string, const: metafarm-integration-event/1 }
+            id: { type: string, pattern: "^[A-Za-z0-9._:-]{1,200}$" }
+            type: { type: string, const: observation.reported }
+            farmId: { type: string, format: uuid }
+            observations: { type: array, minItems: 1, maxItems: 200, items: { $ref: "#/components/schemas/ObservationInput" } }
     YieldClaimIntentBatchView:
       type: object
       required: [artifactSetId, setNumber, batchSha256, intentCount, batch]
@@ -4772,6 +5440,38 @@ components:
         observedAt: { type: string, format: date-time }
         provenance: { $ref: "#/components/schemas/ProvenanceLabel" }
         qualityFlags: { type: array, items: { type: string } }
+
+    ObservationDetail:
+      allOf:
+        - { $ref: "#/components/schemas/Observation" }
+        - type: object
+          required: [originalValue, originalUnit, recordedAt, receivedAt, source]
+          properties:
+            originalValue: { description: "The value as received, before unit conversion" }
+            originalUnit: { type: string }
+            recordedAt: { type: [string, "null"], format: date-time }
+            receivedAt: { type: [string, "null"], format: date-time }
+            source:
+              type: object
+              required: [kind, sensor, integration, enteredBy]
+              properties:
+                kind: { type: string, enum: [integration, sensor, user, unknown] }
+                sensor:
+                  type: [object, "null"]
+                  required: [id, name]
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: [string, "null"] }
+                integration:
+                  type: [object, "null"]
+                  required: [id, name, provider, status, providerEventId]
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: string }
+                    provider: { type: string }
+                    status: { type: string, enum: [active, revoked] }
+                    providerEventId: { type: string }
+                enteredBy: { type: [string, "null"] }
 
     Alert:
       type: object

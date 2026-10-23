@@ -180,3 +180,43 @@ export async function acknowledgeAlert(tx: TenantTx, farmId: string, alertId: st
   );
   return r.rows[0];
 }
+
+export interface ObservationDetailRow extends ObservationRow {
+  original_value: unknown;
+  original_unit: string;
+  created_at: string;
+  raw_id: string | null;
+  received_at: string | null;
+  received_by_name: string | null;
+  sensor_name: string | null;
+  integration_id: string | null;
+  integration_name: string | null;
+  integration_provider: string | null;
+  integration_status: "active" | "revoked" | null;
+  provider_event_id: string | null;
+}
+
+/**
+ * One observation of a farm with where it came from: the raw record (when it was received and by whom), the sensor,
+ * and, for data delivered by a registered integration, that integration and the provider's event id. Read inside the
+ * workspace's transaction, so nothing from another workspace can be joined in.
+ */
+export async function getObservationDetail(tx: TenantTx, farmId: string, observationId: string): Promise<ObservationDetailRow | undefined> {
+  const r = await tx.query<ObservationDetailRow>(
+    `SELECT o.id, o.farm_id, o.sensor_id, o.metric, o.value, o.text_value, o.unit, o.observed_at, o.provenance_label, o.quality_flags,
+            o.original_value, o.original_unit, o.created_at, o.raw_id,
+            r.received_at, u.display_name AS received_by_name, s.name AS sensor_name,
+            i.id AS integration_id, i.name AS integration_name, i.provider AS integration_provider, i.status AS integration_status,
+            ie.provider_event_id
+       FROM observations o
+       LEFT JOIN raw_observations r ON r.tenant_id = o.tenant_id AND r.id = o.raw_id
+       LEFT JOIN users u ON u.id = r.received_by
+       LEFT JOIN sensors s ON s.tenant_id = o.tenant_id AND s.id = o.sensor_id
+       LEFT JOIN integration_events ie ON ie.tenant_id = o.tenant_id AND o.raw_id IS NOT NULL AND o.raw_id = ANY(ie.raw_observation_ids)
+       LEFT JOIN integrations i ON i.tenant_id = ie.tenant_id AND i.id = ie.integration_id
+      WHERE o.tenant_id = $1 AND o.farm_id = $2 AND o.id = $3
+      LIMIT 1`,
+    [tx.tenantId, farmId, observationId],
+  );
+  return r.rows[0];
+}

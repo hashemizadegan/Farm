@@ -29,3 +29,6 @@ export * from "./repositories/page";
 export * from "./repositories/player-wallets";
 export * from "./repositories/yield";
 export * from "./repositories/party-links";
+export * from "./repositories/realtime";
+export * from "./repositories/integrations";
+export * from "./repositories/marketplace";

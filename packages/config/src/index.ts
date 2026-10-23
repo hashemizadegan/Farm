@@ -143,11 +143,42 @@ export const apiEnvSchema = z
      */
     PLAYER_WALLETS_ENABLED: bool.default("false"),
     TRUST_PROXY: bool.default("true"),
+    /**
+     * Private-preview access gate (API side). On: every route except /healthz, /readyz and CORS preflights needs
+     * a verified bearer token (the configured auth provider), so unauthenticated endpoints (docs, public metadata,
+     * webhooks) are closed too. Off (default): unchanged. Meant for an isolated preview deployment; the web app
+     * has its own gate (PREVIEW_ACCESS_GATE / PREVIEW_ACCESS_PASSWORD, read by apps/web/src/middleware.ts).
+     */
+    PREVIEW_ACCESS_GATE: bool.default("false"),
+    /**
+     * Set by Railway on every deployed service (never set it yourself). Used only to recognise a *deployed*
+     * development configuration, which must run behind the preview access gate (see the guard below).
+     */
+    RAILWAY_PROJECT_ID: z.string().min(1).optional(),
     WEBHOOK_SIGNING_SECRETS: csv.default(""),
     /** Let a signed-in user with no workspace create one and become its owner. */
     SELF_SERVE_WORKSPACES: bool.default("true"),
     /** Cap on workspaces one user may own through self-service (abuse guard). */
     MAX_OWNED_WORKSPACES: z.coerce.number().int().min(1).max(100).default(3),
+    /**
+     * Providers allowed to post chain events (POST /v1/webhooks/<provider>), comma-separated; each must have an
+     * adapter (packages/domain chain-events: today only "metafarm-relay"). Empty (default): chain events are
+     * refused. Events are hints only: they ask the ownership indexer to re-read a tracked asset from the verified
+     * chain source; they never write ownership themselves.
+     */
+    CHAIN_EVENT_PROVIDERS: csv.default(""),
+    /**
+     * Authenticated realtime channel (WebSocket GET /v1/realtime, protocol metafarm-realtime.1 in packages/domain
+     * realtime.ts; outbox migration 0030). Off by default: the route does not exist and clients keep polling. Refused
+     * in staging and production until the channel's security review is signed off.
+     */
+    REALTIME_EVENTS_ENABLED: bool.default("false"),
+    /**
+     * Registered integrations (migration 0031; POST /v1/integrations/{id}/events). Server key from which each
+     * integration's signing secret is derived (never stored). Unset (default): integrations are disabled and their
+     * routes answer 404. At least 32 characters; rotating it invalidates every integration secret.
+     */
+    INTEGRATION_SECRET_KEY: z.string().min(32).max(512).optional(),
     WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(15_000),
     /** Serve Swagger UI at /docs. Unset: on in development and test, off in staging and production. */
@@ -178,6 +209,12 @@ export const apiEnvSchema = z
      * (D-15, D-25, D-27, D-39).
      */
     YIELD_CLAIM_INTENTS_ENABLED: bool.default("false"),
+    /**
+     * Marketplace (migration 0033), simulation only: listings, offers, orders, simulated payment and refund, recorded
+     * transfer of control, manual dispatch and confirmed delivery between workspaces. No money, token, title or parcel
+     * moves. Off (default): the /market routes answer 404. Refused in production until the owner approves a rollout.
+     */
+    MARKETPLACE_ENABLED: bool.default("false"),
     ...rwa,
   })
   .superRefine(productionGuards)
@@ -191,8 +228,19 @@ export const apiEnvSchema = z
     if (env.YIELD_CLAIM_INTENTS_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
       ctx.addIssue({ code: "custom", path: ["YIELD_CLAIM_INTENTS_ENABLED"], message: "claim intents are simulation-only and refused when deployed (D-15, D-25, D-27, D-39)" });
     }
+    if (env.REALTIME_EVENTS_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
+      ctx.addIssue({ code: "custom", path: ["REALTIME_EVENTS_ENABLED"], message: "the realtime channel is not security-reviewed for deployed environments yet (preview and local only)" });
+    }
+    if (env.MARKETPLACE_ENABLED && env.APP_ENV === "production") {
+      ctx.addIssue({ code: "custom", path: ["MARKETPLACE_ENABLED"], message: "the marketplace is simulation-only and needs the owner's explicit approval before any production rollout" });
+    }
     if (env.HOLDER_YIELD_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
       ctx.addIssue({ code: "custom", path: ["HOLDER_YIELD_ENABLED"], message: "holder-facing yield views need approved disclosures (D-39) before any deployed use" });
+    }
+    // A development or test configuration (dev sign-in, simulation switches) deployed on the platform is a preview:
+    // it must be private. Fail closed rather than serve it openly.
+    if (env.RAILWAY_PROJECT_ID && (env.APP_ENV === "development" || env.APP_ENV === "test") && !env.PREVIEW_ACCESS_GATE) {
+      ctx.addIssue({ code: "custom", path: ["PREVIEW_ACCESS_GATE"], message: "a deployed development/test configuration must set PREVIEW_ACCESS_GATE=true (isolated preview only)" });
     }
   });
 
@@ -269,6 +317,15 @@ export const workerEnvSchema = z
     TWIN_SNAPSHOT_BATCHES_ENABLED: bool.default("false"),
     /** Digital twin: run ownership-index jobs (read finalized ownership events into the index). Off by default; also needs an event source. Read-only on chain. */
     TWIN_OWNERSHIP_INDEX_ENABLED: bool.default("false"),
+    /**
+     * Realtime outbox events from the worker (observation.recorded after normalization). Same switch and the same
+     * refusal in staging/production as the API's channel; off: the worker writes nothing to the outbox.
+     */
+    REALTIME_EVENTS_ENABLED: bool.default("false"),
+    /** Realtime retention job: rows deleted per statement, statements per run, and the run's time budget. */
+    REALTIME_RETENTION_BATCH_SIZE: z.coerce.number().int().min(100).max(50_000).default(5_000),
+    REALTIME_RETENTION_MAX_BATCHES: z.coerce.number().int().min(1).max(1_000).default(20),
+    REALTIME_RETENTION_MAX_SECONDS: z.coerce.number().int().min(1).max(300).default(30),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {
@@ -287,6 +344,9 @@ export const workerEnvSchema = z
         ctx.addIssue({ code: "custom", path: ["MQTT_CLIENT_KEY_PEM"], message: "set both the client certificate and key, or neither" });
       }
     }
+    if (env.REALTIME_EVENTS_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
+      ctx.addIssue({ code: "custom", path: ["REALTIME_EVENTS_ENABLED"], message: "the realtime channel is not security-reviewed for deployed environments yet (preview and local only)" });
+    }
   });
 
 export const schedulerEnvSchema = z
@@ -302,6 +362,11 @@ export const schedulerEnvSchema = z
     TWIN_SNAPSHOT_BATCH_CRON: z.string().min(9).max(100).optional(),
     /** Digital twin: cron for the ownership-index sweep. Unset = no schedule (the default). */
     TWIN_OWNERSHIP_INDEX_CRON: z.string().min(9).max(100).optional(),
+    /**
+     * Realtime outbox retention (deletes rows past their expires_at, bounded per run). Unset = no schedule (the
+     * default; set it wherever REALTIME_EVENTS_ENABLED is on, e.g. "17 * * * *").
+     */
+    REALTIME_RETENTION_CRON: z.string().min(9).max(100).optional(),
     CHAIN_ID: z.coerce.number().int().positive().default(31337),
     /** Comma-separated "0xaddress@fromBlock" entries. */
     CHAIN_INDEX_CONTRACTS: csv.default(""),
@@ -356,3 +421,4 @@ export const webPublicEnvSchema = z.object({
   NEXT_PUBLIC_YIELD_PAGES_ENABLED: bool.default("false"),
 });
 export type WebPublicEnv = z.infer<typeof webPublicEnvSchema>;
+export * from "./capabilities";

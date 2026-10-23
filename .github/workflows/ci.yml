@@ -86,7 +86,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "${{ env.NODE_VERSION }}", cache: "${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}" }
       - run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install --no-frozen-lockfile; fi
-      - run: pnpm test:unit
+      - name: pnpm test:unit
+        # On failure, the failing files, tests and errors are surfaced as annotations (readable without log access).
+        run: |
+          set -o pipefail
+          if ! pnpm test:unit 2>&1 | tee unit.log; then
+            # One annotation (GitHub keeps at most 10 per step): the failing lines, newline-encoded.
+            echo "::error title=pnpm test:unit failed::$(grep -E "FAIL|AssertionError|Error|Unhandled|×|✗|Test Files|Tests |expected|received" unit.log | tail -45 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')"
+            exit 1
+          fi
 
   integration:
     name: Integration tests (PostGIS, Redis)
@@ -121,7 +129,15 @@ jobs:
           pnpm db:migrate
           pnpm --filter @metafarm/db migrate:down
           pnpm db:migrate
-      - run: pnpm test:integration
+      - name: pnpm test:integration
+        # On failure, the failing files, tests and errors are surfaced as annotations (readable without log access).
+        run: |
+          set -o pipefail
+          if ! pnpm test:integration 2>&1 | tee integration.log; then
+            # One annotation (GitHub keeps at most 10 per step): the failing lines, newline-encoded.
+            echo "::error title=pnpm test:integration failed::$(grep -E "FAIL|AssertionError|Error|Unhandled|×|✗|Test Files|Tests |expected|received" integration.log | tail -45 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')"
+            exit 1
+          fi
 
   contracts:
     name: Contract tests (Solidity)
@@ -194,8 +210,12 @@ jobs:
       REDIS_URL: redis://localhost:6379
       STORAGE_DRIVER: memory
       AUTH_PROVIDER: dev
-      CORS_ORIGINS: http://localhost:3000
+      # 3101: a second web server with the preview access gate on (tests/e2e/preview-gate.spec.ts).
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3101
       NEXT_PUBLIC_API_URL: http://localhost:4000
+      E2E_GATED_WEB_URL: http://localhost:3101
+      # Test-only value. Never reuse in a deployed preview.
+      E2E_PREVIEW_ACCESS_PASSWORD: ci-only-preview-password-0123456789
       # Every browser in the run shares one client IP; the production per-IP limit would throttle the suite.
       RATE_LIMIT_MAX: "10000"
       # J8 is off by default everywhere; the e2e stack turns it on to test the account page's linking flow.
@@ -205,13 +225,23 @@ jobs:
       YIELD_WORKFLOW_ENABLED: "true"
       YIELD_CLAIM_INTENTS_ENABLED: "true"
       NEXT_PUBLIC_YIELD_PAGES_ENABLED: "true"
+      # Realtime channel (API and worker), registered integrations and the web app's live updates, exercised end to end
+      # (tests/e2e/integrations-realtime.spec.ts). APP_ENV=test only: refused in staging/production. Test-only key.
+      REALTIME_EVENTS_ENABLED: "true"
+      NEXT_PUBLIC_REALTIME_URL: ws://localhost:4000/v1/realtime
+      INTEGRATION_SECRET_KEY: ci-only-integration-key-0123456789abcdef
+      # Marketplace (simulation only; refused in production): the two-party journey and its seeded demo
+      # (tests/e2e/marketplace-journey.spec.ts, apps/api/src/scripts/seed-marketplace.ts).
+      MARKETPLACE_ENABLED: "true"
+      NEXT_PUBLIC_MARKETPLACE_ENABLED: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: "${{ env.NODE_VERSION }}", cache: "${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}" }
       - run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install --no-frozen-lockfile; fi
-      - run: pnpm db:migrate && pnpm db:seed
+      # The preview's farm operations seed too (tests/e2e/preview-journey.spec.ts walks it, as against a preview).
+      - run: pnpm db:migrate && pnpm db:seed && pnpm seed:farm-ops && pnpm seed:marketplace
       - run: pnpm --filter @metafarm/web build
       - run: pnpm --filter @metafarm/e2e install-browsers
       - run: pnpm test:e2e
@@ -219,7 +249,9 @@ jobs:
         if: failure()
         with:
           name: playwright-report
-          path: tests/playwright-report
+          path: |
+            tests/playwright-report
+            tests/test-results
           retention-days: 7
       - uses: actions/upload-artifact@v4
         if: always()
@@ -269,7 +301,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [api, worker, scheduler, web]
+        app: [api, worker, scheduler, web, seed-runner]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -279,8 +311,30 @@ jobs:
           file: Dockerfile
           push: false
           tags: metafarm-${{ matrix.app }}:ci
+          load: ${{ matrix.app == 'seed-runner' }}
           build-args: |
             APP=${{ matrix.app }}
             NEXT_PUBLIC_API_URL=http://localhost:4000
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+      - name: Web build refuses the yield pages for staging/production (D-39 guard reaches Docker builds)
+        if: matrix.app == 'web'
+        run: |
+          set +e
+          docker buildx build --target build-web --build-arg APP=web --build-arg APP_ENV=production \
+            --build-arg NEXT_PUBLIC_YIELD_PAGES_ENABLED=true --cache-from type=gha,scope=web . > web-guard.log 2>&1
+          code=$?
+          set -e
+          tail -5 web-guard.log
+          test "$code" -ne 0 && grep -q "NEXT_PUBLIC_YIELD_PAGES_ENABLED is refused" web-guard.log
+      - name: Seed runner refuses deployed environments (no database needed)
+        if: matrix.app == 'seed-runner'
+        run: |
+          set -u
+          for env in production staging; do
+            set +e; out=$(docker run --rm -e APP_ENV=$env -e DATABASE_URL=postgres://u:p@127.0.0.1:1/x metafarm-seed-runner:ci 2>&1); code=$?; set -e
+            echo "$out"
+            test "$code" -eq 1 && echo "$out" | grep -q "refused: APP_ENV must be development or test"
+          done
+          set +e; out=$(docker run --rm metafarm-seed-runner:ci 2>&1); code=$?; set -e
+          test "$code" -eq 1 && echo "$out" | grep -q "refused: APP_ENV must be"

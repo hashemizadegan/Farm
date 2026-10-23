@@ -40,4 +40,11 @@ describe("buildSchedules", () => {
     const s = buildSchedules({ ...base, twinSnapshotBatchCron: "30 3 * * *" });
     expect(s.find((x) => x.id === "twin-snapshot-batches-sweep")).toEqual({ id: "twin-snapshot-batches-sweep", queue: "twin-snapshot-batches", jobName: "sweep", pattern: "30 3 * * *", data: {} });
   });
+
+  it("schedules realtime retention only when its cron is set, with a stable id", () => {
+    const base = { alertCron: "*/5 * * * *", chainCron: "* * * * *", chainId: 1, contracts: [] };
+    expect(buildSchedules(base).map((x) => x.id)).not.toContain("realtime-retention");
+    const s = buildSchedules({ ...base, realtimeRetentionCron: "17 * * * *" });
+    expect(s.find((x) => x.id === "realtime-retention")).toEqual({ id: "realtime-retention", queue: "realtime-retention", jobName: "prune", pattern: "17 * * * *", data: {} });
+  });
 });

@@ -17,6 +17,7 @@ export const QUEUES = {
   twinSnapshots: "twin-snapshots",
   twinSnapshotBatches: "twin-snapshot-batches",
   ownershipIndex: "ownership-index",
+  realtimeRetention: "realtime-retention",
   deadLetter: "dead-letter",
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -39,6 +40,11 @@ export interface OwnershipIndexJob {
   network: "solana-devnet" | "solana-mainnet";
   rail: "SOLANA_TOKEN_2022" | "SOLANA_BUBBLEGUM_CNFT";
   assetId: string;
+  bucket: string;
+}
+
+/** Delete expired realtime outbox rows (migration 0030), at most once per bucket; bounded per run. */
+export interface RealtimeRetentionJob {
   bucket: string;
 }
 
@@ -94,6 +100,7 @@ export interface JobPayloads {
   [QUEUES.twinSnapshots]: TwinSnapshotJob;
   [QUEUES.twinSnapshotBatches]: TwinSnapshotBatchJob;
   [QUEUES.ownershipIndex]: OwnershipIndexJob;
+  [QUEUES.realtimeRetention]: RealtimeRetentionJob;
 }
 
 export function idempotencyKey<Q extends keyof JobPayloads>(queue: Q, payload: JobPayloads[Q]): string {
@@ -133,6 +140,10 @@ export function idempotencyKey<Q extends keyof JobPayloads>(queue: Q, payload: J
     case QUEUES.ownershipIndex: {
       const p = payload as OwnershipIndexJob;
       return `ownership-index:${p.network}:${p.rail}:${p.assetId}:${p.bucket}`;
+    }
+    case QUEUES.realtimeRetention: {
+      const p = payload as RealtimeRetentionJob;
+      return `realtime-retention:${p.bucket}`;
     }
     default:
       throw new Error(`unknown queue ${String(queue)}`);

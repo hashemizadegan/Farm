@@ -1,13 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
+import websocket from "@fastify/websocket";
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
+import { REALTIME_LIMITS, REALTIME_PROTOCOL } from "@metafarm/domain";
 import type { Deps } from "./deps";
 import { contextPlugin } from "./plugins/context";
 import { idempotencyPlugin } from "./plugins/idempotency";
 import { metricsPlugin } from "./plugins/metrics";
+import { previewGatePlugin } from "./plugins/preview-gate";
 import { securityPlugin } from "./plugins/security";
 import { chainRoutes } from "./routes/chain";
+import { integrationRoutes } from "./routes/integrations";
+import { realtimeRoutes, type RealtimeLimits } from "./routes/realtime";
 import { farmRoutes } from "./routes/farms";
 import { healthRoutes } from "./routes/health";
 import { mediaRoutes } from "./routes/media";
@@ -31,15 +36,18 @@ import { twinAnchorRoutes } from "./routes/twin-anchors";
 import { yieldRoutes, yieldWorkflowRoutes } from "./routes/yield";
 import { partyLinkRoutes } from "./routes/party-links";
 import { holderYieldRoutes } from "./routes/holder-yield";
+import { marketplaceRoutes } from "./routes/marketplace";
 
 export interface BuildOptions {
   deps: Deps;
   isDraining?: () => boolean;
   /** Serve Swagger UI at /docs. Defaults to on outside production. */
   docs?: boolean;
+  /** Realtime channel timings (tests shorten them); only used when REALTIME_EVENTS_ENABLED is on. */
+  realtime?: Partial<RealtimeLimits>;
 }
 
-export async function buildApp({ deps, isDraining = () => false, docs }: BuildOptions): Promise<FastifyInstance> {
+export async function buildApp({ deps, isDraining = () => false, docs, realtime }: BuildOptions): Promise<FastifyInstance> {
   const app = Fastify({
     // pino's Logger is runtime-compatible with Fastify's logger; the cast keeps the
     // instance typed as the default FastifyInstance used by plugins and tests.
@@ -62,6 +70,8 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   // Before every route, so that every response is counted.
   await app.register(metricsPlugin, { token: deps.env.METRICS_TOKEN });
   await app.register(contextPlugin, { deps });
+  // Before every route (health included, which it lets through), so nothing is reachable around it.
+  await app.register(previewGatePlugin, { enabled: deps.env.PREVIEW_ACCESS_GATE });
   await app.register(idempotencyPlugin);
   await app.register(healthRoutes, { isDraining });
 
@@ -105,6 +115,19 @@ export async function buildApp({ deps, isDraining = () => false, docs }: BuildOp
   await app.register(yieldWorkflowRoutes);
   await app.register(partyLinkRoutes);
   await app.register(holderYieldRoutes);
+  await app.register(integrationRoutes);
+  await app.register(marketplaceRoutes);
+  // Realtime channel (WebSocket): registered only when switched on, so the route table is unchanged otherwise.
+  if (deps.env.REALTIME_EVENTS_ENABLED) {
+    await app.register(websocket, {
+      options: {
+        maxPayload: REALTIME_LIMITS.maxClientMessageBytes,
+        // Answer the realtime subprotocol only; a `bearer.<token>` entry is a credential, never echoed back.
+        handleProtocols: (protocols: Set<string>) => (protocols.has(REALTIME_PROTOCOL) ? REALTIME_PROTOCOL : false),
+      },
+    });
+    await app.register(realtimeRoutes, { limits: realtime });
+  }
 
   return app;
 }

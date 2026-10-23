@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button, ErrorSummary, Notice, ProvenanceBadge, SelectField, TextField, useAnnounce } from "@metafarm/ui";
@@ -10,6 +11,10 @@ import { useCan } from "@/lib/can";
 import { sendOrQueue } from "@/lib/outbox";
 import { useTenant } from "@/lib/tenant";
 import { useI18n } from "@/i18n/provider";
+import { RealtimeStatus, pollWhile } from "@/components/RealtimeStatus";
+import { useRealtimeUpdates } from "@/lib/realtime";
+
+const OBSERVATION_EVENTS = ["observation.recorded"];
 
 const METRICS = [
   ["soil_moisture", ["percent_vwc", "fraction_vwc"]],
@@ -54,9 +59,12 @@ function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }
   const [errors, setErrors] = useState<{ message: string }[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const list = useQuery(`obs:${farmId}`, () =>
+  // Realtime when configured (new observations reload the list at once); polling otherwise and as the safety net.
+  const [realtimeTick, setRealtimeTick] = useState(0);
+  const realtime = useRealtimeUpdates({ tenantId, farmId, types: OBSERVATION_EVENTS }, () => setRealtimeTick((n) => n + 1));
+  const list = useQuery(`obs:${farmId}:${realtimeTick}`, () =>
     unwrap(api.GET("/v1/tenants/{tenantId}/farms/{farmId}/observations", { params: { path: { tenantId, farmId }, query: { limit: 100 } } })),
-    { pollMs: 10_000 },
+    { pollMs: pollWhile(realtime, 10_000) },
   );
 
   const submit = async (e: FormEvent) => {
@@ -125,6 +133,7 @@ function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }
 
       <section aria-labelledby="obs-table">
         <h2 id="obs-table">{t.recentHeading}</h2>
+        <RealtimeStatus status={realtime} />
         {list.error && <Notice tone="error">{list.error.message}</Notice>}
         {list.data?.items.length === 0 && <p>{t.none}</p>}
         {list.data && list.data.items.length > 0 && (
@@ -142,7 +151,9 @@ function Observations({ tenantId, farmId }: { tenantId: string; farmId: string }
               {list.data.items.map((o) => (
                 <tr key={o.id}>
                   <td>
-                    <time dateTime={o.observedAt}>{fmt.dateTime(o.observedAt)}</time>
+                    <Link href={`/farms/${farmId}/observations/${o.id}`}>
+                      <time dateTime={o.observedAt}>{fmt.dateTime(o.observedAt)}</time>
+                    </Link>
                   </td>
                   <td>{t.metrics[o.metric] ?? o.metric}</td>
                   <td>{o.value !== null ? `${fmt.number(o.value)} ${t.units[o.unit] ?? o.unit}` : o.text}</td>

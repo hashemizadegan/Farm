@@ -11,6 +11,9 @@ import { OfflineStatus } from "./OfflineStatus";
 import { ServiceWorker } from "./ServiceWorker";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { yieldPagesEnabled } from "@/lib/yield";
+import { marketplaceEnabled } from "@/lib/market";
+import { useCan } from "@/lib/can";
+import type { Permission } from "@metafarm/domain";
 
 /** Routes that render without the app chrome (sign-in and the OIDC callback). */
 const BARE = ["/sign-in", "/auth/callback", "/verify"];
@@ -55,7 +58,13 @@ function RouteFocus({ children, className }: { children: ReactNode; className?: 
   );
 }
 
-const NAV: { href: string; key: "overview" | "myTasks" | "schedule" | "farms" | "inventory" | "equipment" | "reports" | "rwa" | "yield" | "assets" | "team" | "settings"; match?: (p: string) => boolean }[] = [
+const NAV: {
+  href: string;
+  key: "overview" | "myTasks" | "schedule" | "farms" | "inventory" | "equipment" | "reports" | "market" | "rwa" | "yield" | "assets" | "team" | "integrations" | "settings";
+  match?: (p: string) => boolean;
+  /** Shown only to members whose role has this permission (the page and the API check it again). */
+  permission?: Permission;
+}[] = [
   { href: "/", key: "overview", match: (p) => p === "/" },
   { href: "/tasks", key: "myTasks" },
   { href: "/schedule", key: "schedule" },
@@ -63,17 +72,21 @@ const NAV: { href: string; key: "overview" | "myTasks" | "schedule" | "farms" | 
   { href: "/inventory", key: "inventory" },
   { href: "/equipment", key: "equipment" },
   { href: "/reports", key: "reports" },
+  // Marketplace (simulation only), in builds with NEXT_PUBLIC_MARKETPLACE_ENABLED (off by default; refused in production).
+  ...(marketplaceEnabled() ? [{ href: "/market", key: "market" as const }] : []),
   { href: "/rwa", key: "rwa" },
   // Y10: internal staff pages, only in builds with NEXT_PUBLIC_YIELD_PAGES_ENABLED (off by default).
   ...(yieldPagesEnabled() ? [{ href: "/yield", key: "yield" as const }] : []),
   { href: "/assets", key: "assets" },
   { href: "/team", key: "team" },
+  { href: "/integrations", key: "integrations", permission: "integration:manage" },
   { href: "/settings", key: "settings" },
 ];
 
 function Frame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { signedIn, unreadNotifications: unread } = useTenant();
+  const can = useCan();
   const { m } = useI18n();
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -124,7 +137,7 @@ function Frame({ children }: { children: ReactNode }) {
         {signedIn && <Bell unread={unread} className="sidebar__bell" withLabel current={pathname === "/notifications"} />}
         <nav aria-label={m.shell.mainNav}>
           <ul className="sidenav">
-            {NAV.map((item) => (
+            {NAV.filter((item) => !item.permission || can(item.permission)).map((item) => (
               <li key={item.href}>
                 <Link href={item.href} aria-current={isCurrent(item) ? "page" : undefined}>
                   {m.shell.nav[item.key]}

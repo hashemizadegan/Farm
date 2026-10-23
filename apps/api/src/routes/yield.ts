@@ -348,6 +348,20 @@ const b58 = z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, "a base58 address"
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
 const slot = z.string().regex(/^\d{1,19}$/, "a slot number");
 const reason = z.string().trim().min(1).max(2000);
+/**
+ * R1 (security review 2026-10-22): the chain-network labels a cycle may carry while every cycle is a simulation.
+ * The schema keeps `solana-mainnet` (the database's network domain, migration 0024) so real cycles can use it once
+ * the real gates are approved; until then a mainnet label on a simulation cycle is refused, because it would tell
+ * a reader the cycle concerns mainnet assets when nothing about it is real.
+ */
+export const SIMULATION_CYCLE_NETWORKS: readonly string[] = ["solana-devnet"];
+
+/** The refusal for a network label a simulation cycle may not carry, or null. */
+export function simulationCycleNetworkRefusal(network: string): HttpError | null {
+  if (SIMULATION_CYCLE_NETWORKS.includes(network)) return null;
+  return new HttpError(409, "simulation_network_label", `a simulation cycle is labelled ${SIMULATION_CYCLE_NETWORKS.join(" or ")}, not ${network} (real networks need the real gates of plan §2.1)`);
+}
+
 const createCycleSchema = z
   .object({
     businessAssetId: uuid,
@@ -455,6 +469,10 @@ export async function yieldWorkflowRoutes(app: FastifyInstance) {
     parse(tenantParams, req.params);
     enabled();
     const b = parse(createCycleSchema, req.body);
+    // Every cycle created here is a simulation (below), so its network label must be a simulation label (R1).
+    // Checked with the body, before authentication and before any query.
+    const labelRefusal = simulationCycleNetworkRefusal(b.network);
+    if (labelRefusal) throw labelRefusal;
     const out = await run(req, "yield:prepare", async (tx, userId) => {
       if (!b.simulation) throw new HttpError(409, "real_gate", "only simulation cycles can be created until the real gates of the plan (§2.1) are approved");
       return toYieldCycle(await createYieldCycle(tx, { ...b, simulation: true, createdBy: userId }));

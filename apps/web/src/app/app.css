@@ -1500,3 +1500,220 @@ html[lang="fa"] body {
   margin: 0;
   padding: 0;
 }
+
+/* ── Marketplace (simulation only) ───────────────────────────────────────── */
+.market-sim {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  background: var(--mf-warning-bg);
+  color: var(--mf-text);
+  border-inline-start: 4px solid var(--mf-warning);
+  border-radius: var(--mf-radius);
+  padding: 0.75rem 1rem;
+  margin: 0 0 1.25rem;
+  font-size: 0.95rem;
+}
+.market-sim .mf-pill {
+  flex: none;
+}
+.market-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  border: 0;
+  padding: 0;
+  margin: 0 0 1.25rem;
+}
+.market-filter legend {
+  font-weight: 600;
+  margin-block-end: 0.35rem;
+}
+.market-filter label {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  min-height: 2.75rem;
+}
+.market-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+}
+.market-card {
+  background: var(--mf-surface);
+  border: 1px solid var(--mf-line);
+  border-radius: var(--mf-radius-lg);
+  padding: 1rem 1.1rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.market-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.market-card__title {
+  font-size: 1.1rem;
+  margin: 0.25rem 0 0;
+}
+.market-card__meta,
+.market-card__seller {
+  color: var(--mf-muted);
+  margin: 0;
+  font-size: 0.92rem;
+}
+.market-card__price {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0.25rem 0 0;
+}
+.market-card__seller {
+  margin-top: auto;
+}
+.money {
+  unicode-bidi: isolate;
+  white-space: nowrap;
+}
+.market-detail__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.market-detail__title {
+  font-size: 1.5rem;
+  margin: 0.5rem 0 1rem;
+}
+.market-detail__body {
+  margin: 1.5rem 0;
+}
+.market-checks {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.market-hash {
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+.market-methods,
+.market-address {
+  border: 1px solid var(--mf-line);
+  border-radius: var(--mf-radius);
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+.market-methods legend,
+.market-address legend {
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+.market-method {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.5rem 0;
+}
+.market-method input {
+  margin-top: 0.3rem;
+}
+.market-option + .market-option {
+  border-top: 1px solid var(--mf-line);
+  padding-top: 0.6rem;
+  margin-top: 0.6rem;
+}
+.market-summary {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  background: var(--mf-sunken);
+  border-radius: var(--mf-radius);
+}
+.market-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.market-summary dd {
+  margin: 0;
+}
+.market-summary__total {
+  font-weight: 700;
+  border-top: 1px solid var(--mf-border);
+  padding-top: 0.35rem;
+}
+.market-form {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.market-order-row {
+  line-height: 1.8;
+}
+.market-ineligible {
+  color: var(--mf-muted);
+  font-size: 0.92rem;
+}
+.market-progress-wrap {
+  margin: 1rem 0;
+}
+.market-progress {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0;
+  counter-reset: step;
+}
+.market-progress li {
+  counter-increment: step;
+  border: 1px solid var(--mf-border);
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.9rem;
+  color: var(--mf-muted);
+}
+.market-progress li::before {
+  content: counter(step) ". ";
+}
+.market-progress li[data-state="done"] {
+  background: var(--mf-success-bg);
+  border-color: var(--mf-success);
+  color: var(--mf-text);
+}
+.market-progress li[data-state="current"] {
+  background: var(--mf-primary);
+  border-color: var(--mf-primary);
+  color: var(--mf-primary-text);
+  font-weight: 700;
+}
+.market-actions {
+  margin: 1.5rem 0;
+}
+.market-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+.market-history {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.market-address-view {
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.6;
+}

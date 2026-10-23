@@ -55,7 +55,8 @@ namespace Metafarm.Twin.Core.Tests
         [Fact]
         public void TheYieldModelsAreDataOnly()
         {
-            var types = typeof(YieldCycleSummary).Assembly.GetTypes().Where(t => t.Name.StartsWith("Yield") && t.IsClass && !t.IsAbstract).ToArray();
+            // The yield DTOs (Models namespace); the read client in Api is behaviour by design and tested on its own.
+            var types = typeof(YieldCycleSummary).Assembly.GetTypes().Where(t => t.Namespace == typeof(YieldCycleSummary).Namespace && t.Name.StartsWith("Yield") && t.IsClass && !t.IsAbstract).ToArray();
             Assert.NotEmpty(types);
             foreach (var t in types.Where(t => t.Name != nameof(YieldStatuses)))
             {

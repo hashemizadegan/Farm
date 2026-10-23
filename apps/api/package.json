@@ -10,7 +10,10 @@
     "migrate": "node dist/migrate.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dev-token": "tsx --env-file-if-exists=../../.env src/scripts/dev-token.ts",
-    "seed:yield": "tsx --env-file-if-exists=../../.env src/scripts/seed-yield-simulation.ts"
+    "seed:yield": "tsx --env-file-if-exists=../../.env src/scripts/seed-yield-simulation.ts",
+    "seed:farm-ops": "tsx --env-file-if-exists=../../.env src/scripts/seed-farm-operations.ts",
+    "seed:marketplace": "tsx --env-file-if-exists=../../.env src/scripts/seed-marketplace.ts",
+    "preview-seed": "tsx src/scripts/preview-seed-runner.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.840.0",
@@ -20,6 +23,7 @@
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/swagger": "^9.5.1",
     "@fastify/swagger-ui": "^6.1.2",
+    "@fastify/websocket": "^11.2.0",
     "@metafarm/chain": "workspace:*",
     "@metafarm/config": "workspace:*",
     "@metafarm/contracts": "workspace:*",
@@ -37,6 +41,7 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "tsup": "^8.5.0",
     "tsx": "^4.20.3",
     "yaml": "^2.8.0"

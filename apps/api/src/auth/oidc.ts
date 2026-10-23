@@ -4,7 +4,7 @@ import { AuthError, type AuthProvider, type VerifiedIdentity } from "./provider"
 /**
  * Generic OIDC access-token verifier.
  *
- * TODO(provider-config): set OIDC_ISSUER_URL, OIDC_AUDIENCE and (optionally)
+ * Capability `auth` (packages/config capabilities.ts; docs/provider-capabilities.md): set OIDC_ISSUER_URL, OIDC_AUDIENCE and (optionally)
  * OIDC_JWKS_URL for your identity provider. Confirm which claims your
  * provider puts in access tokens (some only include `sub`); if `email` is
  * needed, fetch it from the userinfo endpoint instead of trusting the token.

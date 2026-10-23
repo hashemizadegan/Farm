@@ -6,7 +6,7 @@
  * features. To enable it:
  *   1. `pnpm --filter @metafarm/web add cesium`
  *   2. set NEXT_PUBLIC_CESIUM_ENABLED=true
- *   3. TODO(provider-config): choose terrain/tiles sources. Cesium works with
+ *   3. Decision pending (docs/provider-capabilities.md, "globe"): choose terrain/tiles sources. Cesium works with
  *      open data (e.g. self-hosted 3D Tiles or an ellipsoid with no terrain);
  *      a Cesium ion token is only needed if you choose ion-hosted assets.
  * Large-area georeferenced content belongs here; the local farm scene stays in

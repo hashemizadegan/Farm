@@ -4,6 +4,7 @@ import { createLogger } from "@metafarm/observability";
 import { buildApp } from "../app";
 import { createDevProvider, mintDevToken } from "../auth/dev";
 import type { Deps } from "../deps";
+import type { RealtimeLimits } from "../routes/realtime";
 import { createMemoryProducer } from "../queue/producer";
 import { createMemoryStorage } from "@metafarm/storage";
 
@@ -31,7 +32,7 @@ export function unreachablePool(): Pool {
   return { query: fail, connect: fail, end: async () => undefined } as unknown as Pool;
 }
 
-export async function buildTestApp(opts: { pool: Pool; env?: Record<string, string>; deps?: Partial<Deps>; isDraining?: () => boolean }) {
+export async function buildTestApp(opts: { pool: Pool; env?: Record<string, string>; deps?: Partial<Deps>; isDraining?: () => boolean; realtime?: Partial<RealtimeLimits> }) {
   const jobs = createMemoryProducer();
   const storage = createMemoryStorage();
   const app = await buildApp({
@@ -47,6 +48,7 @@ export async function buildTestApp(opts: { pool: Pool; env?: Record<string, stri
     },
     docs: false,
     isDraining: opts.isDraining,
+    realtime: opts.realtime,
   });
   return { app, jobs, storage };
 }
