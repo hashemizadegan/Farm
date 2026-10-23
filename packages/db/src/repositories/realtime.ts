@@ -68,10 +68,11 @@ export async function listRealtimeEventsAfter(
   q: { after: string | null; types: readonly EventType[]; farmId: string | null; limit: number },
 ): Promise<RealtimeEventRow[]> {
   const r = await tx.query<Row>(
-    `SELECT seq::text, id, tenant_id, farm_id, type, schema_version, payload, occurred_at, correlation_id
-       FROM realtime_events
-      WHERE tenant_id = $1 AND seq > $2::bigint AND type = ANY($3::text[]) AND ($4::uuid IS NULL OR farm_id = $4::uuid)
-      ORDER BY seq
+    // ORDER BY the table's bigint column: a bare `seq` would bind to the text output column and sort "10" before "4".
+    `SELECT e.seq::text AS seq, e.id, e.tenant_id, e.farm_id, e.type, e.schema_version, e.payload, e.occurred_at, e.correlation_id
+       FROM realtime_events e
+      WHERE e.tenant_id = $1 AND e.seq > $2::bigint AND e.type = ANY($3::text[]) AND ($4::uuid IS NULL OR e.farm_id = $4::uuid)
+      ORDER BY e.seq
       LIMIT $5`,
     [tx.tenantId, q.after ?? "0", q.types, q.farmId, q.limit],
   );
