@@ -1,4 +1,5 @@
-import { getRawObservation, insertObservation, markRawObservation, withTenant, type Pool } from "@metafarm/db";
+import { randomUUID } from "node:crypto";
+import { appendRealtimeEvent, getRawObservation, insertObservation, markRawObservation, withTenant, type Pool } from "@metafarm/db";
 import { NonRetryableJobError, ObservationError, normaliseObservation, type ObservationNormalizationJob, type RawObservation } from "@metafarm/domain";
 import type { Handler } from "../runner";
 
@@ -7,7 +8,7 @@ import type { Handler } from "../runner";
  * are rejected permanently (no guessing). Re-running for the same raw row is a
  * no-op thanks to the unique raw_id constraint.
  */
-export function observationNormalizationHandler(pool: Pool, now: () => Date = () => new Date()): Handler<ObservationNormalizationJob> {
+export function observationNormalizationHandler(pool: Pool, now: () => Date = () => new Date(), opts: { realtime?: boolean } = {}): Handler<ObservationNormalizationJob> {
   return async (job, { log }) =>
     withTenant(pool, job.tenantId, async (tx) => {
       const raw = await getRawObservation(tx, job.rawObservationId);
@@ -27,6 +28,19 @@ export function observationNormalizationHandler(pool: Pool, now: () => Date = ()
         );
         const { id, inserted } = await insertObservation(tx, raw.farm_id, raw.id, raw.sensor_id, o);
         await markRawObservation(tx, raw.id, "normalized");
+        // Realtime (when on): announce the new observation in the same transaction; a re-run inserts nothing new.
+        if (opts.realtime && inserted) {
+          await appendRealtimeEvent(tx, {
+            scheme: "metafarm-event/1",
+            type: "observation.recorded",
+            schemaVersion: 1,
+            id: randomUUID(),
+            scope: { tenantId: job.tenantId, farmId: raw.farm_id },
+            occurredAt: now().toISOString(),
+            correlationId: `raw:${raw.id}`,
+            payload: { observationId: id, metric: o.metric, sensorId: raw.sensor_id, provenance: raw.provenance_label },
+          });
+        }
         log.info({ observationId: id, inserted, flags: o.qualityFlags }, "observation normalised");
         return { observationId: id, inserted };
       } catch (err) {

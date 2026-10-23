@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { decidePreviewGate, previewGateResponse } from "./lib/preview-gate";
+import { realtimeConnectSource, realtimeUrl } from "./lib/realtime-config";
 
 /** Paths that never got the CSP (static build output); the matcher now reaches them only for the preview gate. */
 const STATIC_PATH = /^\/(?:_next\/static|_next\/image|favicon\.ico)(?:\/|$)/;
@@ -9,8 +10,9 @@ const STATIC_PATH = /^\/(?:_next\/static|_next\/image|favicon\.ico)(?:\/|$)/;
  * to its own inline scripts when it finds it in the request's CSP header.
  *
  * connect-src lists the API, the OIDC provider, the map hosts
- * (NEXT_PUBLIC_MAP_CONNECT_SRC) and the object-storage origin that presigned
- * uploads PUT to (NEXT_PUBLIC_UPLOAD_CONNECT_SRC). Both are space-separated.
+ * (NEXT_PUBLIC_MAP_CONNECT_SRC), the object-storage origin that presigned
+ * uploads PUT to (NEXT_PUBLIC_UPLOAD_CONNECT_SRC; both space-separated) and,
+ * when enabled at build time, the realtime channel's exact ws(s) origin.
  */
 export async function middleware(req: NextRequest) {
   // Private-preview gate (off unless PREVIEW_ACCESS_GATE is set; see lib/preview-gate.ts). Runs first, on every
@@ -33,6 +35,8 @@ export async function middleware(req: NextRequest) {
   const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
   const mapHosts = (process.env.NEXT_PUBLIC_MAP_CONNECT_SRC ?? "").split(/\s+/).filter(Boolean);
   const uploadHosts = (process.env.NEXT_PUBLIC_UPLOAD_CONNECT_SRC ?? "").split(/\s+/).filter(Boolean);
+  // The realtime channel's exact origin, only when the build enabled it (never a wildcard).
+  const realtime = realtimeConnectSource(realtimeUrl()) ?? "";
   // The browser fetches OIDC discovery, JWKS and the token endpoint from the provider.
   const oidc = process.env.NEXT_PUBLIC_OIDC_AUTHORITY ? new URL(process.env.NEXT_PUBLIC_OIDC_AUTHORITY).origin : "";
   const dev = process.env.NODE_ENV !== "production";
@@ -44,7 +48,7 @@ export async function middleware(req: NextRequest) {
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data: blob: ${mapHosts.join(" ")}`.trim(),
     `font-src 'self' data:`,
-    `connect-src 'self' ${api} ${oidc} ${mapHosts.join(" ")} ${uploadHosts.join(" ")} ${dev ? "ws:" : ""}`.replace(/\s+/g, " ").trim(),
+    `connect-src 'self' ${api} ${oidc} ${mapHosts.join(" ")} ${uploadHosts.join(" ")} ${realtime} ${dev ? "ws:" : ""}`.replace(/\s+/g, " ").trim(),
     // MapLibre runs its tile parsing in blob: workers.
     `worker-src 'self' blob:`,
     `child-src blob:`,

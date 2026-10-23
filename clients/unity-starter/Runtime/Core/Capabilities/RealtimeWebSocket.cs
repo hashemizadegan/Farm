@@ -4,7 +4,8 @@
 //
 // A subscription is one connection: subscribe (workspace, optional farm, one event type, the persisted cursor), then
 // events in cursor order. The last processed cursor is persisted (IRealtimeCursorStore), so a reconnect resumes
-// without loss; repeats are dropped by cursor and event id. Malformed or out-of-scope events are rejected, never
+// without loss; repeats are dropped by cursor and event id. A cursor older than retained history is answered with
+// `resync`: the channel moves to the server's cursor and calls OnResync, and the app refreshes by polling. Malformed or out-of-scope events are rejected, never
 // delivered. Refusals (forbidden, not found, malformed request) end the subscription; transport failures, heartbeat
 // timeouts and backpressure closes reconnect with backoff. The client only ever sends `subscribe` and `ping`: no
 // financial or ownership action can travel over this channel. Callbacks run on the receive loop's thread; marshal to
@@ -37,6 +38,12 @@ namespace Metafarm.Twin.Core.Capabilities
         public PollingOptions Reconnect { get; set; } = new PollingOptions { MaxRetries = 10, BackoffBase = TimeSpan.FromSeconds(1), BackoffMax = TimeSpan.FromMinutes(1) };
         /// <summary>Called with a reason whenever a received message is rejected (never with its content).</summary>
         public Action<string> OnRejected { get; set; }
+        /// <summary>
+        /// Called when the server reports that the persisted cursor is older than retained history (retention deleted
+        /// events after it). Refresh the view through the API (polling); the stream continues from the server's newest
+        /// cursor, so nothing after the refresh is missed.
+        /// </summary>
+        public Action OnResync { get; set; }
 
         public Capability Check()
         {
@@ -372,6 +379,12 @@ namespace Metafarm.Twin.Core.Capabilities
                         if (!RealtimeProtocol.IsTerminalError(code)) return Outcome.Continue;
                         _ready.TrySetException(new RealtimeSubscriptionException(code, $"the server refused the subscription ({code})"));
                         return Outcome.Terminal;
+                    case "resync":
+                        // Retention removed events after our cursor: jump to the server's cursor and refresh by polling.
+                        var resyncCursor = m["cursor"]?.Type == JTokenType.String ? (string)m["cursor"] : null;
+                        if (RealtimeProtocol.IsCursor(resyncCursor)) _channel._cursors.Set(Key, resyncCursor);
+                        Options.OnResync?.Invoke();
+                        return Outcome.Continue;
                     case "heartbeat":
                     case "pong":
                         return Outcome.Continue;

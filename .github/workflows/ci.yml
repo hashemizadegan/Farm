@@ -225,6 +225,11 @@ jobs:
       YIELD_WORKFLOW_ENABLED: "true"
       YIELD_CLAIM_INTENTS_ENABLED: "true"
       NEXT_PUBLIC_YIELD_PAGES_ENABLED: "true"
+      # Realtime channel (API and worker), registered integrations and the web app's live updates, exercised end to end
+      # (tests/e2e/integrations-realtime.spec.ts). APP_ENV=test only: refused in staging/production. Test-only key.
+      REALTIME_EVENTS_ENABLED: "true"
+      NEXT_PUBLIC_REALTIME_URL: ws://localhost:4000/v1/realtime
+      INTEGRATION_SECRET_KEY: ci-only-integration-key-0123456789abcdef
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

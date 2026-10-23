@@ -17,6 +17,7 @@ import {
   webCapabilities,
   webImageryCapability,
   webMediaCapability,
+  webRealtimeCapability,
   workerCapabilities,
 } from "./capabilities";
 
@@ -41,6 +42,7 @@ describe("web provider configuration", () => {
       ["map-tiles", "enabled"],
       ["globe-imagery", "disabled"],
       ["media-uploads", "disabled"],
+      ["realtime", "disabled"],
     ]);
     // Wildcard and scheme-less CSP sources are understood.
     expect(mapTilesCapability({ ...TILES, NEXT_PUBLIC_MAP_CONNECT_SRC: "https://*.example.org" })).toMatchObject({ state: "enabled" });
@@ -50,7 +52,7 @@ describe("web provider configuration", () => {
   });
 
   it("disabled: nothing set is the built-in offline style, no globe, no browser uploads", () => {
-    expect(webCapabilities({ APP_ENV: "production" }).map((r) => r.state)).toEqual(["disabled", "disabled", "disabled"]);
+    expect(webCapabilities({ APP_ENV: "production" }).map((r) => r.state)).toEqual(["disabled", "disabled", "disabled", "disabled"]);
   });
 
   it("missing tile URL: attribution or hosts without a style URL", () => {
@@ -82,7 +84,7 @@ describe("web provider configuration", () => {
 
   it("preview: the isolated preview (development behind the gate) may use local hosts and stays honest", () => {
     const preview = { APP_ENV: "development", RAILWAY_PROJECT_ID: "p", PREVIEW_ACCESS_GATE: "true", NEXT_PUBLIC_UPLOAD_CONNECT_SRC: "https://bucket.preview.example.org" };
-    expect(assertCapabilities(webCapabilities(preview)).map((r) => r.state)).toEqual(["disabled", "disabled", "enabled"]);
+    expect(assertCapabilities(webCapabilities(preview)).map((r) => r.state)).toEqual(["disabled", "disabled", "enabled", "disabled"]);
   });
 
   it("production: fails closed naming variables, never values", () => {
@@ -90,6 +92,33 @@ describe("web provider configuration", () => {
     expect(message).toContain("map-tiles (maps) invalid: NEXT_PUBLIC_MAP_CONNECT_SRC does not include the origin of NEXT_PUBLIC_MAP_STYLE_URL");
     expect(message).toContain("globe-imagery (imagery) invalid: NEXT_PUBLIC_CESIUM_ENABLED is on");
     for (const value of ["SECRET-TILE-KEY", "tiles.example.org", "elsewhere.example.net", "© Example"]) expect(message).not.toContain(value);
+  });
+});
+
+describe("web realtime configuration", () => {
+  it("is off by default; the channel URL over wss (ws on localhost in development) is enabled", () => {
+    expect(webRealtimeCapability({})).toMatchObject({ state: "disabled" });
+    expect(webRealtimeCapability({ APP_ENV: "development", NEXT_PUBLIC_REALTIME_URL: "wss://api.preview.example.org/v1/realtime" })).toMatchObject({ state: "enabled", provider: "api.preview.example.org" });
+    expect(webRealtimeCapability({ APP_ENV: "development", NEXT_PUBLIC_REALTIME_URL: "ws://localhost:4000/v1/realtime" })).toMatchObject({ state: "enabled" });
+  });
+
+  it("refuses plain ws to other hosts, other paths, credentials or tokens in the URL, and deployed environments", () => {
+    for (const url of [
+      "ws://api.example.org/v1/realtime",
+      "https://api.example.org/v1/realtime",
+      "wss://api.example.org/",
+      "wss://api.example.org/v1/realtime?token=abc",
+      "wss://user:pass@api.example.org/v1/realtime",
+      "wss://api.example.org/v1/realtime#x",
+      "not a url",
+    ]) {
+      expect(webRealtimeCapability({ APP_ENV: "development", NEXT_PUBLIC_REALTIME_URL: url }).state, url).toBe("invalid");
+    }
+    for (const APP_ENV of ["staging", "production"]) {
+      const r = webRealtimeCapability({ APP_ENV, NEXT_PUBLIC_REALTIME_URL: "wss://api.example.org/v1/realtime" });
+      expect(r.state).toBe("invalid");
+      expect(JSON.stringify(r.problems)).not.toContain("api.example.org");
+    }
   });
 });
 

@@ -1,13 +1,13 @@
 /**
- * Database lifecycle of migrations 0019–0031 on a database of its own (created and dropped here):
- * - up from empty through 0031;
+ * Database lifecycle of migrations 0019–0032 on a database of its own (created and dropped here):
+ * - up from empty through 0032;
  * - row-level security forced, with tenant isolation, on every tenant-scoped table of the line;
  * - application-role grants exactly as reviewed (append-only tables have no UPDATE/DELETE);
  * - every SECURITY DEFINER function of the line pins search_path and is not executable by PUBLIC;
  * - append-only triggers on UPDATE and DELETE where reviewed, calling the shared refusing append_only();
  * - the simulation-only constraints are present;
- * - down 0031 → 0019 step by step leaves the 0018 schema, and up again restores the same catalog.
- * 0030 (realtime outbox) and 0031 (registered integrations) follow the same rules.
+ * - down 0032 → 0019 step by step leaves the 0018 schema, and up again restores the same catalog.
+ * 0030 (realtime outbox), 0031 (registered integrations) and 0032 (retention horizons) follow the same rules.
  * Material for docs/delivery/yield-security-review-package-2026-10-22.md §A and §E.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -17,7 +17,7 @@ const url = process.env.DATABASE_URL;
 const d = url ? describe : describe.skip;
 const DB = `migrations_lifecycle_${process.pid}`;
 
-/** Tenant-scoped tables created by 0019–0031. */
+/** Tenant-scoped tables created by 0019–0032. */
 const TENANT_TABLES = [
   "data_commitments",
   "commitment_batches",
@@ -41,6 +41,7 @@ const TENANT_TABLES = [
   "realtime_events",
   "integrations",
   "integration_events",
+  "realtime_retention_horizons",
 ];
 
 /** metafarm_app privileges per table, as reviewed (§A). */
@@ -72,6 +73,7 @@ const GRANTS: Record<string, string[]> = {
   realtime_events: ["SELECT", "INSERT"],
   integrations: ["SELECT", "INSERT", "UPDATE"],
   integration_events: ["SELECT", "INSERT"],
+  realtime_retention_horizons: ["SELECT"],
 };
 
 /** Tables whose rows never change: an append_only() trigger on UPDATE and DELETE. */
@@ -94,7 +96,7 @@ const APPEND_ONLY = [
 /** The SECURITY DEFINER functions of the line (0024, 0025); any other is unreviewed. */
 const DEFINER_FUNCTIONS = ["party_account_links_guard", "party_account_links_proposed", "yield_cycles_created", "yield_cycles_guard"];
 
-d("migrations 0019–0031: lifecycle and catalog", () => {
+d("migrations 0019–0032: lifecycle and catalog", () => {
   let admin: Pool;
   let pool: Pool;
 
@@ -135,10 +137,10 @@ d("migrations 0019–0031: lifecycle and catalog", () => {
     return { rls, policies, grants };
   }
 
-  it("applies every migration from an empty database through 0031", async () => {
+  it("applies every migration from an empty database through 0032", async () => {
     const applied = await migrateUp(pool);
     expect(applied.length).toBeGreaterThanOrEqual(29);
-    expect(await latest()).toBe("0031_integrations");
+    expect(await latest()).toBe("0032_realtime_retention_horizons");
   }, 120_000);
 
   it("forces row-level security with tenant isolation on every tenant-scoped table of the line", async () => {
@@ -206,7 +208,7 @@ d("migrations 0019–0031: lifecycle and catalog", () => {
     for (const g of guards) expect(g.src, g.proname).toMatch(/simulation/);
   });
 
-  it("reverts 0031 → 0019 one step at a time to the 0018 schema, then re-applies to the same catalog", async () => {
+  it("reverts 0032 → 0019 one step at a time to the 0018 schema, then re-applies to the same catalog", async () => {
     const before = await catalog();
     const reverted: string[] = [];
     // Compare the four-digit prefix: "0018_cnft_leaf" > "0018" as a string.
@@ -216,6 +218,7 @@ d("migrations 0019–0031: lifecycle and catalog", () => {
       reverted.push(v!);
     }
     expect(reverted).toEqual([
+      "0032_realtime_retention_horizons",
       "0031_integrations",
       "0030_realtime_events",
       "0029_yield_claim_intent_batches",
@@ -236,8 +239,8 @@ d("migrations 0019–0031: lifecycle and catalog", () => {
       expect((await pool.query("SELECT 1 FROM pg_proc WHERE proname = $1", [f])).rowCount, f).toBe(0);
     }
 
-    expect(await migrateUp(pool)).toHaveLength(13);
-    expect(await latest()).toBe("0031_integrations");
+    expect(await migrateUp(pool)).toHaveLength(14);
+    expect(await latest()).toBe("0032_realtime_retention_horizons");
     expect(await catalog()).toEqual(before);
   }, 180_000);
 });

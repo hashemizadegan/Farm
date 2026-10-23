@@ -289,6 +289,32 @@ namespace Metafarm.Twin.Core.Tests
         }
 
         [Fact]
+        public async Task AnExpiredCursorAsksTheAppToRefreshAndContinuesFromTheServerCursor()
+        {
+            var connector = new FakeConnector();
+            var conn = new FakeConnection();
+            connector.Next.Enqueue(conn);
+            var cursors = new MemoryRealtimeCursorStore();
+            var options = Options();
+            var resyncs = 0;
+            options.OnResync = () => Interlocked.Increment(ref resyncs);
+            var channel = (WebSocketRealtimeChannel)RealtimeChannels.Create(options, connector, cursors, new TestDelay());
+            cursors.Set(channel.CursorKey(Type), "5");
+            var received = new ConcurrentQueue<RealtimeEnvelope>();
+            conn.Push(@"{""op"":""resync"",""reason"":""cursor_expired"",""cursor"":""900""}");
+            conn.Push(Subscribed("900"));
+            using (await channel.SubscribeAsync(Type, received.Enqueue))
+            {
+                Assert.Equal("5", (string)JObject.Parse(conn.Sent[0])["after"]);
+                await Until(() => resyncs == 1);
+                Assert.Equal("900", cursors.Get(channel.CursorKey(Type)));
+                conn.Push(Event("899")); // older than the new cursor: not delivered
+                conn.Push(Event("901"));
+                await Until(() => received.Count == 1);
+            }
+        }
+
+        [Fact]
         public void TheEnvelopeDeserializesWithItsPayload()
         {
             var e = JObject.Parse(Event("5"))["event"].ToObject<RealtimeEnvelope>();

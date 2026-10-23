@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { appendRealtimeEvent, createPool, createTenantWithOwner, migrateUp, upsertUserBySubject, withSystem, withTenant, type Pool } from "@metafarm/db";
+import { appendRealtimeEvent, createPool, createTenantWithOwner, migrateUp, pruneRealtimeEvents, upsertUserBySubject, withSystem, withTenant, type Pool } from "@metafarm/db";
 import { buildTestApp, tokenFor } from "./test/helpers";
 import { connectRealtime, upgradeStatus, type RealtimeTestClient } from "./test/realtime-client";
 
@@ -217,6 +217,42 @@ d("realtime channel (WebSocket)", () => {
     await pool.query(`DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2`, [tenantA, ids.leaver]);
     expect(await c.next((m) => m.op === "error", 3_000)).toMatchObject({ code: "forbidden" });
     expect((await c.closed).code).toBe(4403);
+  });
+
+  it("a cursor older than retained history gets an explicit resync, then the stream continues from the newest cursor", async () => {
+    const before = await latest(tenantA);
+    await append(tenantA, twin(tenantA, farmA1));
+    // An already expired event after the client's cursor, removed by retention: the client can no longer replay it.
+    await pool.query(
+      `INSERT INTO realtime_events (id, tenant_id, farm_id, type, schema_version, payload, occurred_at, created_at, expires_at)
+       VALUES ($1, $2, $3, 'twin.snapshot.recorded', 1, $4::jsonb, now(), now() - interval '10 days', now() - interval '1 day')`,
+      [randomUUID(), tenantA, farmA1, JSON.stringify({ commitmentId: randomUUID(), sha256: "b".repeat(64) })],
+    );
+    await append(tenantA, twin(tenantA, farmA1));
+    await withSystem(pool, (tx) => pruneRealtimeEvents(tx, 1_000));
+    const horizon = (await pool.query<{ s: string }>(`SELECT pruned_through_seq::text AS s FROM realtime_retention_horizons WHERE tenant_id = $1`, [tenantA])).rows[0]!.s;
+    expect(BigInt(horizon)).toBeGreaterThan(BigInt(before));
+
+    const stale = await open("ownerA");
+    stale.send(sub(tenantA, farmA1, ["twin.snapshot.recorded"], before));
+    const resync = await stale.next((m) => m.op === "resync");
+    expect(resync).toMatchObject({ reason: "cursor_expired", cursor: await latest(tenantA) });
+    const ack = await stale.next((m) => m.op === "subscribed");
+    expect(ack.cursor).toBe(resync.cursor);
+    // Recovery: the client refreshes from the API (here: the events it would have replayed are not pushed again) ...
+    await new Promise((r) => setTimeout(r, 200));
+    expect(stale.events()).toHaveLength(0);
+    // ... and everything after the resync point still arrives.
+    const next = twin(tenantA, farmA1);
+    await append(tenantA, next);
+    expect(((await stale.next((m) => m.op === "event")).event as { id: string }).id).toBe(next.id);
+
+    // A cursor at or after the horizon replays normally, without a resync.
+    const fresh = await open("ownerA");
+    fresh.send(sub(tenantA, farmA1, ["twin.snapshot.recorded"], horizon));
+    await fresh.next((m) => m.op === "subscribed");
+    await fresh.next(() => fresh.events().length >= 2);
+    expect(fresh.messages.some((m) => m.op === "resync")).toBe(false);
   });
 
   it("outbox: validated, idempotent on the event id, bound to its workspace, immutable", async () => {

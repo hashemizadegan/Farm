@@ -226,6 +226,28 @@ export function webMediaCapability(env: Env): CapabilityReport {
   return report({ ...base, state: "enabled", provider: hosts.map((h) => (h.ok ? h.url.hostname : "")).join(",") });
 }
 
+/**
+ * Web: realtime updates from the API's WebSocket channel (GET /v1/realtime). Unset = polling only (the default).
+ * The URL must be the channel's own (`wss://host/v1/realtime`; `ws://` only for localhost in development), with no
+ * credentials, query or fragment: the browser authenticates with the session token as a subprotocol, never in the
+ * URL. Refused in staging/production, like the API's channel, until it is security-reviewed. The CSP allows exactly
+ * this origin and nothing wider.
+ */
+export function webRealtimeCapability(env: Env): CapabilityReport {
+  const base = { capability: "realtime", category: "realtime" as const };
+  if (!set(env, "NEXT_PUBLIC_REALTIME_URL")) return report({ ...base, state: "disabled", note: "polling only" });
+  const p = parseUrl(env.NEXT_PUBLIC_REALTIME_URL);
+  const local = p.ok && isLocal(p.url);
+  if (!p.ok || !(p.url.protocol === "wss:" || (p.url.protocol === "ws:" && local && !deployed(env)))) {
+    return report({ ...base, state: "invalid", problems: ["NEXT_PUBLIC_REALTIME_URL must be a wss:// URL (ws:// only for localhost in development)"] });
+  }
+  if (p.url.pathname !== "/v1/realtime" || p.url.search || p.url.hash || p.url.username || p.url.password) {
+    return report({ ...base, state: "invalid", problems: ["NEXT_PUBLIC_REALTIME_URL must be the channel URL (/v1/realtime) without credentials, query or fragment"] });
+  }
+  if (deployed(env)) return report({ ...base, state: "invalid", provider: p.url.host, problems: ["NEXT_PUBLIC_REALTIME_URL is refused in staging/production until the realtime channel is security-reviewed"] });
+  return report({ ...base, state: "enabled", provider: p.url.host, note: "WebSocket with polling fallback" });
+}
+
 export const apiCapabilities = (env: Env): CapabilityReport[] => [
   identityCapability(env),
   storageCapability(env),
@@ -235,7 +257,7 @@ export const apiCapabilities = (env: Env): CapabilityReport[] => [
   integrationsCapability(env),
 ];
 export const workerCapabilities = (env: Env): CapabilityReport[] => [storageCapability(env), imageryCapability(env), evmChainCapability(env), solanaCapability(env), telemetryCapability(env)];
-export const webCapabilities = (env: Env): CapabilityReport[] => [mapTilesCapability(env), webImageryCapability(env), webMediaCapability(env)];
+export const webCapabilities = (env: Env): CapabilityReport[] => [mapTilesCapability(env), webImageryCapability(env), webMediaCapability(env), webRealtimeCapability(env)];
 
 /** One line for the start-up log: `auth=enabled(oidc) storage=enabled(memory,simulated) imagery=disabled …`. */
 export function describeCapabilities(reports: CapabilityReport[]): string {
