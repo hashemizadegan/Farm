@@ -14,6 +14,10 @@
  * is unique). A second `subscribe` on a connection that already subscribed with the same request is answered again
  * with `subscribed` (idempotent); a different one is refused (one subscription per connection).
  *
+ * Retention: events are kept for a limited time. A cursor older than the workspace's retention horizon is answered
+ * with `resync` (the client reloads from the API, then the stream continues from the newest cursor) rather than a
+ * replay with a silent gap.
+ *
  * Heartbeat: the server sends `heartbeat` every `heartbeatIntervalMs`; the client sends `ping` (answered with `pong`)
  * at least every `heartbeatTimeoutMs`, or the server closes with 4408. Backpressure: a connection whose unsent
  * buffer exceeds `maxBufferedBytes` is closed with 1013 (try again later) and resumes from its cursor.
@@ -91,6 +95,12 @@ export type RealtimeErrorCode =
 export type RealtimeServerMessage =
   | { op: "subscribed"; tenantId: string; farmId: string | null; types: EventType[]; cursor: string | null }
   | { op: "event"; cursor: string; event: EventEnvelope }
+  /**
+   * The requested cursor is older than retained history (retention deleted events after it), or the stream fell
+   * behind it. The client refreshes its view from the API, then continues: the subscription goes on from `cursor`
+   * (the newest at the time of this message), so everything after the refresh is still delivered.
+   */
+  | { op: "resync"; reason: "cursor_expired"; cursor: string | null }
   | { op: "heartbeat"; cursor: string | null }
   | { op: "pong" }
   | { op: "error"; code: RealtimeErrorCode; message: string; close: boolean };

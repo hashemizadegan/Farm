@@ -59,8 +59,8 @@ d("sensor integration → observation pipeline → realtime outbox → client; c
     });
   };
   const outboxCount = async () => Number((await pool.query(`SELECT count(*) FROM realtime_events WHERE tenant_id = $1`, [tenantId])).rows[0].count);
-  const runPipeline = async (jobs: ReturnType<typeof createMemoryProducer>) => {
-    const handler = observationNormalizationHandler(pool);
+  const runPipeline = async (jobs: ReturnType<typeof createMemoryProducer>, realtime: boolean) => {
+    const handler = observationNormalizationHandler(pool, undefined, { realtime });
     const ctx = { log: createLogger({ service: "e2e", level: "silent" }), attempt: 1, jobId: "e2e" };
     for (const j of jobs.jobs.filter((x) => x.queue === QUEUES.observations && (x.payload as ObservationNormalizationJob).tenantId === tenantId)) {
       await handler(j.payload as ObservationNormalizationJob, ctx);
@@ -108,19 +108,24 @@ d("sensor integration → observation pipeline → realtime outbox → client; c
   it("realtime on: the authorized integration event is stored, processed by the pipeline and pushed to a subscribed client", async () => {
     const client = await connectRealtime(port, await tokenFor(subjects.viewer));
     clients.push(client);
-    client.send({ op: "subscribe", tenantId, farmId, types: ["sensor.reading.received"], after: null });
+    client.send({ op: "subscribe", tenantId, farmId, types: ["sensor.reading.received", "observation.recorded"], after: null });
     await client.next((m) => m.op === "subscribed");
 
     const r = await postIntegration(on, `e2e-on-${sfx}`);
     expect([r.statusCode, r.json().accepted]).toEqual([202, 2]);
-    const pushed = (await client.next((m) => m.op === "event")).event as { type: string; scope: { tenantId: string; farmId: string }; payload: { sensorId: string; rawObservationIds: string[]; metrics: string[]; source: string } };
+    const pushed = (await client.next((m) => m.op === "event" && (m.event as { type: string }).type === "sensor.reading.received")).event as { type: string; scope: { tenantId: string; farmId: string }; payload: { sensorId: string; rawObservationIds: string[]; metrics: string[]; source: string } };
     expect(pushed.type).toBe("sensor.reading.received");
     expect(pushed.scope).toEqual({ tenantId, farmId });
     expect(pushed.payload).toMatchObject({ sensorId, source: "integration", metrics: ["soil_moisture", "air_temperature"] });
     expect(pushed.payload.rawObservationIds).toHaveLength(2);
 
-    // The existing pipeline (the worker's own handler) normalizes them; the polling API serves the result.
-    await runPipeline(jobsOn);
+    // The existing pipeline (the worker's own handler) normalizes them and announces each new observation; the
+    // polling API serves the same result.
+    await runPipeline(jobsOn, true);
+    await client.next(() => client.events().filter((m) => (m.event as { type: string }).type === "observation.recorded").length >= 2);
+    const recorded = client.events().filter((m) => (m.event as { type: string }).type === "observation.recorded").map((m) => (m.event as { payload: { metric: string; provenance: string; sensorId: string } }).payload);
+    expect(recorded.map((p) => p.metric).sort()).toEqual(["air_temperature", "soil_moisture"]);
+    expect(recorded.every((p) => p.provenance === "provider-observation" && p.sensorId === sensorId)).toBe(true);
     const items = (await on.inject({ method: "GET", url: `/v1/tenants/${tenantId}/farms/${farmId}/observations`, headers: await auth("viewer") })).json().items as { sensorId: string; provenance: string; metric: string }[];
     const mine = items.filter((o) => o.sensorId === sensorId && o.provenance === "provider-observation");
     expect(mine.map((o) => o.metric).sort()).toEqual(["air_temperature", "soil_moisture"]);
@@ -128,7 +133,7 @@ d("sensor integration → observation pipeline → realtime outbox → client; c
     // A device posting directly is announced the same way.
     const direct = await on.inject({ method: "POST", url: "/v1/ingest/readings", headers: { authorization: `Sensor ${sensorToken}` }, payload: { readings: [reading] } });
     expect(direct.statusCode).toBe(202);
-    const second = await client.next((m) => m.op === "event" && (m.event as { payload: { source: string } }).payload.source === "sensor");
+    const second = await client.next((m) => m.op === "event" && (m.event as { payload: { source?: string } }).payload.source === "sensor");
     expect((second.event as { payload: { rawObservationIds: string[] } }).payload.rawObservationIds).toHaveLength(1);
   });
 
@@ -138,7 +143,7 @@ d("sensor integration → observation pipeline → realtime outbox → client; c
     expect([r.statusCode, r.json().accepted]).toEqual([202, 2]);
     expect(await outboxCount()).toBe(before);
     expect(off.hasRoute({ method: "GET", url: "/v1/realtime" })).toBe(false);
-    await runPipeline(jobsOff);
+    await runPipeline(jobsOff, false);
     const items = (await off.inject({ method: "GET", url: `/v1/tenants/${tenantId}/farms/${farmId}/observations`, headers: await auth("viewer") })).json().items as { sensorId: string; provenance: string }[];
     expect(items.filter((o) => o.sensorId === sensorId && o.provenance === "provider-observation").length).toBeGreaterThanOrEqual(4);
   });
@@ -168,7 +173,8 @@ d("sensor integration → observation pipeline → realtime outbox → client; c
     expect((await delivery("malformed.json")).json().error).toBe("chain_event_malformed");
     // The webhook wrote no ownership: only the indexer (from the verified chain source) ever does.
     expect((await pool.query(`SELECT 1 FROM chain_ownership_events WHERE asset_id = $1`, [tracked])).rowCount).toBe(0);
-    // Chain events never enter the realtime outbox.
-    expect((await pool.query(`SELECT 1 FROM realtime_events WHERE tenant_id = $1 AND type NOT LIKE 'sensor.%'`, [tenantId])).rowCount).toBe(0);
+    // Chain events never enter the realtime outbox: only the sensor and observation notifications of this flow are there.
+    const types = (await pool.query<{ type: string }>(`SELECT DISTINCT type FROM realtime_events WHERE tenant_id = $1 ORDER BY type`, [tenantId])).rows.map((r) => r.type);
+    expect(types).toEqual(["observation.recorded", "sensor.reading.received"]);
   });
 });

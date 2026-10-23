@@ -16,7 +16,7 @@
 import { STATUS_CODES } from "node:http";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
-import { findMembershipRole, latestRealtimeCursor, listRealtimeEventsAfter, withTenant, writeSystemAudit } from "@metafarm/db";
+import { findMembershipRole, latestRealtimeCursor, listRealtimeEventsAfter, realtimeRetentionHorizon, withTenant, writeSystemAudit } from "@metafarm/db";
 import {
   EVENT_TYPES,
   REALTIME_CLOSE,
@@ -34,6 +34,11 @@ import {
 } from "@metafarm/domain";
 import { HttpError, hashIp } from "../lib/http";
 
+/** Numeric cursor comparison (decimal strings of a bigint): is `cursor` strictly below `other`? */
+export const isBehind = (cursor: string, other: string | null): boolean => other !== null && BigInt(cursor) < BigInt(other);
+/** The later of two cursors (null = none). A resync never lands below the horizon, even if newer rows are gone too. */
+const laterOf = (a: string | null, b: string | null): string | null => (a === null ? b : b === null ? a : isBehind(a, b) ? b : a);
+
 export type RealtimeLimits = { -readonly [K in keyof typeof REALTIME_LIMITS]: number };
 
 /** Copies a subprotocol bearer token into the Authorization header (browsers cannot set headers on a WebSocket). */
@@ -50,10 +55,15 @@ export async function realtimeRoutes(app: FastifyInstance, opts: { limits?: Part
     "/v1/realtime",
     {
       websocket: true,
-      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      // Connection attempts per client address: a twentieth of the general limit (60 at the default 1200).
+      config: { rateLimit: { max: Math.max(10, Math.floor(app.deps.env.RATE_LIMIT_MAX / 20)), timeWindow: "1 minute" } },
       preValidation: async (req, reply) => {
         adoptProtocolBearer(req);
         try {
+          // Browsers send Origin: only the web app's own origins (CORS_ORIGINS) may open the channel. Native clients
+          // (Unity, servers) send none and authenticate with their token like everyone else.
+          const origin = req.headers.origin;
+          if (origin !== undefined && !app.deps.env.CORS_ORIGINS.includes(origin)) throw new HttpError(403, "origin_not_allowed", "this origin may not open the realtime channel");
           await app.authenticate(req);
         } catch (err) {
           if (!(err instanceof HttpError) || !req.ws) throw err;
@@ -190,13 +200,17 @@ class RealtimeSession {
         const farm = await tx.query(`SELECT 1 FROM farms WHERE tenant_id = $1 AND id = $2`, [m.tenantId, m.farmId]);
         if (farm.rowCount === 0) return { farm: false as const };
       }
-      return { farm: true as const, cursor: m.after ?? (await latestRealtimeCursor(tx)) };
+      // A replay cursor below the retention horizon may have missed deleted events: resynchronize instead.
+      const horizon = await realtimeRetentionHorizon(tx);
+      if (m.after !== null && isBehind(m.after, horizon)) return { farm: true as const, cursor: laterOf(await latestRealtimeCursor(tx), horizon), resync: true };
+      return { farm: true as const, cursor: m.after ?? (await latestRealtimeCursor(tx)), resync: false };
     });
     if (!start.farm) return this.fail("not_found", "farm not found", REALTIME_CLOSE.notFound);
     if (this.closed) return;
     this.sub = m;
     this.role = role;
     this.cursor = start.cursor;
+    if (start.resync) this.send({ op: "resync", reason: "cursor_expired", cursor: this.cursor });
     this.send({ op: "subscribed", tenantId: m.tenantId, farmId: m.farmId, types: m.types, cursor: this.cursor });
     this.timers.push(setInterval(() => void this.poll(), this.limits.pollIntervalMs));
     void this.poll();
@@ -211,14 +225,29 @@ class RealtimeSession {
       const viewer = { roles: { [sub.tenantId]: this.role } };
       for (;;) {
         const batch = await withTenant(this.app.deps.pool, sub.tenantId, async (tx) => {
+          // Read first: everything committed up to `latest` is visible to the queries below (appends commit in
+          // cursor order per workspace), so an empty page may safely move the cursor up to it.
+          const latest = await latestRealtimeCursor(tx);
+          const horizon = await realtimeRetentionHorizon(tx);
+          if (this.cursor !== null && isBehind(this.cursor, horizon)) return { kind: "resync" as const, cursor: laterOf(latest, horizon) };
           const rows = await listRealtimeEventsAfter(tx, { after: this.cursor, types: sub.types, farmId: sub.farmId, limit: this.limits.batchSize });
           const farmIds = [...new Set(rows.map((r) => r.event.scope.farmId).filter((f): f is string => f !== null))];
           const farms = farmIds.length
             ? new Set((await tx.query<{ id: string }>(`SELECT id FROM farms WHERE tenant_id = $1 AND id = ANY($2::uuid[])`, [sub.tenantId, farmIds])).rows.map((r) => r.id))
             : new Set<string>();
-          return { rows, farms };
+          return { kind: "page" as const, rows, farms, latest };
         });
         if (this.closed) return;
+        if (batch.kind === "resync") {
+          this.cursor = batch.cursor;
+          if (!this.send({ op: "resync", reason: "cursor_expired", cursor: this.cursor })) return;
+          continue;
+        }
+        if (batch.rows.length === 0) {
+          // Nothing matching after the cursor: skip ahead, so a quiet subscription never falls behind retention.
+          if (batch.latest !== null && (this.cursor === null || isBehind(this.cursor, batch.latest))) this.cursor = batch.latest;
+          return;
+        }
         for (const { seq, event } of batch.rows) {
           // Defence in depth: the query is already bound to the workspace.
           const inScope = event.scope.tenantId === sub.tenantId && (sub.farmId === null || event.scope.farmId === sub.farmId);

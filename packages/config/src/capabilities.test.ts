@@ -87,7 +87,7 @@ describe("provider capabilities: start-up", () => {
     const reports = assertCapabilities(apiCapabilities({ ...dev, DEV_AUTH_SECRET: SECRET }));
     expect(describeCapabilities(reports)).toBe("auth=enabled(dev,simulated) storage=enabled(memory,simulated) chain-events=disabled media-scanning=disabled realtime=disabled integrations=disabled");
     expect(assertCapabilities(workerCapabilities({ ...dev }))).toHaveLength(5);
-    expect(assertCapabilities(webCapabilities({}))).toHaveLength(3);
+    expect(assertCapabilities(webCapabilities({}))).toHaveLength(4);
   });
 
   it("fails closed on missing or invalid configuration, naming variables but never printing values", () => {

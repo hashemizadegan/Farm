@@ -85,11 +85,36 @@ export async function latestRealtimeCursor(tx: TenantTx): Promise<string | null>
   return r.rows[0]?.seq ?? null;
 }
 
-/** Retention (system role): deletes expired rows, oldest first, at most `limit` per call. Returns how many. */
-export async function pruneRealtimeEvents(tx: SystemTx, limit = 10_000): Promise<number> {
-  const r = await tx.query(
-    `DELETE FROM realtime_events WHERE seq IN (SELECT seq FROM realtime_events WHERE expires_at <= now() ORDER BY seq LIMIT $1)`,
+/**
+ * The highest cursor of the workspace that retention has deleted (null when nothing was). A replay cursor below it
+ * may have missed deleted events: the channel then asks the client to resynchronize.
+ */
+export async function realtimeRetentionHorizon(tx: TenantTx): Promise<string | null> {
+  const r = await tx.query<{ seq: string }>(`SELECT pruned_through_seq::text AS seq FROM realtime_retention_horizons WHERE tenant_id = $1`, [tx.tenantId]);
+  return r.rows[0]?.seq ?? null;
+}
+
+/**
+ * Retention (system role): deletes up to `limit` expired rows (by `expires_at`), oldest cursor first, and raises each
+ * affected workspace's horizon to the highest cursor deleted, in one statement. Rows another run is deleting are
+ * skipped (SKIP LOCKED), so overlapping, retried or restarted runs never block each other or delete twice.
+ */
+export async function pruneRealtimeEvents(tx: SystemTx, limit = 5_000): Promise<{ deleted: number; workspaces: number }> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100_000) throw new Error("prune limit must be 1 to 100000");
+  const r = await tx.query<{ deleted: number; workspaces: number }>(
+    `WITH doomed AS (
+       SELECT seq FROM realtime_events WHERE expires_at <= now() ORDER BY seq LIMIT $1 FOR UPDATE SKIP LOCKED
+     ), gone AS (
+       DELETE FROM realtime_events e USING doomed d WHERE e.seq = d.seq RETURNING e.tenant_id, e.seq
+     ), horizon AS (
+       INSERT INTO realtime_retention_horizons (tenant_id, pruned_through_seq)
+       SELECT tenant_id, max(seq) FROM gone GROUP BY tenant_id
+       ON CONFLICT (tenant_id) DO UPDATE
+         SET pruned_through_seq = GREATEST(realtime_retention_horizons.pruned_through_seq, EXCLUDED.pruned_through_seq), updated_at = now()
+       RETURNING tenant_id
+     )
+     SELECT (SELECT count(*) FROM gone)::int AS deleted, (SELECT count(*) FROM horizon)::int AS workspaces`,
     [limit],
   );
-  return r.rowCount ?? 0;
+  return r.rows[0] ?? { deleted: 0, workspaces: 0 };
 }

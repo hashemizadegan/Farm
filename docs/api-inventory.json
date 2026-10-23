@@ -566,31 +566,41 @@
       "method": "GET",
       "path": "/v1/tenants/{tenantId}/integrations",
       "operationId": "listIntegrations",
-      "consumers": []
+      "consumers": [
+        "web"
+      ]
     },
     {
       "method": "POST",
       "path": "/v1/tenants/{tenantId}/integrations",
       "operationId": "registerIntegration",
-      "consumers": []
+      "consumers": [
+        "web"
+      ]
     },
     {
       "method": "POST",
       "path": "/v1/tenants/{tenantId}/integrations/{integrationId}/rotate",
       "operationId": "rotateIntegrationSecret",
-      "consumers": []
+      "consumers": [
+        "web"
+      ]
     },
     {
       "method": "POST",
       "path": "/v1/tenants/{tenantId}/integrations/{integrationId}/revoke",
       "operationId": "revokeIntegration",
-      "consumers": []
+      "consumers": [
+        "web"
+      ]
     },
     {
       "method": "POST",
       "path": "/v1/integrations/{integrationId}/events",
       "operationId": "ingestIntegrationEvent",
-      "consumers": []
+      "consumers": [
+        "web"
+      ]
     },
     {
       "method": "GET",
@@ -1192,8 +1202,8 @@
   "undocumentedCalls": [],
   "summary": {
     "endpoints": 166,
-    "consumedByWeb": 84,
+    "consumedByWeb": 89,
     "consumedByUnity": 13,
-    "withoutClientConsumer": 73
+    "withoutClientConsumer": 68
   }
 }

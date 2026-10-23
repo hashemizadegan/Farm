@@ -65,5 +65,8 @@ describe("realtime channel: opt-in", () => {
     expect(await upgradeStatus(port, { "sec-websocket-protocol": "metafarm-realtime.1, bearer.x.y.z" })).toBe(401);
     // The bearer subprotocol is only honoured next to the realtime protocol.
     expect(await upgradeStatus(port, { "sec-websocket-protocol": "bearer.x.y.z" })).toBe(401);
+    // A browser page on another origin is refused before authentication (cross-site WebSocket use).
+    expect(await upgradeStatus(port, { origin: "https://evil.example", authorization: "Bearer x.y.z" })).toBe(403);
+    expect(await upgradeStatus(port, { origin: "http://localhost:3000" })).toBe(401);
   });
 });

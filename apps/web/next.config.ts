@@ -17,7 +17,7 @@ if (process.env.NEXT_PUBLIC_YIELD_PAGES_ENABLED === "true" && (process.env.APP_E
 }
 
 // Provider capabilities (packages/config capabilities.ts, the same rules the API and worker apply at start-up): map
-// tiles (https style, attribution, CSP host), globe imagery and browser media uploads. NEXT_PUBLIC_* values are inlined
+// tiles (https style, attribution, CSP host), globe imagery, browser media uploads and the realtime channel URL. NEXT_PUBLIC_* values are inlined
 // at build time, so an enabled provider with incomplete or unsafe configuration fails the build (fail closed); the
 // error names variables, never values. The result is passed to the bundle, so the runtime uses exactly what passed.
 const webProviders = assertCapabilities(
@@ -28,6 +28,7 @@ const webProviders = assertCapabilities(
     NEXT_PUBLIC_MAP_CONNECT_SRC: process.env.NEXT_PUBLIC_MAP_CONNECT_SRC,
     NEXT_PUBLIC_CESIUM_ENABLED: process.env.NEXT_PUBLIC_CESIUM_ENABLED,
     NEXT_PUBLIC_UPLOAD_CONNECT_SRC: process.env.NEXT_PUBLIC_UPLOAD_CONNECT_SRC,
+    NEXT_PUBLIC_REALTIME_URL: process.env.NEXT_PUBLIC_REALTIME_URL,
   }),
 );
 const providerState = (name: string) => webProviders.find((r) => r.capability === name)?.state ?? "disabled";
@@ -35,6 +36,7 @@ const providerState = (name: string) => webProviders.find((r) => r.capability ==
 const config: NextConfig = {
   env: {
     NEXT_PUBLIC_MAP_TILES_STATE: providerState("map-tiles"),
+    NEXT_PUBLIC_REALTIME_STATE: providerState("realtime"),
   },
   // Standalone output produces a minimal server bundle for the Docker image.
   output: "standalone",

@@ -9,6 +9,7 @@
  * (the caller resolves that from the database, never from the event). Anything unknown is denied.
  */
 import { z } from "zod";
+import { PROVENANCE_LABELS } from "./provenance";
 import { can, type Permission, type Role } from "./roles";
 
 export const EVENT_ENVELOPE_SCHEME = "metafarm-event/1";
@@ -35,6 +36,20 @@ export const EVENT_TYPES = {
     permission: "alert:read" as Permission,
     farmScoped: true,
     payload: z.object({ alertId: uuid, severity: z.enum(["info", "warning", "critical"]) }).strict(),
+  },
+  /** An observation normalized by the observation pipeline (worker), ready to read through the API. */
+  "observation.recorded": {
+    schemaVersion: 1,
+    permission: "observation:read" as Permission,
+    farmScoped: true,
+    payload: z
+      .object({
+        observationId: uuid,
+        metric: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
+        sensorId: uuid.nullable(),
+        provenance: z.enum(PROVENANCE_LABELS),
+      })
+      .strict(),
   },
   /** Readings accepted from a sensor or a registered integration (queued for the existing observation pipeline). */
   "sensor.reading.received": {

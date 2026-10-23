@@ -308,6 +308,15 @@ export const workerEnvSchema = z
     TWIN_SNAPSHOT_BATCHES_ENABLED: bool.default("false"),
     /** Digital twin: run ownership-index jobs (read finalized ownership events into the index). Off by default; also needs an event source. Read-only on chain. */
     TWIN_OWNERSHIP_INDEX_ENABLED: bool.default("false"),
+    /**
+     * Realtime outbox events from the worker (observation.recorded after normalization). Same switch and the same
+     * refusal in staging/production as the API's channel; off: the worker writes nothing to the outbox.
+     */
+    REALTIME_EVENTS_ENABLED: bool.default("false"),
+    /** Realtime retention job: rows deleted per statement, statements per run, and the run's time budget. */
+    REALTIME_RETENTION_BATCH_SIZE: z.coerce.number().int().min(100).max(50_000).default(5_000),
+    REALTIME_RETENTION_MAX_BATCHES: z.coerce.number().int().min(1).max(1_000).default(20),
+    REALTIME_RETENTION_MAX_SECONDS: z.coerce.number().int().min(1).max(300).default(30),
   })
   .superRefine(productionGuards)
   .superRefine((env, ctx) => {
@@ -326,6 +335,9 @@ export const workerEnvSchema = z
         ctx.addIssue({ code: "custom", path: ["MQTT_CLIENT_KEY_PEM"], message: "set both the client certificate and key, or neither" });
       }
     }
+    if (env.REALTIME_EVENTS_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
+      ctx.addIssue({ code: "custom", path: ["REALTIME_EVENTS_ENABLED"], message: "the realtime channel is not security-reviewed for deployed environments yet (preview and local only)" });
+    }
   });
 
 export const schedulerEnvSchema = z
@@ -341,6 +353,11 @@ export const schedulerEnvSchema = z
     TWIN_SNAPSHOT_BATCH_CRON: z.string().min(9).max(100).optional(),
     /** Digital twin: cron for the ownership-index sweep. Unset = no schedule (the default). */
     TWIN_OWNERSHIP_INDEX_CRON: z.string().min(9).max(100).optional(),
+    /**
+     * Realtime outbox retention (deletes rows past their expires_at, bounded per run). Unset = no schedule (the
+     * default; set it wherever REALTIME_EVENTS_ENABLED is on, e.g. "17 * * * *").
+     */
+    REALTIME_RETENTION_CRON: z.string().min(9).max(100).optional(),
     CHAIN_ID: z.coerce.number().int().positive().default(31337),
     /** Comma-separated "0xaddress@fromBlock" entries. */
     CHAIN_INDEX_CONTRACTS: csv.default(""),

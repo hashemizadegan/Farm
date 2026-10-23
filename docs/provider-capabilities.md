@@ -29,6 +29,7 @@ The API and the worker call `assertCapabilities` at start-up, and the web build 
 | `media-scanning` | media | api | – | No scanner is integrated | always disabled: uploads are checked for declared size and type only |
 | `map-tiles` | maps | web (build) | `NEXT_PUBLIC_MAP_STYLE_URL` | https (http only for localhost in development); `NEXT_PUBLIC_MAP_ATTRIBUTION` (the text, or `from-style` when the style carries it); the style's origin in `NEXT_PUBLIC_MAP_CONNECT_SRC` | disabled: the built-in offline style |
 | `globe-imagery` | imagery | web (build) | `NEXT_PUBLIC_CESIUM_ENABLED` | No licensed imagery or terrain source is chosen: `true` is invalid | disabled: 2D map only |
+| `realtime` | realtime | web (build) | `NEXT_PUBLIC_REALTIME_URL` | `wss://…/v1/realtime` (`ws://` only for localhost in development), no credentials, query or fragment; invalid in staging/production | disabled: pages poll |
 | `media-uploads` | media | web (build) | `NEXT_PUBLIC_UPLOAD_CONNECT_SRC` | Origins only; https when deployed (http on localhost in development) | disabled: no browser upload origin in the CSP |
 
 The web build (`apps/web/next.config.ts`) asserts `webCapabilities` with the same rules: an enabled provider with an
@@ -81,8 +82,18 @@ integration's own secret (migration 0031; `apps/api/src/routes/integrations.ts`)
 `REALTIME_EVENTS_ENABLED=true` (local and isolated preview; refused in staging and production). Authentication during
 the handshake (bearer header, or the `bearer.<token>` subprotocol next to `metafarm-realtime.1`); one subscription per
 connection (workspace, optional farm, event types, replay cursor); events from the durable outbox (migration 0030) in
-cursor order; heartbeat timeout 4408, backpressure 1013, refusals 4400/4403/4404/4409. Polling stays the default for
-every client; the Unity starter's `WebSocketRealtimeChannel` is used only when enabled.
+cursor order; heartbeat timeout 4408, backpressure 1013, refusals 4400/4403/4404/4409. Browsers may connect only from
+`CORS_ORIGINS` (other origins: 403 before authentication). Polling stays the default for every client; the Unity
+starter's `WebSocketRealtimeChannel` and the web app (`NEXT_PUBLIC_REALTIME_URL`; observations and sensors pages,
+with a connection-status indicator) use the channel only when enabled, and fall back to polling while it connects,
+reconnects (capped backoff) or is refused.
+
+**Retention:** outbox rows expire (`expires_at`, 7 days by default). The worker's `realtime-retention` job, scheduled
+by `REALTIME_RETENTION_CRON` on the scheduler (unset = no schedule), deletes expired rows in bounded batches
+(`REALTIME_RETENTION_BATCH_SIZE`, `…_MAX_BATCHES`, `…_MAX_SECONDS`), safe to overlap or retry, and records each
+workspace's horizon (migration 0032). A replay cursor below the horizon is answered with `resync` (reason
+`cursor_expired`, the newest cursor): the client reloads from the API and the stream continues, so nothing is lost
+silently. Set the cron wherever `REALTIME_EVENTS_ENABLED` is on.
 
 ## Decisions pending (owner: platform owner unless stated)
 

@@ -23,9 +23,9 @@ describe("migration files", () => {
     expect(numbers).toEqual(numbers.map((_, i) => i + 1));
   });
 
-  it("include the yield line through 0029, then the realtime outbox and integrations, in their reviewed order", () => {
+  it("include the yield line through 0029, then the realtime outbox, integrations and retention horizons, in their reviewed order", () => {
     const names = ups.map((f) => f.replace(/\.up\.sql$/, ""));
-    expect(names.slice(18, 31)).toEqual([
+    expect(names.slice(18, 32)).toEqual([
       "0019_twin_foundation",
       "0020_ownership_index",
       "0021_idempotency",
@@ -39,6 +39,7 @@ describe("migration files", () => {
       "0029_yield_claim_intent_batches",
       "0030_realtime_events",
       "0031_integrations",
+      "0032_realtime_retention_horizons",
     ]);
   });
 

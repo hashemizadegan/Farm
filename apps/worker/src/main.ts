@@ -12,6 +12,7 @@ import { dbAnchorStore, harvestAnchorHandler } from "./handlers/harvest";
 import { createHarvestRegistryClient } from "./harvest-registry";
 import { imageryIngestionHandler, noImageryProvider } from "./handlers/imagery";
 import { observationNormalizationHandler } from "./handlers/observations";
+import { realtimeRetentionHandler } from "./handlers/realtime-retention";
 import { rwaReconciliationSweepHandler } from "./handlers/rwa";
 import { wrapHandler, type DeadLetterSink, type JobRunStore } from "./runner";
 import { startTelemetryConsumer } from "./telemetry/consumer";
@@ -116,7 +117,18 @@ const processors: Record<string, Processor> = {
   [QUEUES.anchor]: wrapHandler(QUEUES.anchor, harvestAnchorHandler(dbAnchorStore(pool), harvestRegistry, { maxAttempts: env.JOB_MAX_ATTEMPTS }), deps) as Processor,
   [QUEUES.gis]: wrapHandler(QUEUES.gis, gisValidationHandler(pool), deps) as Processor,
   [QUEUES.imagery]: wrapHandler(QUEUES.imagery, imageryIngestionHandler(pool, noImageryProvider), deps) as Processor,
-  [QUEUES.observations]: wrapHandler(QUEUES.observations, observationNormalizationHandler(pool), deps) as Processor,
+  [QUEUES.observations]: wrapHandler(QUEUES.observations, observationNormalizationHandler(pool, undefined, { realtime: env.REALTIME_EVENTS_ENABLED }), deps) as Processor,
+  [QUEUES.realtimeRetention]: (async (job) => {
+    // Scheduled (REALTIME_RETENTION_CRON); runs whether or not the channel is on, so an outbox left behind still expires.
+    const bucket: string = job.data.bucket ?? timeBucket(new Date(), 1);
+    const view = { id: job.id, name: job.name, attemptsMade: job.attemptsMade, opts: job.opts, discard: () => job.discard(), data: { bucket, idempotencyKey: `realtime-retention:${bucket}` } };
+    const handler = realtimeRetentionHandler(pool, {
+      batchSize: env.REALTIME_RETENTION_BATCH_SIZE,
+      maxBatches: env.REALTIME_RETENTION_MAX_BATCHES,
+      maxMs: env.REALTIME_RETENTION_MAX_SECONDS * 1_000,
+    });
+    return wrapHandler(QUEUES.realtimeRetention, handler, deps)(view);
+  }) as Processor,
   [QUEUES.alerts]: (async (job) => {
     // The alerts queue carries both scheduled sweeps and per-farm evaluations.
     if (job.name === "sweep") {
