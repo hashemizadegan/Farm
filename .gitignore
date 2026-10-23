@@ -26,3 +26,4 @@ apps/web/public/maplibre-gl-worker.mjs
 # .NET build output (clients/unity-starter/Tests~)
 clients/**/bin/
 clients/**/obj/
+tests/review-shots/

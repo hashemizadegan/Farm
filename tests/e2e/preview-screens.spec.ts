@@ -1,4 +1,6 @@
 import { createHmac } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 /**
@@ -6,7 +8,7 @@ import { expect, test, type Page } from "@playwright/test";
  *
  * Signs in exactly as a human reviewer does (HTTP Basic "preview" + PREVIEW_ACCESS_PASSWORD from the browser context,
  * then a development token minted with the dependency-free recipe in docs/preview-runbook.md §5), opens four pages and
- * writes each screenshot to the container log as base64 JPEG chunks between markers, with the page URL. The image shows
+ * writes each screenshot to tests/review-shots/ (scripts/upload-review-shots.mjs uploads them), logging the page URL. The image shows
  * the page only: no password or token is on screen once signed in. Nothing is created or changed.
  */
 const ON = process.env.E2E_REMOTE === "1" && process.env.E2E_SCREENSHOTS === "1";
@@ -20,15 +22,14 @@ function reviewerToken(secret: string, subject = "dev-user"): string {
   return `${h}.${createHmac("sha256", secret).update(h).digest("base64url")}`;
 }
 
+const OUT = path.resolve(import.meta.dirname, "../review-shots");
+
+/** Writes the page to tests/review-shots/<name>.jpg (uploaded by scripts/upload-review-shots.mjs) and logs its URL. */
 async function emit(page: Page, name: string) {
   await page.waitForLoadState("networkidle");
-  const jpeg = await page.screenshot({ type: "jpeg", quality: 72, fullPage: true });
-  const b64 = jpeg.toString("base64");
-  const size = 3000;
-  const parts = Math.ceil(b64.length / size);
-  console.log(`SHOT-BEGIN ${name} ${page.url()} parts=${parts}`);
-  for (let i = 0; i < parts; i++) console.log(`SHOT ${name} ${String(i).padStart(4, "0")} ${b64.slice(i * size, (i + 1) * size)}`);
-  console.log(`SHOT-END ${name}`);
+  mkdirSync(OUT, { recursive: true });
+  writeFileSync(path.join(OUT, `${name}.jpg`), await page.screenshot({ type: "jpeg", quality: 80, fullPage: true }));
+  console.log(`SHOT ${name} ${page.url()} commit=${(process.env.RAILWAY_GIT_COMMIT_SHA ?? "unknown").slice(0, 7)} at=${new Date().toISOString()}`);
 }
 
 test.skip(!ON, "review screenshots: E2E_REMOTE=1 and E2E_SCREENSHOTS=1 only");
