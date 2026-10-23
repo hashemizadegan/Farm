@@ -13,9 +13,10 @@
  * - a raw reference: provider, provider event id and the SHA-256 of the exact request body (the body itself is not
  *   kept, following the platform's retention rule for third-party payloads).
  *
- * Adapters map one provider's payloads to this contract. The only adapter shipped is `metafarm-relay`, which accepts
- * the contract itself (a relay or integration posts canonical events); vendor adapters are added per provider,
- * with fixtures, when one is chosen. Pure and deterministic: no I/O.
+ * Adapters map one provider's payloads to this contract and declare what they can produce (ChainEventAdapterCapabilities).
+ * Shipped: `metafarm-relay`, which accepts the contract itself (a relay or integration posts canonical events), and
+ * `metafarm-fixture`, a deterministic CI adapter with its own wire shape. No vendor mapping exists: a vendor adapter is
+ * added, with fixtures, when one is chosen. Pure and deterministic: no I/O.
  */
 import { NETWORKS, RAILS, RAIL_NETWORKS, type Network, type Rail } from "./rwa/model";
 
@@ -61,10 +62,74 @@ export interface ChainEventInput {
   payloadSha256: string;
 }
 
-/** Maps one provider's payloads to the contract. Throws ChainEventRefusal for anything it cannot map exactly. */
+/**
+ * What an adapter declares about its provider, checked at start-up and by the route:
+ * - `kinds`, `networks`, `rails`: what it can produce (anything else is refused);
+ * - `finality`: the finality levels the provider reports, and the minimum at which an ownership change becomes a
+ *   re-read hint (below it, the event is recorded but the indexer is not asked yet: delayed finality);
+ * - `verification`: how a request is authenticated. `platform-hmac` = the platform's webhook signature
+ *   (`x-webhook-signature: t=…,v1=…`, WEBHOOK_SIGNING_SECRETS), checked by the route before the adapter runs;
+ *   `adapter` = the provider's own scheme, implemented by `verify`;
+ * - `simulated`: a deterministic stand-in for CI (refused in staging/production by configuration).
+ */
+export interface ChainEventAdapterCapabilities {
+  kinds: readonly ChainEventKind[];
+  networks: readonly Network[];
+  rails: readonly Rail[];
+  finality: { reported: readonly ChainFinality[]; minimumForOwnershipHint: Exclude<ChainFinality, "processed"> };
+  verification: "platform-hmac" | "adapter";
+  simulated: boolean;
+}
+
+/** What `verify` receives: the exact request bytes and headers, the configured secrets and the clock. */
+export interface ChainEventVerificationInput {
+  rawBody: Uint8Array;
+  headers: Readonly<Record<string, string | string[] | undefined>>;
+  secrets: readonly string[];
+  toleranceSeconds: number;
+  nowSeconds: number;
+}
+export type ChainEventVerification = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Maps one provider's payloads to the contract. Pure and deterministic; throws ChainEventRefusal for anything it
+ * cannot map exactly. Adding a vendor later means one new adapter (with `capabilities`, `normalize` and, for its own
+ * signature scheme, `verify`) and its fixture files; nothing else changes.
+ */
 export interface ChainEventProviderAdapter {
   readonly id: string;
+  readonly capabilities: ChainEventAdapterCapabilities;
+  /** Required when `capabilities.verification` is `adapter`; never called for `platform-hmac`. */
+  verify?(input: ChainEventVerificationInput): ChainEventVerification;
   normalize(input: ChainEventInput): NormalizedChainEvent[];
+}
+
+/** Start-up check of an adapter's declaration (fail closed): a declaration the contract cannot honour is refused. */
+export function chainEventAdapterProblems(a: ChainEventProviderAdapter): string[] {
+  const out: string[] = [];
+  const c = a.capabilities;
+  if (!/^[a-z0-9-]{1,40}$/.test(a.id)) out.push("id must be lowercase letters, digits and hyphens");
+  if (c.kinds.length === 0 || c.kinds.some((k) => !CHAIN_EVENT_KINDS.includes(k))) out.push("kinds must be contract kinds");
+  if (c.networks.length === 0 || c.networks.some((n) => !NETWORKS.includes(n))) out.push("networks must be known networks");
+  if (c.rails.length === 0 || c.rails.some((r) => !CHAIN_EVENT_RAILS.includes(r))) out.push("rails must be chain-event rails (Solana)");
+  for (const r of c.rails) if (!c.networks.some((n) => RAIL_NETWORKS[r].includes(n))) out.push(`rail ${r} has none of its networks declared`);
+  if (c.finality.reported.length === 0 || c.finality.reported.some((f) => !CHAIN_FINALITY.includes(f))) out.push("reported finality must be contract finality levels");
+  if (!c.finality.reported.includes(c.finality.minimumForOwnershipHint)) out.push("the hint threshold must be a reported finality level");
+  if (c.verification === "adapter" && typeof a.verify !== "function") out.push("adapter verification needs a verify function");
+  if (c.verification === "platform-hmac" && a.verify) out.push("platform-hmac adapters must not verify themselves");
+  return out;
+}
+
+/** An adapter's events must stay inside what it declared (a mapping bug is refused, not trusted). */
+export function assertWithinDeclaration(a: ChainEventProviderAdapter, events: NormalizedChainEvent[]): NormalizedChainEvent[] {
+  const c = a.capabilities;
+  for (const e of events) {
+    if (!c.kinds.includes(e.kind)) refuse("unsupported_event", `${a.id} does not declare ${e.kind} events`);
+    if (!c.networks.includes(e.network)) refuse("unsupported_network", `${a.id} does not declare ${e.network}`);
+    if (!c.rails.includes(e.rail)) refuse("unsupported_network", `${a.id} does not declare ${e.rail}`);
+    if (!c.finality.reported.includes(e.finality)) refuse("malformed", `${a.id} does not report ${e.finality} finality`);
+  }
+  return events;
 }
 
 const B58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -164,6 +229,14 @@ export function parseChainEvent(data: unknown, ref: NormalizedChainEvent["rawRef
 /** The canonical relay: the webhook body is `{ id, type: "chain.<kind>", data: <contract event> }`. */
 export const relayChainEventAdapter: ChainEventProviderAdapter = {
   id: "metafarm-relay",
+  capabilities: {
+    kinds: CHAIN_EVENT_KINDS,
+    networks: ["solana-devnet", "solana-mainnet"],
+    rails: CHAIN_EVENT_RAILS,
+    finality: { reported: CHAIN_FINALITY, minimumForOwnershipHint: "confirmed" },
+    verification: "platform-hmac",
+    simulated: false,
+  },
   normalize({ provider, body, payloadSha256 }) {
     if (!isObject(body)) return refuse("malformed", "the body is not an object");
     exactKeys("body", body, ["id", "type", "data"]);
@@ -175,9 +248,58 @@ export const relayChainEventAdapter: ChainEventProviderAdapter = {
   },
 };
 
+/**
+ * The deterministic CI adapter (`metafarm-fixture`): a deliberately different, documented wire shape (not any
+ * vendor's) mapped to the contract, so the adapter boundary itself is exercised. Body:
+ * `{ fixture: "metafarm-fixture/1", deliveryId, events: [{ kind, network, rail, asset, tx: { signature, slot, ix },
+ * transfer | metadata, commitment, at }] }`. Fixture files: packages/domain/fixtures/chain-events/. Refused when
+ * deployed (simulated).
+ */
+export const fixtureChainEventAdapter: ChainEventProviderAdapter = {
+  id: "metafarm-fixture",
+  capabilities: {
+    kinds: CHAIN_EVENT_KINDS,
+    networks: ["solana-devnet"],
+    rails: CHAIN_EVENT_RAILS,
+    finality: { reported: CHAIN_FINALITY, minimumForOwnershipHint: "finalized" },
+    verification: "platform-hmac",
+    simulated: true,
+  },
+  normalize({ provider, body, payloadSha256 }) {
+    if (!isObject(body)) return refuse("malformed", "the body is not an object");
+    exactKeys("body", body, ["fixture", "deliveryId", "events"]);
+    if (body.fixture !== "metafarm-fixture/1") return refuse("unsupported_event", "not a metafarm-fixture/1 delivery");
+    const eventId = str("deliveryId", body.deliveryId, EVENT_ID);
+    const list: unknown[] = Array.isArray(body.events) ? body.events : [];
+    if (list.length < 1 || list.length > 20) return refuse("malformed", "events must hold 1 to 20 entries");
+    if (!HEX64.test(payloadSha256)) refuse("malformed", "payload hash missing");
+    return list.map((raw, i) => {
+      if (!isObject(raw)) return refuse("malformed", `events[${i}] is not an object`);
+      exactKeys(`events[${i}]`, raw, ["kind", "network", "rail", "asset", "tx", "transfer", "metadata", "commitment", "at"]);
+      const tx = isObject(raw.tx) ? raw.tx : refuse("malformed", `events[${i}].tx is missing`);
+      exactKeys(`events[${i}].tx`, tx, ["signature", "slot", "ix"]);
+      return parseChainEvent(
+        {
+          kind: raw.kind,
+          network: raw.network,
+          rail: raw.rail,
+          assetId: raw.asset,
+          transaction: { signature: tx.signature, slot: tx.slot, ixIndex: tx.ix },
+          ownership: raw.transfer ?? null,
+          metadata: raw.metadata ?? null,
+          finality: raw.commitment,
+          providerTimestamp: raw.at,
+        },
+        { provider, eventId: list.length === 1 ? eventId : `${eventId}:${i}`, payloadSha256 },
+      );
+    });
+  },
+};
+
 /** Adapters by provider name (the `:provider` of POST /v1/webhooks/:provider). Vendor adapters register here. */
 export const CHAIN_EVENT_ADAPTERS: Readonly<Record<string, ChainEventProviderAdapter>> = {
   "metafarm-relay": relayChainEventAdapter,
+  "metafarm-fixture": fixtureChainEventAdapter,
 };
 
 /**
@@ -188,5 +310,11 @@ export function assertChainEventNetwork(e: NormalizedChainEvent, configured: Net
   if (e.network !== configured) refuse("network_mismatch", `the event is for ${e.network}; this deployment serves ${configured}`);
 }
 
-/** An ownership hint is acted on only once the provider claims at least `confirmed`; `processed` can still roll back. */
-export const isActionableOwnershipHint = (e: NormalizedChainEvent) => e.kind === "ownership_change" && e.finality !== "processed";
+const FINALITY_RANK: Record<ChainFinality, number> = { processed: 0, confirmed: 1, finalized: 2 };
+
+/**
+ * An ownership hint is acted on only once the provider claims at least the adapter's threshold (default
+ * `confirmed`); `processed` can still roll back. A later delivery with higher finality then triggers the re-read.
+ */
+export const isActionableOwnershipHint = (e: NormalizedChainEvent, minimum: Exclude<ChainFinality, "processed"> = "confirmed") =>
+  e.kind === "ownership_change" && FINALITY_RANK[e.finality] >= FINALITY_RANK[minimum];

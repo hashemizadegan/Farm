@@ -1,8 +1,8 @@
 /**
- * Internal event envelope `metafarm-event/1`, prepared for a future realtime channel (WebSocket or MQTT to clients).
- * Nothing publishes or serves these yet: there is no client push endpoint, and the server switch
- * REALTIME_EVENTS_ENABLED is off by default and refused when deployed. The envelope, its per-type payload schemas
- * and the authorization rule are fixed first, so a transport can be added against tested contracts.
+ * Event envelope `metafarm-event/1`: what the realtime outbox stores (migration 0030) and the authenticated realtime
+ * channel delivers (protocol in ./realtime.ts, route apps/api/src/routes/realtime.ts). The channel is behind
+ * REALTIME_EVENTS_ENABLED, off by default and refused in staging/production; polling stays the default for clients.
+ * Events are notifications only: no financial or ownership mutation is ever carried by one.
  *
  * Authorization (`authorizeEvent`): a viewer receives an event only for a workspace they belong to, only with the
  * permission the event type requires, and, for a farm-scoped event, only when the farm belongs to that workspace
@@ -35,6 +35,20 @@ export const EVENT_TYPES = {
     permission: "alert:read" as Permission,
     farmScoped: true,
     payload: z.object({ alertId: uuid, severity: z.enum(["info", "warning", "critical"]) }).strict(),
+  },
+  /** Readings accepted from a sensor or a registered integration (queued for the existing observation pipeline). */
+  "sensor.reading.received": {
+    schemaVersion: 1,
+    permission: "observation:read" as Permission,
+    farmScoped: true,
+    payload: z
+      .object({
+        sensorId: uuid,
+        rawObservationIds: z.array(uuid).min(1).max(200),
+        metrics: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,39}$/)).min(1).max(20),
+        source: z.enum(["sensor", "integration"]),
+      })
+      .strict(),
   },
 } as const;
 export type EventType = keyof typeof EVENT_TYPES;

@@ -87,7 +87,7 @@ d("chain event webhooks (provider-neutral relay)", () => {
     const cases: [unknown, string][] = [
       [relayBody(`evt-${sfx}-2`, ownershipChangeData({ assetId: untracked })), "not_tracked"],
       [relayBody(`evt-${sfx}-3`, metadataUpdateData({ assetId: tracked })), "not_an_ownership_hint"],
-      [relayBody(`evt-${sfx}-4`, ownershipChangeData({ assetId: tracked, finality: "processed" })), "not_an_ownership_hint"],
+      [relayBody(`evt-${sfx}-4`, ownershipChangeData({ assetId: tracked, finality: "processed" })), "awaiting_finality"],
     ];
     const before = jobs.jobs.length;
     for (const [body, reindex] of cases) {

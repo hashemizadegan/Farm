@@ -168,11 +168,17 @@ export const apiEnvSchema = z
      */
     CHAIN_EVENT_PROVIDERS: csv.default(""),
     /**
-     * Realtime event delivery (metafarm-event/1, packages/domain events.ts). Off by default and refused when deployed:
-     * no client push endpoint exists yet; the envelope and its authorization rule are prepared and tested first.
-     * Turning it on changes nothing today (no route reads it); clients keep polling.
+     * Authenticated realtime channel (WebSocket GET /v1/realtime, protocol metafarm-realtime.1 in packages/domain
+     * realtime.ts; outbox migration 0030). Off by default: the route does not exist and clients keep polling. Refused
+     * in staging and production until the channel's security review is signed off.
      */
     REALTIME_EVENTS_ENABLED: bool.default("false"),
+    /**
+     * Registered integrations (migration 0031; POST /v1/integrations/{id}/events). Server key from which each
+     * integration's signing secret is derived (never stored). Unset (default): integrations are disabled and their
+     * routes answer 404. At least 32 characters; rotating it invalidates every integration secret.
+     */
+    INTEGRATION_SECRET_KEY: z.string().min(32).max(512).optional(),
     WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(15_000),
     /** Serve Swagger UI at /docs. Unset: on in development and test, off in staging and production. */
@@ -217,7 +223,7 @@ export const apiEnvSchema = z
       ctx.addIssue({ code: "custom", path: ["YIELD_CLAIM_INTENTS_ENABLED"], message: "claim intents are simulation-only and refused when deployed (D-15, D-25, D-27, D-39)" });
     }
     if (env.REALTIME_EVENTS_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
-      ctx.addIssue({ code: "custom", path: ["REALTIME_EVENTS_ENABLED"], message: "realtime events have no reviewed push endpoint yet (authentication, replay, ordering, reconnection)" });
+      ctx.addIssue({ code: "custom", path: ["REALTIME_EVENTS_ENABLED"], message: "the realtime channel is not security-reviewed for deployed environments yet (preview and local only)" });
     }
     if (env.HOLDER_YIELD_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
       ctx.addIssue({ code: "custom", path: ["HOLDER_YIELD_ENABLED"], message: "holder-facing yield views need approved disclosures (D-39) before any deployed use" });

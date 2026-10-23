@@ -96,8 +96,9 @@ NEXT_PUBLIC_OIDC_AUTHORITY=https://<your-tenant>.us.auth0.com
 NEXT_PUBLIC_OIDC_CLIENT_ID=<SPA client id>
 NEXT_PUBLIC_OIDC_AUDIENCE=https://api.metafarm-staging
 # Free basemap, no key (https://openfreemap.org). Its style already carries the
-# required attribution, so NEXT_PUBLIC_MAP_ATTRIBUTION stays unset.
+# required attribution; say so explicitly (the web build requires an attribution setting).
 NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
+NEXT_PUBLIC_MAP_ATTRIBUTION=from-style
 NEXT_PUBLIC_MAP_CONNECT_SRC=https://tiles.openfreemap.org
 ```
 

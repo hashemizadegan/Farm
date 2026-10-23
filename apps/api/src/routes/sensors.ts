@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import {
+  appendRealtimeEvent,
   getFarm,
   getSensor,
   getSensorForIngest,
@@ -144,6 +145,19 @@ export async function sensorRoutes(app: FastifyInstance) {
         out.push((await insertRawObservation(tx, { farmId: sensor.farm_id, sensorId: sensor.id, payload: r, provenance: "sensor-reported" })).id);
       }
       await touchSensor(tx, sensor.id);
+      // Realtime outbox (only when the channel is on): a notification that readings arrived, in the same transaction.
+      if (app.deps.env.REALTIME_EVENTS_ENABLED) {
+        await appendRealtimeEvent(tx, {
+          scheme: "metafarm-event/1",
+          type: "sensor.reading.received",
+          schemaVersion: 1,
+          id: randomUUID(),
+          scope: { tenantId: sensor.tenant_id, farmId: sensor.farm_id },
+          occurredAt: app.deps.now().toISOString(),
+          correlationId: req.id.replace(/[^A-Za-z0-9._:-]/g, "").slice(0, 128) || null,
+          payload: { sensorId: sensor.id, rawObservationIds: out, metrics: [...new Set(body.readings.map((r) => r.metric))], source: "sensor" },
+        });
+      }
       return out;
     });
     for (const id of ids) await app.deps.jobs.enqueue(QUEUES.observations, { tenantId: sensor.tenant_id, farmId: sensor.farm_id, rawObservationId: id });

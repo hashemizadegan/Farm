@@ -1,5 +1,7 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+// Relative path: next.config.ts is compiled on its own, before workspace packages are transpiled for the app.
+import { assertCapabilities, webCapabilities } from "../../packages/config/src/capabilities";
 
 // Share the monorepo's root .env in local development (Next only reads apps/web/.env* by default).
 try {
@@ -14,7 +16,26 @@ if (process.env.NEXT_PUBLIC_YIELD_PAGES_ENABLED === "true" && (process.env.APP_E
   throw new Error("NEXT_PUBLIC_YIELD_PAGES_ENABLED is refused in deployed environments until a disclosure version is approved (D-39)");
 }
 
+// Provider capabilities (packages/config capabilities.ts, the same rules the API and worker apply at start-up): map
+// tiles (https style, attribution, CSP host), globe imagery and browser media uploads. NEXT_PUBLIC_* values are inlined
+// at build time, so an enabled provider with incomplete or unsafe configuration fails the build (fail closed); the
+// error names variables, never values. The result is passed to the bundle, so the runtime uses exactly what passed.
+const webProviders = assertCapabilities(
+  webCapabilities({
+    APP_ENV: process.env.APP_ENV,
+    NEXT_PUBLIC_MAP_STYLE_URL: process.env.NEXT_PUBLIC_MAP_STYLE_URL,
+    NEXT_PUBLIC_MAP_ATTRIBUTION: process.env.NEXT_PUBLIC_MAP_ATTRIBUTION,
+    NEXT_PUBLIC_MAP_CONNECT_SRC: process.env.NEXT_PUBLIC_MAP_CONNECT_SRC,
+    NEXT_PUBLIC_CESIUM_ENABLED: process.env.NEXT_PUBLIC_CESIUM_ENABLED,
+    NEXT_PUBLIC_UPLOAD_CONNECT_SRC: process.env.NEXT_PUBLIC_UPLOAD_CONNECT_SRC,
+  }),
+);
+const providerState = (name: string) => webProviders.find((r) => r.capability === name)?.state ?? "disabled";
+
 const config: NextConfig = {
+  env: {
+    NEXT_PUBLIC_MAP_TILES_STATE: providerState("map-tiles"),
+  },
   // Standalone output produces a minimal server bundle for the Docker image.
   output: "standalone",
   // Monorepo root, so standalone output includes workspace packages. `next` runs with cwd = apps/web.

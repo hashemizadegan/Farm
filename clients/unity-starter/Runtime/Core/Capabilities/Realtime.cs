@@ -1,6 +1,6 @@
-// Realtime updates: the envelope matches the platform's internal event envelope (metafarm-event/1). No push transport
-// is enabled: the backend exposes no client push endpoint yet, so the default channel is Disabled and clients poll
-// (Poller, YieldCycleWatcher). A WebSocket or MQTT channel implements IRealtimeChannel once that contract exists.
+// Realtime updates: the envelope matches the platform's event envelope (metafarm-event/1). The default channel is
+// Disabled and clients poll (Poller, YieldCycleWatcher). WebSocketRealtimeChannel (RealtimeWebSocket.cs) implements
+// IRealtimeChannel over the platform's optional WebSocket route; RealtimeChannels.Create picks it only when enabled.
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,7 +39,7 @@ namespace Metafarm.Twin.Core.Capabilities
     /// <summary>The default: no push transport. Subscribing fails with CapabilityUnavailableException; poll instead.</summary>
     public sealed class DisabledRealtimeChannel : IRealtimeChannel
     {
-        public Capability Capability { get; } = Capability.Disabled("realtime", "no push endpoint on the platform yet; polling is used");
+        public Capability Capability { get; } = Capability.Disabled("realtime", "realtime is off; polling is used");
         public Task<IDisposable> SubscribeAsync(string eventType, Action<RealtimeEnvelope> onEvent, CancellationToken cancellationToken = default) =>
             Task.FromException<IDisposable>(new CapabilityUnavailableException(Capability));
     }

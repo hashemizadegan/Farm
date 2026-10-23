@@ -20,3 +20,5 @@ export * from "./telemetry";
 export * from "./twin";
 export * from "./chain-events";
 export * from "./events";
+export * from "./realtime";
+export * from "./integrations";

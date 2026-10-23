@@ -6,6 +6,8 @@ import {
   ChainEventRefusal,
   QUEUES,
   assertChainEventNetwork,
+  assertWithinDeclaration,
+  chainEventAdapterProblems,
   checkNftMetadataContent,
   isActionableOwnershipHint,
   nftMetadataSchema,
@@ -21,7 +23,13 @@ export async function chainRoutes(app: FastifyInstance) {
   const { env } = app.deps;
   // Fail closed at start-up: every provider allowed to post chain events needs an adapter (no guessing at payloads).
   for (const p of env.CHAIN_EVENT_PROVIDERS) {
-    if (!CHAIN_EVENT_ADAPTERS[p]) throw new Error(`CHAIN_EVENT_PROVIDERS names "${p}", which has no chain event adapter (known: ${Object.keys(CHAIN_EVENT_ADAPTERS).join(", ")})`);
+    const adapter = CHAIN_EVENT_ADAPTERS[p];
+    if (!adapter) throw new Error(`CHAIN_EVENT_PROVIDERS names "${p}", which has no chain event adapter (known: ${Object.keys(CHAIN_EVENT_ADAPTERS).join(", ")})`);
+    const problems = chainEventAdapterProblems(adapter);
+    if (problems.length) throw new Error(`chain event adapter "${p}" declares an unusable configuration: ${problems.join("; ")}`);
+    if (adapter.capabilities.simulated && (env.APP_ENV === "staging" || env.APP_ENV === "production")) {
+      throw new Error(`chain event adapter "${p}" is a simulated (fixture) adapter and is refused in staging/production`);
+    }
   }
 
   // ── NFT metadata validation ──────────────────────────────────────────────
@@ -53,13 +61,13 @@ export async function chainRoutes(app: FastifyInstance) {
       const { provider } = parse(z.object({ provider: z.string().regex(/^[a-z0-9-]{1,40}$/) }), req.params);
       const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody ?? Buffer.alloc(0);
       const sig = req.headers["x-webhook-signature"];
-      const result = verifyWebhookSignature({
-        header: Array.isArray(sig) ? sig[0] : sig,
-        rawBody,
-        secrets: env.WEBHOOK_SIGNING_SECRETS,
-        toleranceSeconds: env.WEBHOOK_TOLERANCE_SECONDS,
-        nowSeconds: Math.floor(app.deps.now().getTime() / 1000),
-      });
+      const nowSeconds = Math.floor(app.deps.now().getTime() / 1000);
+      // A chain adapter with its own signature scheme verifies itself; everything else uses the platform's HMAC.
+      const own = CHAIN_EVENT_ADAPTERS[provider];
+      const result =
+        own?.capabilities.verification === "adapter" && own.verify && env.CHAIN_EVENT_PROVIDERS.includes(provider)
+          ? own.verify({ rawBody, headers: req.headers, secrets: env.WEBHOOK_SIGNING_SECRETS, toleranceSeconds: env.WEBHOOK_TOLERANCE_SECONDS, nowSeconds })
+          : verifyWebhookSignature({ header: Array.isArray(sig) ? sig[0] : sig, rawBody, secrets: env.WEBHOOK_SIGNING_SECRETS, toleranceSeconds: env.WEBHOOK_TOLERANCE_SECONDS, nowSeconds });
       if (!result.ok) {
         await writeSystemAudit(app.deps.pool, null, {
           actorType: "webhook",
@@ -94,7 +102,7 @@ export async function chainRoutes(app: FastifyInstance) {
   });
 }
 
-export type ReindexOutcome = "queued" | "not_tracked" | "indexer_disabled" | "not_an_ownership_hint";
+export type ReindexOutcome = "queued" | "not_tracked" | "indexer_disabled" | "not_an_ownership_hint" | "awaiting_finality";
 
 /**
  * One chain event from an enabled provider: normalize (adapter), check the deployment's network, then record the
@@ -112,9 +120,10 @@ export async function handleChainEvent(
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const { env, pool, jobs, now } = app.deps;
   const payloadSha256 = createHash("sha256").update(rawBody).digest("hex");
+  const adapter = CHAIN_EVENT_ADAPTERS[provider]!;
   let events: NormalizedChainEvent[];
   try {
-    events = CHAIN_EVENT_ADAPTERS[provider]!.normalize({ provider, body, payloadSha256 });
+    events = assertWithinDeclaration(adapter, adapter.normalize({ provider, body, payloadSha256 }));
     for (const e of events) assertChainEventNetwork(e, env.RWA_SOLANA_NETWORK);
   } catch (e) {
     if (!(e instanceof ChainEventRefusal)) throw e;
@@ -133,7 +142,7 @@ export async function handleChainEvent(
 
   const outcomes: ReindexOutcome[] = [];
   for (const e of events) {
-    if (!isActionableOwnershipHint(e)) outcomes.push("not_an_ownership_hint");
+    if (!isActionableOwnershipHint(e, adapter.capabilities.finality.minimumForOwnershipHint)) outcomes.push(e.kind === "ownership_change" ? "awaiting_finality" : "not_an_ownership_hint");
     else if (!env.TWIN_OWNERSHIP_INDEX_ENABLED) outcomes.push("indexer_disabled");
     else if (!(await withSystem(pool, (tx) => isOwnershipIndexTarget(tx, { network: e.network, rail: e.rail, id: e.assetId })))) outcomes.push("not_tracked");
     else {

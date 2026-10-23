@@ -564,6 +564,36 @@
     },
     {
       "method": "GET",
+      "path": "/v1/tenants/{tenantId}/integrations",
+      "operationId": "listIntegrations",
+      "consumers": []
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenants/{tenantId}/integrations",
+      "operationId": "registerIntegration",
+      "consumers": []
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenants/{tenantId}/integrations/{integrationId}/rotate",
+      "operationId": "rotateIntegrationSecret",
+      "consumers": []
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenants/{tenantId}/integrations/{integrationId}/revoke",
+      "operationId": "revokeIntegration",
+      "consumers": []
+    },
+    {
+      "method": "POST",
+      "path": "/v1/integrations/{integrationId}/events",
+      "operationId": "ingestIntegrationEvent",
+      "consumers": []
+    },
+    {
+      "method": "GET",
       "path": "/v1/tenants/{tenantId}/farms/{farmId}/alert-rules",
       "operationId": "listAlertRules",
       "consumers": [
@@ -1161,9 +1191,9 @@
   ],
   "undocumentedCalls": [],
   "summary": {
-    "endpoints": 161,
+    "endpoints": 166,
     "consumedByWeb": 84,
     "consumedByUnity": 13,
-    "withoutClientConsumer": 68
+    "withoutClientConsumer": 73
   }
 }
