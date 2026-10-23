@@ -30,8 +30,10 @@ test.describe("preview acceptance: farm operations", () => {
     const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
     expect(axe.violations).toEqual([]);
 
-    // The newest integration reading: its detail and source.
-    await conditions.getByRole("link", { name: /Soil moisture: 23\.4/ }).click();
+    // The seeded integration reading, from the farm's full list ("Latest observations" shows five rows, and
+    // preview-live.spec.ts adds newer readings on the same farm).
+    await page.goto(`${new URL(page.url()).pathname}/observations`);
+    await page.getByRole("row").filter({ hasText: "Soil moisture" }).filter({ hasText: "23.4" }).getByRole("link").click();
     await expect(page.getByRole("heading", { name: "Observation: Soil moisture" })).toBeVisible();
     const source = page.getByRole("region", { name: /Source/ });
     await expect(source).toContainText("Registered integration");
