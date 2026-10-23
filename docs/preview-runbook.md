@@ -147,6 +147,16 @@ A re-run reports "already seeded" and changes nothing.
   APP_ENV=development DEV_AUTH_SECRET='<preview DEV_AUTH_SECRET>' pnpm --filter @metafarm/api dev-token dev-user
   ```
 
+  Without a checkout (any machine with Node.js 18+; nothing is installed, nothing is sent anywhere). Paste the value
+  at the hidden prompt; it is not echoed or kept in the shell history:
+
+  ```bash
+  read -rs DEV_AUTH_SECRET && export DEV_AUTH_SECRET && node -e 'const c=require("crypto"),b=x=>Buffer.from(JSON.stringify(x)).toString("base64url"),n=Math.floor(Date.now()/1000),h=b({alg:"HS256"})+"."+b({name:"dev-user",iss:"dev",aud:"metafarm-dev",sub:"dev-user",iat:n,exp:n+28800});console.log(h+"."+c.createHmac("sha256",process.env.DEV_AUTH_SECRET).update(h).digest("base64url"))'; unset DEV_AUTH_SECRET
+  ```
+
+  Both values live only in the preview project: Railway dashboard → `metafarm-yield-preview` → `web` → Variables →
+  `PREVIEW_ACCESS_PASSWORD`; `api` → Variables → `DEV_AUTH_SECRET`.
+
   Paste it on the sign-in page; it is valid for 8 hours. Subjects: `dev-user` (owner, approver),
   `dev-yield-preparer` (manager), `dev-yield-auditor` (verifier).
 
