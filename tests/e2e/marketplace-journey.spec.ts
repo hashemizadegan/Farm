@@ -210,7 +210,7 @@ test("registered asset: offer, acceptance, simulated payment, recorded transfer 
   await expect(mine).toContainText("Eligible");
   await expect(mine).toContainText("Acquired on this marketplace (simulated)");
   await seller.goto("/market/sell");
-  await expect(seller.getByRole("heading", { level: 2, name: "Registered assets" })).toBeVisible();
+  await expect(seller.getByRole("heading", { level: 2, name: "Registered assets", exact: true })).toBeVisible();
   // The workspace that registered it still sees it, and why it cannot list it; any other former controller does not.
   if (sellerWho === "owner") await expect(seller.getByRole("article", { name: KIT_ASSET })).toContainText("This workspace does not control it");
   else await expect(seller.getByRole("article", { name: KIT_ASSET })).toHaveCount(0);
