@@ -10,7 +10,7 @@ on:
         description: "space-separated name=presigned-url pairs (expire in minutes)"
         required: true
 permissions:
-  contents: read
+  contents: write
 jobs:
   fetch:
     if: github.event_name == 'workflow_dispatch'
@@ -26,8 +26,11 @@ jobs:
             curl -fsS -o "shots/$name.jpg" "$url"
           done
           ls -la shots
-      - uses: actions/upload-artifact@v4
-        with:
-          name: preview-shots
-          path: shots
-          retention-days: 3
+      # The files are ciphertext (encrypted for the reviewer's key before they left the preview project).
+      - uses: actions/checkout@v4
+        with: { path: repo }
+      - name: Commit the encrypted files to this temporary branch
+        run: |
+          mkdir -p repo/shots && cp shots/* repo/shots/
+          cd repo && git config user.name "github-actions" && git config user.email "github-actions@users.noreply.github.com"
+          git add shots && git commit -m "tmp: encrypted preview screenshots" && git push origin HEAD:tmp/preview-shots
