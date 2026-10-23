@@ -14,7 +14,7 @@
  * Clients can only subscribe and ping: nothing received here changes any state.
  */
 import { STATUS_CODES } from "node:http";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
 import { findMembershipRole, latestRealtimeCursor, listRealtimeEventsAfter, realtimeRetentionHorizon, withTenant, writeSystemAudit } from "@metafarm/db";
 import {
@@ -33,6 +33,21 @@ import {
   type Role,
 } from "@metafarm/domain";
 import { HttpError, hashIp } from "../lib/http";
+
+/** Whether this is a WebSocket upgrade request (the plugin's flag is set only after its own onRequest hook). */
+export const isUpgrade = (req: FastifyRequest) => String(req.headers.upgrade ?? "").toLowerCase() === "websocket";
+
+/**
+ * Refuses an upgrade on the raw socket and closes it gracefully, so the client reliably reads the status (the
+ * WebSocket layer would otherwise destroy the socket right after an error response, or never finish it).
+ */
+export function refuseUpgrade(req: FastifyRequest, reply: FastifyReply, err: HttpError): void {
+  reply.hijack();
+  const body = JSON.stringify({ error: err.code, message: err.message });
+  req.raw.socket.end(
+    `HTTP/1.1 ${err.statusCode} ${STATUS_CODES[err.statusCode] ?? "Error"}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
+  );
+}
 
 /** Numeric cursor comparison (decimal strings of a bigint): is `cursor` strictly below `other`? */
 export const isBehind = (cursor: string, other: string | null): boolean => other !== null && BigInt(cursor) < BigInt(other);
@@ -67,13 +82,7 @@ export async function realtimeRoutes(app: FastifyInstance, opts: { limits?: Part
           await app.authenticate(req);
         } catch (err) {
           if (!(err instanceof HttpError) || !req.ws) throw err;
-          // A refused upgrade: answer on the raw socket and close it gracefully, so the client reliably reads the
-          // status (the WebSocket layer would otherwise destroy the socket right after the error response).
-          reply.hijack();
-          const body = JSON.stringify({ error: err.code, message: err.message });
-          req.raw.socket.end(
-            `HTTP/1.1 ${err.statusCode} ${STATUS_CODES[err.statusCode] ?? "Error"}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
-          );
+          refuseUpgrade(req, reply, err);
         }
       },
     },

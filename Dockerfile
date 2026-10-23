@@ -129,5 +129,16 @@ WORKDIR /repo/apps/api
 USER node
 CMD ["node", "--import", "tsx", "src/scripts/preview-seed-runner.ts"]
 
+# ── Preview acceptance runner (isolated previews only) ────────────────────
+# A one-off container that runs the remote acceptance suite (E2E_REMOTE=1: preview-gate, yield-operator,
+# preview-journey, preview-live) from inside the preview project, against its public web and API domains, so the
+# preview's secrets reach it only as Railway references within that project. Select it with APP=acceptance on a
+# temporary service of the preview project; delete the service after the run. Never built for the other apps.
+FROM deps AS app-acceptance
+RUN pnpm --filter @metafarm/e2e exec playwright install --with-deps chromium
+ENV E2E_REMOTE=1
+WORKDIR /repo/tests
+CMD ["pnpm", "exec", "playwright", "test", "--reporter=list"]
+
 # ── Select the app ────────────────────────────────────────────────────────
 FROM app-${APP} AS final

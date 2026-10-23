@@ -92,4 +92,38 @@ describe("preview access gate: on", () => {
     expect(isOpenPath({ method: "GET", url: "/docs" })).toBe(false);
     expect(isOpenPath({ method: "HEAD", url: "/v1/me" })).toBe(false);
   });
+
+  it("passes device and integration ingestion that carries its own credential to the route, which verifies it", async () => {
+    ({ app } = await buildTestApp({ pool: unreachablePool(), env: GATE }));
+    // Past the gate: the routes answer with their own refusals (no database reached for these).
+    const device = await app.inject({ method: "POST", url: "/v1/ingest/readings", headers: { authorization: "Sensor mfs_nonsense" }, payload: { readings: [] } });
+    expect([device.statusCode, device.json().error]).toEqual([401, "invalid_sensor_token"]);
+    const feed = await app.inject({ method: "POST", url: "/v1/integrations/44444444-4444-4444-8444-444444444444/events", headers: { "x-webhook-signature": "t=1,v1=00" }, payload: {} });
+    expect([feed.statusCode, feed.json().error]).toEqual([404, "integrations_not_enabled"]);
+    // Without that credential, or on any other path or method, the gate answers.
+    for (const [method, url, headers] of [
+      ["POST", "/v1/ingest/readings", {}],
+      ["POST", "/v1/integrations/44444444-4444-4444-8444-444444444444/events", {}],
+      ["GET", "/v1/integrations/44444444-4444-4444-8444-444444444444/events", { "x-webhook-signature": "t=1,v1=00" }],
+      ["POST", "/v1/integrations/not-an-id/events", { "x-webhook-signature": "t=1,v1=00" }],
+      ["POST", "/v1/webhooks/metafarm-relay", { "x-webhook-signature": "t=1,v1=00" }],
+      ["GET", "/v1/me", { authorization: "Sensor mfs_nonsense" }],
+    ] as const) {
+      const r = await app.inject({ method, url, headers: { ...headers }, payload: method === "POST" ? {} : undefined });
+      expect([r.statusCode, r.json().error], `${method} ${url}`).toEqual([401, "unauthorized"]);
+    }
+  });
+
+  it("accepts the realtime channel's subprotocol token as the bearer token", async () => {
+    ({ app } = await buildTestApp({ pool: userPool(), env: { ...GATE, REALTIME_EVENTS_ENABLED: "true" } }));
+    const get = (protocols?: string) => app.inject({ method: "GET", url: "/v1/realtime", headers: protocols ? { "sec-websocket-protocol": protocols } : {} });
+    // Past the gate and the route's own authentication: a plain GET (no upgrade) is then not found.
+    expect((await get(`metafarm-realtime.1, bearer.${await tokenFor("dev-user")}`)).statusCode).toBe(404);
+    // Only next to the realtime protocol, only on the realtime path, and only a valid token.
+    expect((await get("metafarm-realtime.1, bearer.x.y.z")).statusCode).toBe(401);
+    expect((await get(`bearer.${await tokenFor("dev-user")}`)).statusCode).toBe(401);
+    expect((await get()).statusCode).toBe(401);
+    const elsewhere = await app.inject({ method: "GET", url: "/no-such-route", headers: { "sec-websocket-protocol": `metafarm-realtime.1, bearer.${await tokenFor("dev-user")}` } });
+    expect(elsewhere.statusCode).toBe(401);
+  });
 });

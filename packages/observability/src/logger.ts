@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { pino, type Logger, type LoggerOptions } from "pino";
 
 /**
@@ -29,6 +30,20 @@ export interface CreateLoggerOptions {
   pretty?: boolean;
 }
 
+/**
+ * pino-pretty is a development dependency: present in a workspace checkout, absent from the production images. A
+ * development configuration running from such an image (the isolated preview: APP_ENV=development) logs plain JSON
+ * instead of failing at start-up.
+ */
+export function prettyAvailable(resolve: (id: string) => string = createRequire(import.meta.url).resolve): boolean {
+  try {
+    resolve("pino-pretty");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function createLogger(opts: CreateLoggerOptions): Logger {
   return pino({
     level: opts.level ?? "info",
@@ -38,7 +53,7 @@ export function createLogger(opts: CreateLoggerOptions): Logger {
     formatters: {
       level: (label) => ({ level: label }),
     },
-    transport: opts.pretty ? { target: "pino-pretty", options: { colorize: true } } : undefined,
+    transport: opts.pretty && prettyAvailable() ? { target: "pino-pretty", options: { colorize: true } } : undefined,
   });
 }
 

@@ -3,6 +3,8 @@
  * or scheduler images). Checks `previewSeedRefusal` against the target database, then runs the existing seeds:
  *   1. `pnpm --filter @metafarm/db seed`   (demo workspace; refuses staging/production itself)
  *   2. `pnpm --filter @metafarm/api seed:yield` (simulation cycles; refuses anything but development/test itself)
+ *   3. `pnpm --filter @metafarm/api seed:farm-ops` (the farm operations journey: sensors in every freshness state,
+ *      observations from a person, a device and a registered integration; development/test only)
  * Both are idempotent. It mints no tokens and prints no secret: dev tokens are minted by the operator offline
  * (`pnpm --filter @metafarm/api dev-token <subject>` with the preview DEV_AUTH_SECRET; no database needed).
  *
@@ -26,7 +28,10 @@ if (!process.env.APP_ENV || !["development", "test"].includes(process.env.APP_EN
 }
 const url = process.env.DATABASE_URL;
 if (!url) fail("DATABASE_URL is required");
-if (!process.env.DEV_AUTH_SECRET) fail("DEV_AUTH_SECRET is required (the yield seed signs in its dev users)");
+if (!process.env.DEV_AUTH_SECRET) fail("DEV_AUTH_SECRET is required (the seeds sign in their dev users)");
+if (!process.env.INTEGRATION_SECRET_KEY) {
+  console.log("[preview-seed] note: INTEGRATION_SECRET_KEY is not set; the farm operations seed will skip the registered integration (set it on api and seed-runner to include it)");
+}
 
 const pool = createPool({ connectionString: url!, max: 1 });
 const facts = await (async () => {
@@ -54,6 +59,7 @@ const at = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const seeds = [
   { name: "demo workspace (@metafarm/db seed)", cwd: at("../../../../packages/db/"), file: "src/scripts/seed.ts" },
   { name: "simulation yield cycles (@metafarm/api seed:yield)", cwd: at("../../"), file: "src/scripts/seed-yield-simulation.ts" },
+  { name: "farm operations journey (@metafarm/api seed:farm-ops)", cwd: at("../../"), file: "src/scripts/seed-farm-operations.ts" },
 ];
 for (const seed of seeds) {
   console.log(`[preview-seed] running ${seed.name}`);
