@@ -247,7 +247,6 @@ export function useRealtimeUpdates(subscription: RealtimeSubscription | null, on
       client.stop();
     };
     // `subscription` is captured by key; a new object with the same scope does not resubscribe.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, key, signedIn, debounceMs]);
 
   return status;

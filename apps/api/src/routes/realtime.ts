@@ -229,17 +229,17 @@ class RealtimeSession {
           // cursor order per workspace), so an empty page may safely move the cursor up to it.
           const latest = await latestRealtimeCursor(tx);
           const horizon = await realtimeRetentionHorizon(tx);
-          if (this.cursor !== null && isBehind(this.cursor, horizon)) return { resync: laterOf(latest, horizon) };
+          if (this.cursor !== null && isBehind(this.cursor, horizon)) return { kind: "resync" as const, cursor: laterOf(latest, horizon) };
           const rows = await listRealtimeEventsAfter(tx, { after: this.cursor, types: sub.types, farmId: sub.farmId, limit: this.limits.batchSize });
           const farmIds = [...new Set(rows.map((r) => r.event.scope.farmId).filter((f): f is string => f !== null))];
           const farms = farmIds.length
             ? new Set((await tx.query<{ id: string }>(`SELECT id FROM farms WHERE tenant_id = $1 AND id = ANY($2::uuid[])`, [sub.tenantId, farmIds])).rows.map((r) => r.id))
             : new Set<string>();
-          return { rows, farms, latest };
+          return { kind: "page" as const, rows, farms, latest };
         });
         if (this.closed) return;
-        if ("resync" in batch) {
-          this.cursor = batch.resync;
+        if (batch.kind === "resync") {
+          this.cursor = batch.cursor;
           if (!this.send({ op: "resync", reason: "cursor_expired", cursor: this.cursor })) return;
           continue;
         }

@@ -173,7 +173,8 @@ d("sensor integration → observation pipeline → realtime outbox → client; c
     expect((await delivery("malformed.json")).json().error).toBe("chain_event_malformed");
     // The webhook wrote no ownership: only the indexer (from the verified chain source) ever does.
     expect((await pool.query(`SELECT 1 FROM chain_ownership_events WHERE asset_id = $1`, [tracked])).rowCount).toBe(0);
-    // Chain events never enter the realtime outbox.
-    expect((await pool.query(`SELECT 1 FROM realtime_events WHERE tenant_id = $1 AND type NOT LIKE 'sensor.%'`, [tenantId])).rowCount).toBe(0);
+    // Chain events never enter the realtime outbox: only the sensor and observation notifications of this flow are there.
+    const types = (await pool.query<{ type: string }>(`SELECT DISTINCT type FROM realtime_events WHERE tenant_id = $1 ORDER BY type`, [tenantId])).rows.map((r) => r.type);
+    expect(types).toEqual(["observation.recorded", "sensor.reading.received"]);
   });
 });
