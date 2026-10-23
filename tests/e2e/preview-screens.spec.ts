@@ -27,6 +27,8 @@ const OUT = path.resolve(import.meta.dirname, "../review-shots");
 /** Writes the page to tests/review-shots/<name>.jpg (uploaded by scripts/upload-review-shots.mjs) and logs its URL. */
 async function emit(page: Page, name: string) {
   await page.waitForLoadState("networkidle");
+  // From the top, so the sticky navigation sits where a reader sees it (the integrations link scrolls to an anchor).
+  await page.evaluate(() => window.scrollTo(0, 0));
   mkdirSync(OUT, { recursive: true });
   writeFileSync(path.join(OUT, `${name}.jpg`), await page.screenshot({ type: "jpeg", quality: 80, fullPage: true }));
   console.log(`SHOT ${name} ${page.url()} commit=${(process.env.RAILWAY_GIT_COMMIT_SHA ?? "unknown").slice(0, 7)} at=${new Date().toISOString()}`);
