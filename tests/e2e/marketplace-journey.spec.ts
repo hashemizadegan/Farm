@@ -27,6 +27,9 @@ const GATE_PASSWORD = process.env.E2E_PREVIEW_ACCESS_PASSWORD;
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 const OUT = path.resolve(import.meta.dirname, "../review-shots");
 
+/** The produce order of this run (test 1), shown again in Persian (test 3). */
+let produceOrderPath = "";
+
 test.skip(({ isMobile }) => isMobile, "the two-party journey runs once, on desktop (the Persian check covers layout)");
 test.describe.configure({ mode: "serial" });
 
@@ -103,7 +106,9 @@ test("produce: order, simulated payment, preparation, manual dispatch with track
 
   await buyer.waitForURL(/\/market\/orders\/[0-9a-f-]{36}$/);
   const orderUrl = new URL(buyer.url()).pathname;
+  produceOrderPath = orderUrl;
   await expect(buyer.getByText("Awaiting payment (simulated)").first()).toBeVisible();
+  await shot(buyer, "m3a-order-awaiting-payment-buyer-en");
   await buyer.getByRole("button", { name: "Record payment (simulated)" }).click();
   await expect(buyer.getByText("Paid (simulated)").first()).toBeVisible();
 
@@ -244,5 +249,22 @@ test("Persian: the marketplace in Persian, right to left, with Persian digits", 
   await expect(page.getByRole("region", { name: "سابقه" })).toBeVisible();
   await clean(page);
   await shot(page, "m9-order-fa");
+  // The produce order of this run, in Persian: the buyer's delivery view, then the seller's.
+  if (produceOrderPath) {
+    await page.goto(produceOrderPath);
+    await expect(page.getByRole("region", { name: "تحویل", exact: true })).toContainText("SIM-");
+    await expect(page.getByText("تحویل‌شده").first()).toBeVisible();
+    await clean(page);
+    await shot(page, "m10-produce-order-buyer-fa");
+    const seller = await personPage(browser, "owner", "fa");
+    await seller.goto(produceOrderPath);
+    await expect(seller.getByText("فضای کاری شما فروشنده است")).toBeVisible();
+    await shot(seller, "m11-produce-order-seller-fa");
+    await seller.goto("/market/sell");
+    await expect(seller.getByRole("heading", { level: 1, name: "فروش یک قلم" })).toBeVisible();
+    await clean(seller);
+    await shot(seller, "m12-sell-fa");
+    await seller.context().close();
+  }
   await page.context().close();
 });
