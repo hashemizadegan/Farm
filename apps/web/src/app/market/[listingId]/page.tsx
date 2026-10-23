@@ -349,7 +349,7 @@ function BuyPanel({ tenantId, listing: l }: { tenantId: string; listing: Detail 
         )}
         <TextField label={t.noteLabel} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} />
         <Button type="submit" variant="primary" busy={busy}>
-          {l.kind === "produce" ? t.placeMarketOrder : offers ? t.placeOffer : t.orderFixed}
+          {l.kind === "produce" ? t.placeOrder : offers ? t.placeOffer : t.orderFixed}
         </Button>
       </form>
     </section>
