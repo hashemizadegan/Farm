@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
-import { adoptProtocolBearer } from "../routes/realtime";
+import { HttpError } from "../lib/http";
+import { adoptProtocolBearer, isUpgrade, refuseUpgrade } from "../routes/realtime";
 
 /** Paths the platform's health checks call without credentials. Exact matches only. */
 const OPEN_PATHS: ReadonlySet<string> = new Set(["/healthz", "/readyz"]);
@@ -37,9 +38,16 @@ export function isSelfAuthenticatedIngest(req: Pick<FastifyRequest, "method" | "
  */
 export const previewGatePlugin = fp(async (app: FastifyInstance, opts: { enabled: boolean }) => {
   if (!opts.enabled) return;
-  app.addHook("onRequest", async (req) => {
+  app.addHook("onRequest", async (req, reply) => {
     if (isOpenPath(req) || isSelfAuthenticatedIngest(req)) return;
-    if ((req.url.split("?", 1)[0] ?? "") === "/v1/realtime") adoptProtocolBearer(req);
-    await app.authenticate(req);
+    const realtime = (req.url.split("?", 1)[0] ?? "") === "/v1/realtime";
+    if (realtime) adoptProtocolBearer(req);
+    try {
+      await app.authenticate(req);
+    } catch (err) {
+      // A refused WebSocket handshake is answered on the raw socket, so the client reliably reads the 401.
+      if (realtime && err instanceof HttpError && isUpgrade(req)) return refuseUpgrade(req, reply, err);
+      throw err;
+    }
   });
 });

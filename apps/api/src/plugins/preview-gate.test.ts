@@ -6,8 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "@metafarm/db";
 import { buildTestApp, testEnv, tokenFor, unreachablePool } from "../test/helpers";
-import type { AddressInfo } from "node:net";
-import { upgradeStatus } from "../test/realtime-client";
 import { isOpenPath } from "./preview-gate";
 
 let app: FastifyInstance;
@@ -118,10 +116,14 @@ describe("preview access gate: on", () => {
 
   it("accepts the realtime channel's subprotocol token as the bearer token", async () => {
     ({ app } = await buildTestApp({ pool: userPool(), env: { ...GATE, REALTIME_EVENTS_ENABLED: "true" } }));
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    const port = (app.server.address() as AddressInfo).port;
-    expect(await upgradeStatus(port, { "sec-websocket-protocol": `metafarm-realtime.1, bearer.${await tokenFor("dev-user")}` })).toBe(101);
-    expect(await upgradeStatus(port, { "sec-websocket-protocol": "metafarm-realtime.1, bearer.x.y.z" })).toBe(401);
-    expect(await upgradeStatus(port, {})).toBe(401);
+    const get = (protocols?: string) => app.inject({ method: "GET", url: "/v1/realtime", headers: protocols ? { "sec-websocket-protocol": protocols } : {} });
+    // Past the gate and the route's own authentication: a plain GET (no upgrade) is then not found.
+    expect((await get(`metafarm-realtime.1, bearer.${await tokenFor("dev-user")}`)).statusCode).toBe(404);
+    // Only next to the realtime protocol, only on the realtime path, and only a valid token.
+    expect((await get("metafarm-realtime.1, bearer.x.y.z")).statusCode).toBe(401);
+    expect((await get(`bearer.${await tokenFor("dev-user")}`)).statusCode).toBe(401);
+    expect((await get()).statusCode).toBe(401);
+    const elsewhere = await app.inject({ method: "GET", url: "/no-such-route", headers: { "sec-websocket-protocol": `metafarm-realtime.1, bearer.${await tokenFor("dev-user")}` } });
+    expect(elsewhere.statusCode).toBe(401);
   });
 });

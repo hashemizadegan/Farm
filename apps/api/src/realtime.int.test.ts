@@ -255,6 +255,27 @@ d("realtime channel (WebSocket)", () => {
     expect(fresh.messages.some((m) => m.op === "resync")).toBe(false);
   });
 
+  it("works behind the preview access gate: the browser's subprotocol token opens the channel; a bad one gets 401", async () => {
+    const gated = (await buildTestApp({ pool, env: { REALTIME_EVENTS_ENABLED: "true", PREVIEW_ACCESS_GATE: "true" }, realtime: { pollIntervalMs: 50, heartbeatIntervalMs: 100, heartbeatTimeoutMs: 2_000 } })).app;
+    try {
+      await gated.listen({ port: 0, host: "127.0.0.1" });
+      const gatedPort = (gated.server.address() as AddressInfo).port;
+      expect(await upgradeStatus(gatedPort, { "sec-websocket-protocol": "metafarm-realtime.1, bearer.not-a-token" })).toBe(401);
+      expect(await upgradeStatus(gatedPort, {})).toBe(401);
+      const c = await connectRealtime(gatedPort, await tokenFor(subjects.ownerA));
+      clients.push(c);
+      c.send(sub(tenantA, farmA1, ["twin.snapshot.recorded"], null));
+      await c.next((m) => m.op === "subscribed");
+      const e = twin(tenantA, farmA1);
+      await append(tenantA, e);
+      expect(((await c.next((m) => m.op === "event")).event as { id: string }).id).toBe(e.id);
+      c.close();
+      await c.closed;
+    } finally {
+      await gated.close();
+    }
+  }, 20_000);
+
   it("outbox: validated, idempotent on the event id, bound to its workspace, immutable", async () => {
     const e = twin(tenantA, farmA1);
     const seq = await append(tenantA, e);
