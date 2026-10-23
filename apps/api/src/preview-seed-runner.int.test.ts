@@ -1,6 +1,7 @@
 /**
  * The preview seed runner end to end on a database of its own (created and dropped here): refusals, a full seed of
- * a fresh migrated database, idempotency, and refusal once the database holds another workspace.
+ * a fresh migrated database (demo workspace, yield cycles, farm operations journey), idempotency, and refusal once
+ * the database holds another workspace.
  */
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -19,7 +20,7 @@ d("preview seed runner", () => {
   let preview: Pool;
 
   const run = (env: Record<string, string | undefined>) => {
-    const childEnv: Record<string, string | undefined> = { ...process.env, DATABASE_URL: previewUrl, DEV_AUTH_SECRET: DEV_SECRET, ...env };
+    const childEnv: Record<string, string | undefined> = { ...process.env, DATABASE_URL: previewUrl, DEV_AUTH_SECRET: DEV_SECRET, INTEGRATION_SECRET_KEY: "preview-seed-test-integration-key-0123456789", ...env };
     for (const [k, v] of Object.entries(childEnv)) if (v === undefined) delete childEnv[k];
     const r = spawnSync(process.execPath, ["--import", "tsx", "src/scripts/preview-seed-runner.ts"], { cwd: apiDir, env: childEnv as NodeJS.ProcessEnv, encoding: "utf8", timeout: 180_000 });
     return { code: r.status, out: `${r.stdout}${r.stderr}` };
@@ -52,7 +53,7 @@ d("preview seed runner", () => {
   it("refuses an unmigrated database", () => {
     const r = run({ APP_ENV: "test" });
     expect(r.code).toBe(1);
-    expect(r.out).toContain("migrations must be applied through 0029");
+    expect(r.out).toContain("migrations must be applied through 0032");
   });
 
   it("seeds a fresh migrated database, and a second run changes nothing", async () => {
@@ -64,6 +65,27 @@ d("preview seed runner", () => {
       (await preview.query<{ status: string }>(`SELECT c.status FROM yield_cycles c JOIN business_assets a ON a.id = c.business_asset_id WHERE a.name = 'Yield simulation shares' ORDER BY c.period_start`)).rows.map((r) => r.status);
     expect(await cycles()).toEqual(["published", "published", "under_review"]);
     expect((await preview.query(`SELECT count(*)::int AS n FROM yield_claim_intent_batches`)).rows[0].n).toBe(2);
+    // The farm operations journey: sensors in every freshness state, and observations from all three sources.
+    const sensors = (
+      await preview.query<{ name: string; status: string; seen: boolean; stale: boolean }>(
+        `SELECT s.name, s.status, s.last_seen_at IS NOT NULL AS seen, s.last_seen_at < now() - make_interval(mins => s.silent_after_minutes) AS stale
+           FROM sensors s JOIN farms f ON f.id = s.farm_id WHERE f.name = 'North orchard (simulation)' ORDER BY s.name`,
+      )
+    ).rows;
+    expect(sensors).toEqual([
+      { name: "Rain gauge (simulation)", status: "disabled", seen: false, stale: null },
+      { name: "Soil probe A (simulation)", status: "active", seen: true, stale: false },
+      { name: "Soil probe B (simulation)", status: "active", seen: true, stale: true },
+      { name: "Weather mast (simulation)", status: "active", seen: false, stale: null },
+    ]);
+    const sources = (await preview.query<{ provenance_label: string; n: number }>(`SELECT o.provenance_label, count(*)::int AS n FROM observations o JOIN farms f ON f.id = o.farm_id WHERE f.name = 'North orchard (simulation)' GROUP BY 1 ORDER BY 1`)).rows;
+    expect(sources).toEqual([
+      { provenance_label: "provider-observation", n: 4 },
+      { provenance_label: "sensor-reported", n: 1 },
+      { provenance_label: "user-entered", n: 1 },
+    ]);
+    expect((await preview.query(`SELECT name, status FROM integrations`)).rows).toEqual([{ name: "Simulated field feed", status: "active" }]);
+    expect(first.out).not.toMatch(/mfi_/);
     const second = run({ APP_ENV: "test" });
     expect(second.code, second.out).toBe(0);
     expect(second.out).toContain("already seeded");

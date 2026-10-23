@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
+import { adoptProtocolBearer } from "../routes/realtime";
 
 /** Paths the platform's health checks call without credentials. Exact matches only. */
 const OPEN_PATHS: ReadonlySet<string> = new Set(["/healthz", "/readyz"]);
@@ -11,16 +12,34 @@ export function isOpenPath(req: Pick<FastifyRequest, "method" | "url">): boolean
   return OPEN_PATHS.has(path);
 }
 
+const INTEGRATION_EVENTS = /^\/v1\/integrations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/events$/i;
+
 /**
- * Private-preview access gate (PREVIEW_ACCESS_GATE). When on, every request except health checks and CORS
- * preflights must carry a bearer token the configured auth provider verifies; anything else gets the standard
- * 401 before any route runs. It fails closed: an error while verifying is a refusal. Off (the default) it
- * registers nothing, so deployed environments are unaffected unless they opt in.
+ * Device and integration ingestion carry their own credential, which their route verifies and refuses (fail closed):
+ * a sensor token (`Authorization: Sensor mfs_…`) on POST /v1/ingest/readings, and a signed event
+ * (`x-webhook-signature`) on POST /v1/integrations/{id}/events. Such a request is passed to its route instead of
+ * being asked for a person's bearer token, which a device or a provider never has. Anything else is gated.
+ */
+export function isSelfAuthenticatedIngest(req: Pick<FastifyRequest, "method" | "url" | "headers">): boolean {
+  if (req.method !== "POST") return false;
+  const path = req.url.split("?", 1)[0] ?? "";
+  if (path === "/v1/ingest/readings") return /^Sensor mfs_/.test(String(req.headers.authorization ?? ""));
+  if (INTEGRATION_EVENTS.test(path)) return typeof req.headers["x-webhook-signature"] === "string";
+  return false;
+}
+
+/**
+ * Private-preview access gate (PREVIEW_ACCESS_GATE). When on, every request except health checks, CORS preflights
+ * and self-authenticated ingestion must carry a bearer token the configured auth provider verifies; anything else
+ * gets the standard 401 before any route runs. The realtime channel's browser token (the `bearer.<token>`
+ * subprotocol) counts as a bearer token. It fails closed: an error while verifying is a refusal. Off (the default)
+ * it registers nothing, so deployed environments are unaffected unless they opt in.
  */
 export const previewGatePlugin = fp(async (app: FastifyInstance, opts: { enabled: boolean }) => {
   if (!opts.enabled) return;
   app.addHook("onRequest", async (req) => {
-    if (isOpenPath(req)) return;
+    if (isOpenPath(req) || isSelfAuthenticatedIngest(req)) return;
+    if ((req.url.split("?", 1)[0] ?? "") === "/v1/realtime") adoptProtocolBearer(req);
     await app.authenticate(req);
   });
 });

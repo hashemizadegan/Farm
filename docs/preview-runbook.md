@@ -1,7 +1,8 @@
-# Isolated yield preview: operator runbook
+# Isolated preview: operator runbook
 
-The simulation-only `/yield` operator pages, deployed to a **separate Railway project**, private behind the
-preview access gate.
+The simulation-only `/yield` operator pages and the **farm operations journey** (farm → current conditions →
+observation → source → integration), deployed to a **separate Railway project**, private behind the preview access
+gate.
 
 **Do not start until the security review package records the preview-only approval:**
 `docs/delivery/yield-security-review-package-2026-10-22.md` §B on the plan branch. Production approval does not
@@ -9,7 +10,10 @@ exist.
 
 Hard boundaries:
 - Never link or apply anything to `melodious-liberation`, the live project. The preview IaC file refuses it.
-- No worker or scheduler is deployed.
+- A worker (observation normalization, realtime announcements) and a scheduler (realtime retention, alert sweep) run
+  in the preview, against its own database and redis only. **This extends the scope the yield preview approval
+  described ("no worker or scheduler"): the reviewer must record the extended preview-only approval in §B before
+  this IaC is applied.**
 - No signer, RPC, DAS, TRON or mainnet variable is set.
 - `PARTY_LINKS_ENABLED` and `HOLDER_YIELD_ENABLED` stay unset.
 - Secrets live only in the preview project's variables. `.env.preview.example` lists names and placeholders.
@@ -27,10 +31,12 @@ pnpm install --frozen-lockfile
 pnpm lint && pnpm typecheck && pnpm test:unit
 docker compose up -d                          # PostGIS, Redis, MinIO
 export DATABASE_URL=postgres://metafarm:metafarm@localhost:5432/metafarm REDIS_URL=redis://localhost:6379
-pnpm test:integration                         # includes migration lifecycle 0019–0029 and the seed runner end to end
+pnpm test:integration                         # includes migration lifecycle 0019–0032 and the seed runner end to end
 pnpm db:migrate && pnpm db:seed
-pnpm dev:yield                                # local stack with the yield switches (APP_ENV=development)
+# .env: INTEGRATION_SECRET_KEY=<openssl rand -hex 32>  (local only; without it the farm seed skips the integration)
+pnpm dev:preview                              # local stack as the preview runs it: yield, realtime, integrations
 pnpm seed:yield                               # simulation cycles (idempotent)
+pnpm seed:farm-ops                            # the farm operations journey (idempotent)
 ```
 
 Full e2e, including the gate in a real server, as CI runs it:
@@ -76,9 +82,11 @@ E2E_GATED_WEB_URL=http://localhost:3101 E2E_PREVIEW_ACCESS_PASSWORD=local-only-p
    railway variables --service postgres --set "POSTGRES_PASSWORD=$(openssl rand -hex 32)"
    railway variables --service api      --set "DEV_AUTH_SECRET=$(openssl rand -base64 48)"
    railway variables --service web      --set "PREVIEW_ACCESS_PASSWORD=$(openssl rand -base64 32)"
+   railway variables --service api      --set "INTEGRATION_SECRET_KEY=$(openssl rand -hex 32)"
    ```
 
-   - The seed runner reads the API's `DEV_AUTH_SECRET` by reference (declared in the IaC file); nothing to set.
+   - The seed runner reads the API's `DEV_AUTH_SECRET` and `INTEGRATION_SECRET_KEY` by reference (declared in the
+     IaC file); nothing to set.
    - The first deployments made by `apply` start **before** these values exist, so they fail closed: the API refuses
      to start without `DEV_AUTH_SECRET`, and the seed runner refuses (no secret, or migrations not yet at 0029).
      That is expected. Redeploy `api`, then `web` (after §2.5), then the seed runner (§4).
@@ -88,15 +96,17 @@ E2E_GATED_WEB_URL=http://localhost:3101 E2E_PREVIEW_ACCESS_PASSWORD=local-only-p
 5. **Domains and origins.** Generate a domain for `api` and for `web` (`railway domain --service api`, then
    `--service web`). Then set:
    - `api`: `CORS_ORIGINS=https://<web domain>`;
-   - `web`: `NEXT_PUBLIC_API_URL=https://<api domain>` (a build arg: redeploy web after setting it).
+   - `web`: `NEXT_PUBLIC_API_URL=https://<api domain>` and `NEXT_PUBLIC_REALTIME_URL=wss://<api domain>/v1/realtime`
+     (build args: redeploy web after setting them). The web build refuses a realtime URL that is not exactly the
+     channel URL over wss, or that carries a token or query.
 6. **Seed-runner settings** (dashboard → seed-runner → Settings):
    - Restart policy: **Never**;
    - no domain, no health check.
 
 ## 3. Migrations
 
-The API's pre-deploy step runs `node dist/migrate.js` on the preview database only, through 0029. Check the API
-deploy log for `[migrate] applied 0029_yield_claim_intent_batches`, or "already up to date" on later deploys.
+The API's pre-deploy step runs `node dist/migrate.js` on the preview database only, through 0032. Check the API
+deploy log for `[migrate] applied 0032_realtime_retention_horizons`, or "already up to date" on later deploys.
 
 ## 4. One-time seeding
 
@@ -104,19 +114,25 @@ Deploy the `seed-runner` service once, after the API is healthy. The runner refu
 - `APP_ENV` is development or test;
 - the database has no workspace other than the dev seed's;
 - there is no real (non-`dev`) sign-in;
-- migrations are at 0029 or later.
+- migrations are at 0032 or later.
 
 Expected log:
 
 ```text
-[preview-seed] checks passed (APP_ENV=development, migrations through 0029_yield_claim_intent_batches, workspaces: 0)
+[preview-seed] checks passed (APP_ENV=development, migrations through 0032_realtime_retention_horizons, workspaces: 0)
 [preview-seed] running demo workspace (@metafarm/db seed)
 [preview-seed] running simulation yield cycles (@metafarm/api seed:yield)
 [seed:yield] 2026-01-01: published, set …, N unsigned intent(s)
 [seed:yield] 2026-04-01: published, set …
 [seed:yield] 2026-07-01: calculated and under review (awaiting approval), set …
+[preview-seed] running farm operations journey (@metafarm/api seed:farm-ops)
+[seed:farm-ops] integration "Simulated field feed" registered; 2 signed events accepted (its secret is not kept: …)
+[seed:farm-ops] North orchard (simulation) (…): 6 observations normalized; sensors — …: online; …: silent; …
 [preview-seed] done
 ```
+
+Without `INTEGRATION_SECRET_KEY` the runner prints a note, and the farm seed reports that it skipped the integration
+(probe A then reports through its device token). Set the key and seed a fresh database to include it.
 
 A re-run reports "already seeded" and changes nothing.
 
@@ -148,9 +164,11 @@ The suite checks:
 - **Authenticated:** sign-in and `/yield` with the D-39 banner; Q1 and Q2 published, Q3 awaiting review;
   four-eyes, dossier, carry-in and the unsigned intents table.
 - **Clean pages:** no console or hydration errors.
+- **Farm operations journey:** the seeded farm's current conditions in every freshness state, an integration
+  observation's source, and the integration management page filtered to the farm.
 
-In remote mode the config runs only `preview-gate.spec.ts` and `yield-operator.spec.ts`: the rest of the suite needs
-a worker (not deployed in the preview) and creates unrelated data. `E2E_REMOTE_ALL=1` overrides that deliberately.
+In remote mode the config runs `preview-gate.spec.ts`, `yield-operator.spec.ts` and `preview-journey.spec.ts` (the
+farm operations journey over the seeded data; it creates nothing): the rest of the suite creates unrelated data. `E2E_REMOTE_ALL=1` overrides that deliberately.
 Nothing is seeded from the workstation in remote mode. Screenshots go to `tests/yield-screenshots/`; traces, videos
 and screenshots of failures go to `tests/test-results/` and the HTML report to `tests/playwright-report/`.
 
@@ -164,3 +182,23 @@ and screenshots of failures go to `tests/test-results/` and the HTML report to `
 | End of the preview | Delete the whole `metafarm-yield-preview` project. Nothing else depends on it. |
 
 The live project, its database (migration 0018) and the worker deploy hold (#45) are never part of these steps.
+
+## 8. Acceptance walkthrough: farm operations
+
+Prerequisites: §2–§4 done (worker and scheduler deployed, seed log as in §4), and you are signed in (§5) as
+`dev-user` (owner: sees the integration controls). Everything shown is simulation data, labelled "(simulation)".
+
+| Step | Where | Expected |
+|---|---|---|
+| 1. Sign in | `/sign-in` (after the HTTP Basic prompt) | Lands on the overview of "Demo Tenant" (the only workspace; the switcher shows it). |
+| 2. Open the farm | nav **Farms** → **North orchard (simulation)** | Farm page with **Current conditions**. With the realtime URL set: "Live updates". |
+| 3. Freshness | Current conditions → Sensors | Soil probe A: **Reporting** (latest soil moisture 23.4 and air temperature 18.2, with times); Soil probe B: **Silent** (last reading 3 days ago, allowance 60 minutes); Weather mast: **Waiting for first reading**; Rain gauge: **Disabled**. States are computed against the current time: probe A turns Silent 7 days after seeding. |
+| 4. Observations | Current conditions → Latest observations, or **All observations** | Newest first, each with its time and provenance badge; a field note entered by a person. |
+| 5. Inspect one | click "Soil moisture: 23.4 …" | Observation page: value as stored and as received, observed / received / recorded times, provenance "provider observation", **Source: Registered integration** — "Simulated field feed" (metafarm-simulation), provider event `simulation-2`, sensor Soil probe A. |
+| 6. Manage the integration | **Manage this integration** | `/integrations?farmId=…`: "Showing the integrations that have delivered observations to North orchard (simulation)"; the feed is Active, with Rotate secret and Revoke. Also in the main nav: **Integrations** (admins and owners only). |
+| 7. Send a live reading (optional) | **Rotate secret** → copy the secret (shown once; tick the acknowledgement) | Sign an event as the "How to sign events" text says and POST it to the shown URL; within seconds the farm page updates without a reload (the worker normalizes it, the realtime channel announces it). Revoke the feed afterwards if you want: further events are refused (403). |
+
+Unresolved external dependencies for an operational preview: the preview-only approval in §B (extended to the
+worker and scheduler), the preview project and its secrets (§2), and a preview branch containing this work
+(`PREVIEW_BRANCH` in the IaC file; merging into it is the owner's decision).
+

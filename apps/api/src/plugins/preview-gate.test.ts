@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "@metafarm/db";
 import { buildTestApp, testEnv, tokenFor, unreachablePool } from "../test/helpers";
+import type { AddressInfo } from "node:net";
+import { upgradeStatus } from "../test/realtime-client";
 import { isOpenPath } from "./preview-gate";
 
 let app: FastifyInstance;
@@ -91,5 +93,35 @@ describe("preview access gate: on", () => {
     expect(isOpenPath({ method: "GET", url: "/healthz/" })).toBe(false);
     expect(isOpenPath({ method: "GET", url: "/docs" })).toBe(false);
     expect(isOpenPath({ method: "HEAD", url: "/v1/me" })).toBe(false);
+  });
+
+  it("passes device and integration ingestion that carries its own credential to the route, which verifies it", async () => {
+    ({ app } = await buildTestApp({ pool: unreachablePool(), env: GATE }));
+    // Past the gate: the routes answer with their own refusals (no database reached for these).
+    const device = await app.inject({ method: "POST", url: "/v1/ingest/readings", headers: { authorization: "Sensor mfs_nonsense" }, payload: { readings: [] } });
+    expect([device.statusCode, device.json().error]).toEqual([401, "invalid_sensor_token"]);
+    const feed = await app.inject({ method: "POST", url: "/v1/integrations/44444444-4444-4444-8444-444444444444/events", headers: { "x-webhook-signature": "t=1,v1=00" }, payload: {} });
+    expect([feed.statusCode, feed.json().error]).toEqual([404, "integrations_not_enabled"]);
+    // Without that credential, or on any other path or method, the gate answers.
+    for (const [method, url, headers] of [
+      ["POST", "/v1/ingest/readings", {}],
+      ["POST", "/v1/integrations/44444444-4444-4444-8444-444444444444/events", {}],
+      ["GET", "/v1/integrations/44444444-4444-4444-8444-444444444444/events", { "x-webhook-signature": "t=1,v1=00" }],
+      ["POST", "/v1/integrations/not-an-id/events", { "x-webhook-signature": "t=1,v1=00" }],
+      ["POST", "/v1/webhooks/metafarm-relay", { "x-webhook-signature": "t=1,v1=00" }],
+      ["GET", "/v1/me", { authorization: "Sensor mfs_nonsense" }],
+    ] as const) {
+      const r = await app.inject({ method, url, headers: { ...headers }, payload: method === "POST" ? {} : undefined });
+      expect([r.statusCode, r.json().error], `${method} ${url}`).toEqual([401, "unauthorized"]);
+    }
+  });
+
+  it("accepts the realtime channel's subprotocol token as the bearer token", async () => {
+    ({ app } = await buildTestApp({ pool: userPool(), env: { ...GATE, REALTIME_EVENTS_ENABLED: "true" } }));
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const port = (app.server.address() as AddressInfo).port;
+    expect(await upgradeStatus(port, { "sec-websocket-protocol": `metafarm-realtime.1, bearer.${await tokenFor("dev-user")}` })).toBe(101);
+    expect(await upgradeStatus(port, { "sec-websocket-protocol": "metafarm-realtime.1, bearer.x.y.z" })).toBe(401);
+    expect(await upgradeStatus(port, {})).toBe(401);
   });
 });

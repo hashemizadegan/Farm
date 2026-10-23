@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEV_SEED_TENANT_SLUGS, PREVIEW_SEED_MIN_MIGRATION, previewSeedRefusal } from "./preview-seed-guard";
 
-const ok = { appEnv: "development", tenantSlugs: [] as string[], nonDevUsers: 0, latestMigration: "0029_yield_claim_intent_batches" };
+const ok = { appEnv: "development", tenantSlugs: [] as string[], nonDevUsers: 0, latestMigration: "0032_realtime_retention_horizons" };
 
 describe("preview seed guard", () => {
   it("accepts a fresh, migrated database in development or test", () => {
@@ -10,7 +10,7 @@ describe("preview seed guard", () => {
     // A re-run after seeding finds the development seed's own workspaces.
     expect(DEV_SEED_TENANT_SLUGS).toEqual(["demo", "other"]);
     expect(previewSeedRefusal({ ...ok, tenantSlugs: ["demo", "other"] })).toBeNull();
-    expect(previewSeedRefusal({ ...ok, latestMigration: "0031_later" })).toBeNull();
+    expect(previewSeedRefusal({ ...ok, latestMigration: "0033_later" })).toBeNull();
   });
 
   it("refuses every APP_ENV outside the allow-list, unset included", () => {
@@ -29,10 +29,10 @@ describe("preview seed guard", () => {
   });
 
   it("refuses an unmigrated or under-migrated database", () => {
-    expect(PREVIEW_SEED_MIN_MIGRATION).toBe("0029");
-    expect(previewSeedRefusal({ ...ok, latestMigration: null })).toMatch(/through 0029/);
+    expect(PREVIEW_SEED_MIN_MIGRATION).toBe("0032");
+    expect(previewSeedRefusal({ ...ok, latestMigration: null })).toMatch(/through 0032/);
     expect(previewSeedRefusal({ ...ok, latestMigration: "0018_cnft_leaf" })).toMatch(/latest: 0018_cnft_leaf/);
-    expect(previewSeedRefusal({ ...ok, latestMigration: "0028_yield_carry_ledgers" })).toMatch(/through 0029/);
+    expect(previewSeedRefusal({ ...ok, latestMigration: "0031_integrations" })).toMatch(/through 0032/);
   });
 
   it("checks the environment before anything about the database", () => {

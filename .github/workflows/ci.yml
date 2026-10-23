@@ -236,7 +236,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "${{ env.NODE_VERSION }}", cache: "${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}" }
       - run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install --no-frozen-lockfile; fi
-      - run: pnpm db:migrate && pnpm db:seed
+      # The preview's farm operations seed too (tests/e2e/preview-journey.spec.ts walks it, as against a preview).
+      - run: pnpm db:migrate && pnpm db:seed && pnpm seed:farm-ops
       - run: pnpm --filter @metafarm/web build
       - run: pnpm --filter @metafarm/e2e install-browsers
       - run: pnpm test:e2e

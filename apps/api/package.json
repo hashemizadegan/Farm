@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dev-token": "tsx --env-file-if-exists=../../.env src/scripts/dev-token.ts",
     "seed:yield": "tsx --env-file-if-exists=../../.env src/scripts/seed-yield-simulation.ts",
+    "seed:farm-ops": "tsx --env-file-if-exists=../../.env src/scripts/seed-farm-operations.ts",
     "preview-seed": "tsx src/scripts/preview-seed-runner.ts"
   },
   "dependencies": {
