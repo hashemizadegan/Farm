@@ -91,7 +91,7 @@ test("produce: order, simulated payment, preparation, manual dispatch with track
   await form.getByLabel("Quantity (kg)").fill("2.5");
   await form.getByLabel(/Courier, arranged by the seller/).check();
   await form.getByLabel("Recipient").fill("Other Tenant User (simulation)");
-  await form.getByLabel("Address", { exact: true }).fill("1 Example Street (simulation)");
+  await form.getByRole("textbox", { name: "Address", exact: true }).fill("1 Example Street (simulation)");
   await form.getByLabel("City").fill("Isfahan");
   await form.getByLabel("Postal code").fill("81000");
   await form.getByLabel("Phone").fill("+98 31 0000 0000");
