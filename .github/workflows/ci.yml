@@ -230,6 +230,10 @@ jobs:
       REALTIME_EVENTS_ENABLED: "true"
       NEXT_PUBLIC_REALTIME_URL: ws://localhost:4000/v1/realtime
       INTEGRATION_SECRET_KEY: ci-only-integration-key-0123456789abcdef
+      # Marketplace (simulation only; refused in production): the two-party journey and its seeded demo
+      # (tests/e2e/marketplace-journey.spec.ts, apps/api/src/scripts/seed-marketplace.ts).
+      MARKETPLACE_ENABLED: "true"
+      NEXT_PUBLIC_MARKETPLACE_ENABLED: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -237,7 +241,7 @@ jobs:
         with: { node-version: "${{ env.NODE_VERSION }}", cache: "${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}" }
       - run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install --no-frozen-lockfile; fi
       # The preview's farm operations seed too (tests/e2e/preview-journey.spec.ts walks it, as against a preview).
-      - run: pnpm db:migrate && pnpm db:seed && pnpm seed:farm-ops
+      - run: pnpm db:migrate && pnpm db:seed && pnpm seed:farm-ops && pnpm seed:marketplace
       - run: pnpm --filter @metafarm/web build
       - run: pnpm --filter @metafarm/e2e install-browsers
       - run: pnpm test:e2e

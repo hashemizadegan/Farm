@@ -16,6 +16,12 @@ if (process.env.NEXT_PUBLIC_YIELD_PAGES_ENABLED === "true" && (process.env.APP_E
   throw new Error("NEXT_PUBLIC_YIELD_PAGES_ENABLED is refused in deployed environments until a disclosure version is approved (D-39)");
 }
 
+// Marketplace (simulation only): refused in production builds until the owner approves a rollout. Same rule as
+// marketplaceBuildProblem (src/lib/market.ts).
+if (process.env.NEXT_PUBLIC_MARKETPLACE_ENABLED === "true" && process.env.APP_ENV === "production") {
+  throw new Error("NEXT_PUBLIC_MARKETPLACE_ENABLED is refused in production: the marketplace is simulation-only and needs the owner's approval before a production rollout");
+}
+
 // Provider capabilities (packages/config capabilities.ts, the same rules the API and worker apply at start-up): map
 // tiles (https style, attribution, CSP host), globe imagery, browser media uploads and the realtime channel URL. NEXT_PUBLIC_* values are inlined
 // at build time, so an enabled provider with incomplete or unsafe configuration fails the build (fail closed); the

@@ -7,9 +7,9 @@
  * - the database holds no workspace other than the development seed's own (`demo` and `other`, created by
  *   `packages/db/src/scripts/seed.ts`), and no user from an identity issuer other than `dev`: a database with real
  *   workspaces or real (OIDC) sign-ins is not a fresh preview database, whatever its name or host;
- * - migrations are applied at least through 0032 (the yield, integration and realtime tables the seeds write).
+ * - migrations are applied at least through 0033 (the yield, integration, realtime and marketplace tables the seeds write).
  */
-export const PREVIEW_SEED_MIN_MIGRATION = "0032";
+export const PREVIEW_SEED_MIN_MIGRATION = "0033";
 export const PREVIEW_SEED_APP_ENVS: readonly string[] = ["development", "test"];
 /** The workspaces the development seed creates (packages/db/src/scripts/seed.ts); a re-run finds exactly these. */
 export const DEV_SEED_TENANT_SLUGS: readonly string[] = ["demo", "other"];
@@ -20,7 +20,7 @@ export interface PreviewSeedFacts {
   tenantSlugs: readonly string[];
   /** Users whose identity issuer is not the development provider (`dev`). */
   nonDevUsers: number;
-  /** The latest applied migration version (e.g. `0032_realtime_retention_horizons`), or null when none. */
+  /** The latest applied migration version (e.g. `0033_marketplace`), or null when none. */
   latestMigration: string | null;
 }
 

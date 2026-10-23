@@ -209,6 +209,12 @@ export const apiEnvSchema = z
      * (D-15, D-25, D-27, D-39).
      */
     YIELD_CLAIM_INTENTS_ENABLED: bool.default("false"),
+    /**
+     * Marketplace (migration 0033), simulation only: listings, offers, orders, simulated payment and refund, recorded
+     * transfer of control, manual dispatch and confirmed delivery between workspaces. No money, token, title or parcel
+     * moves. Off (default): the /market routes answer 404. Refused in production until the owner approves a rollout.
+     */
+    MARKETPLACE_ENABLED: bool.default("false"),
     ...rwa,
   })
   .superRefine(productionGuards)
@@ -224,6 +230,9 @@ export const apiEnvSchema = z
     }
     if (env.REALTIME_EVENTS_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
       ctx.addIssue({ code: "custom", path: ["REALTIME_EVENTS_ENABLED"], message: "the realtime channel is not security-reviewed for deployed environments yet (preview and local only)" });
+    }
+    if (env.MARKETPLACE_ENABLED && env.APP_ENV === "production") {
+      ctx.addIssue({ code: "custom", path: ["MARKETPLACE_ENABLED"], message: "the marketplace is simulation-only and needs the owner's explicit approval before any production rollout" });
     }
     if (env.HOLDER_YIELD_ENABLED && (env.APP_ENV === "production" || env.APP_ENV === "staging")) {
       ctx.addIssue({ code: "custom", path: ["HOLDER_YIELD_ENABLED"], message: "holder-facing yield views need approved disclosures (D-39) before any deployed use" });

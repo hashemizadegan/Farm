@@ -53,12 +53,12 @@ d("preview seed runner", () => {
   it("refuses an unmigrated database", () => {
     const r = run({ APP_ENV: "test" });
     expect(r.code).toBe(1);
-    expect(r.out).toContain("migrations must be applied through 0032");
+    expect(r.out).toContain("migrations must be applied through 0033");
   });
 
   it("seeds a fresh migrated database, and a second run changes nothing", async () => {
     await migrateUp(preview);
-    const first = run({ APP_ENV: "test" });
+    const first = run({ APP_ENV: "test", MARKETPLACE_ENABLED: "true" });
     expect(first.code, first.out).toBe(0);
     expect(first.out).toContain("[preview-seed] done");
     const cycles = async () =>
@@ -86,7 +86,17 @@ d("preview seed runner", () => {
     ]);
     expect((await preview.query(`SELECT name, status FROM integrations`)).rows).toEqual([{ name: "Simulated field feed", status: "active" }]);
     expect(first.out).not.toMatch(/mfi_/);
-    const second = run({ APP_ENV: "test" });
+    // The marketplace journey: four listings by the demo workspace, one example order delivered, nothing transferred.
+    const listings = (await preview.query<{ kind: string; status: string; tenant: string }>(`SELECT l.kind, l.status, t.slug AS tenant FROM market_listings l JOIN tenants t ON t.id = l.tenant_id ORDER BY l.kind, l.title`)).rows;
+    expect(listings).toEqual([
+      { kind: "produce", status: "active", tenant: "demo" },
+      { kind: "produce", status: "active", tenant: "demo" },
+      { kind: "registered_asset", status: "active", tenant: "demo" },
+      { kind: "registered_asset", status: "active", tenant: "demo" },
+    ]);
+    expect((await preview.query(`SELECT status, simulated FROM market_orders`)).rows).toEqual([{ status: "delivered", simulated: true }]);
+    expect((await preview.query(`SELECT count(*)::int AS n FROM market_asset_control`)).rows[0].n).toBe(0);
+    const second = run({ APP_ENV: "test", MARKETPLACE_ENABLED: "true" });
     expect(second.code, second.out).toBe(0);
     expect(second.out).toContain("already seeded");
     expect(await cycles()).toEqual(["published", "published", "under_review"]);

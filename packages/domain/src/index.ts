@@ -22,3 +22,4 @@ export * from "./chain-events";
 export * from "./events";
 export * from "./realtime";
 export * from "./integrations";
+export * from "./marketplace";

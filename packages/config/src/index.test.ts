@@ -27,6 +27,9 @@ describe("yield workflow flag (Y9)", () => {
   const base = { DATABASE_URL: "postgres://u:p@localhost:5432/db", REDIS_URL: "redis://localhost:6379" };
   it("is off by default and can be turned on outside production", () => {
     expect(apiEnvSchema.parse(base).YIELD_WORKFLOW_ENABLED).toBe(false);
+    expect(apiEnvSchema.parse(base).MARKETPLACE_ENABLED).toBe(false);
+    expect(apiEnvSchema.parse({ ...base, APP_ENV: "test", MARKETPLACE_ENABLED: "true" }).MARKETPLACE_ENABLED).toBe(true);
+    expect(JSON.stringify(apiEnvSchema.safeParse({ ...base, APP_ENV: "production", AUTH_PROVIDER: "oidc", STORAGE_DRIVER: "s3", MARKETPLACE_ENABLED: "true" }).error?.issues)).toContain("MARKETPLACE_ENABLED");
     expect(apiEnvSchema.parse({ ...base, APP_ENV: "test", YIELD_WORKFLOW_ENABLED: "true" }).YIELD_WORKFLOW_ENABLED).toBe(true);
   });
   it("is refused in production (simulation-only, not approved)", () => {
