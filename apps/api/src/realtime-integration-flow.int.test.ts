@@ -137,6 +137,42 @@ d("sensor integration → observation pipeline → realtime outbox → client; c
     expect((second.event as { payload: { rawObservationIds: string[] } }).payload.rawObservationIds).toHaveLength(1);
   });
 
+  it("an observation shows its source: the integration and provider event; the farm lists the integrations feeding it", async () => {
+    const base = `/v1/tenants/${tenantId}/farms/${farmId}`;
+    const items = (await on.inject({ method: "GET", url: `${base}/observations`, headers: await auth("viewer") })).json().items as { id: string; provenance: string; sensorId: string | null }[];
+    const fromFeed = items.find((o) => o.provenance === "provider-observation")!;
+    const detail = await on.inject({ method: "GET", url: `${base}/observations/${fromFeed.id}`, headers: await auth("viewer") });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      id: fromFeed.id,
+      farmId,
+      provenance: "provider-observation",
+      originalUnit: expect.any(String),
+      receivedAt: expect.any(String),
+      recordedAt: expect.any(String),
+      source: { kind: "integration", sensor: { id: sensorId, name: "probe" }, integration: { id: feed.id, name: "E2E probes", provider: "e2e-probes", status: "active", providerEventId: `e2e-on-${sfx}` }, enteredBy: null },
+    });
+    expect(JSON.stringify(detail.json())).not.toContain(feed.secret);
+
+    // A person's entry: entered by them, no sensor or integration.
+    const typed = await on.inject({ method: "POST", url: `${base}/observations`, headers: await auth("owner"), payload: { metric: "note", value: "gate left open", unit: "text", observedAt: new Date().toISOString() } });
+    expect(typed.statusCode).toBe(202);
+    await runPipeline(jobsOn, false);
+    const note = ((await on.inject({ method: "GET", url: `${base}/observations?metric=note`, headers: await auth("owner") })).json().items as { id: string }[])[0]!;
+    const enteredBy = (await pool.query<{ n: string | null }>(`SELECT display_name AS n FROM users WHERE oidc_subject = $1`, [subjects.owner])).rows[0]!.n;
+    expect((await on.inject({ method: "GET", url: `${base}/observations/${note.id}`, headers: await auth("owner") })).json().source).toEqual({ kind: "user", sensor: null, integration: null, enteredBy });
+
+    // Unknown or other-farm observations are not found.
+    const other = (await on.inject({ method: "POST", url: `/v1/tenants/${tenantId}/farms`, headers: await auth("owner"), payload: { name: "Other farm" } })).json().id;
+    expect((await on.inject({ method: "GET", url: `/v1/tenants/${tenantId}/farms/${other}/observations/${fromFeed.id}`, headers: await auth("owner") })).statusCode).toBe(404);
+
+    // Integrations feeding a farm (admins): this feed for this farm, none for the other farm.
+    const feeding = (await on.inject({ method: "GET", url: `/v1/tenants/${tenantId}/integrations?farmId=${farmId}`, headers: await auth("owner") })).json().items as { id: string }[];
+    expect(feeding.map((i) => i.id)).toEqual([feed.id]);
+    expect((await on.inject({ method: "GET", url: `/v1/tenants/${tenantId}/integrations?farmId=${other}`, headers: await auth("owner") })).json().items).toEqual([]);
+    expect((await on.inject({ method: "GET", url: `/v1/tenants/${tenantId}/integrations?farmId=nope`, headers: await auth("owner") })).statusCode).toBe(400);
+  });
+
   it("realtime off: the outbox stays untouched and polling works as before", async () => {
     const before = await outboxCount();
     const r = await postIntegration(off, `e2e-off-${sfx}`);

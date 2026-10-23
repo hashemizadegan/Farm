@@ -37,8 +37,17 @@ export async function insertIntegration(
   return r.rows[0]!;
 }
 
-export async function listIntegrations(tx: TenantTx): Promise<IntegrationRow[]> {
-  const r = await tx.query<IntegrationRow>(`SELECT ${COLUMNS} FROM integrations WHERE tenant_id = $1 ORDER BY created_at DESC, id`, [tx.tenantId]);
+/** The workspace's integrations; with `farmId`, only those that have delivered observations to that farm. */
+export async function listIntegrations(tx: TenantTx, opts: { farmId?: string } = {}): Promise<IntegrationRow[]> {
+  const r = await tx.query<IntegrationRow>(
+    `SELECT ${COLUMNS} FROM integrations i
+      WHERE i.tenant_id = $1
+        AND ($2::uuid IS NULL OR EXISTS (
+          SELECT 1 FROM integration_events ie JOIN raw_observations r ON r.tenant_id = ie.tenant_id AND r.id = ANY(ie.raw_observation_ids)
+           WHERE ie.tenant_id = i.tenant_id AND ie.integration_id = i.id AND r.farm_id = $2::uuid))
+      ORDER BY i.created_at DESC, i.id`,
+    [tx.tenantId, opts.farmId ?? null],
+  );
   return r.rows;
 }
 

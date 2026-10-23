@@ -266,6 +266,14 @@
     },
     {
       "method": "GET",
+      "path": "/v1/tenants/{tenantId}/farms/{farmId}/observations/{observationId}",
+      "operationId": "getObservation",
+      "consumers": [
+        "web"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/v1/tenants/{tenantId}/farms/{farmId}/alerts",
       "operationId": "listAlerts",
       "consumers": [
@@ -1201,8 +1209,8 @@
   ],
   "undocumentedCalls": [],
   "summary": {
-    "endpoints": 166,
-    "consumedByWeb": 89,
+    "endpoints": 167,
+    "consumedByWeb": 90,
     "consumedByUnity": 13,
     "withoutClientConsumer": 68
   }

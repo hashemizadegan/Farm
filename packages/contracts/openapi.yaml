@@ -781,6 +781,23 @@ paths:
                   provenance: { $ref: "#/components/schemas/ProvenanceLabel" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /v1/tenants/{tenantId}/farms/{farmId}/observations/{observationId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - { $ref: "#/components/parameters/FarmId" }
+      - { name: observationId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [observations]
+      summary: One observation and its source (sensor, registered integration or person) (observation:read)
+      operationId: getObservation
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObservationDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/tenants/{tenantId}/farms/{farmId}/alerts:
     parameters:
       - { $ref: "#/components/parameters/TenantId" }
@@ -1604,6 +1621,12 @@ paths:
       tags: [integrations]
       summary: Registered integrations of the workspace (integration:manage; 404 when integrations are not enabled)
       operationId: listIntegrations
+      parameters:
+        - name: farmId
+          in: query
+          required: false
+          description: Only the integrations that have delivered observations to this farm.
+          schema: { type: string, format: uuid }
       responses:
         "200":
           description: OK
@@ -4988,6 +5011,38 @@ components:
         observedAt: { type: string, format: date-time }
         provenance: { $ref: "#/components/schemas/ProvenanceLabel" }
         qualityFlags: { type: array, items: { type: string } }
+
+    ObservationDetail:
+      allOf:
+        - { $ref: "#/components/schemas/Observation" }
+        - type: object
+          required: [originalValue, originalUnit, recordedAt, receivedAt, source]
+          properties:
+            originalValue: { description: "The value as received, before unit conversion" }
+            originalUnit: { type: string }
+            recordedAt: { type: [string, "null"], format: date-time }
+            receivedAt: { type: [string, "null"], format: date-time }
+            source:
+              type: object
+              required: [kind, sensor, integration, enteredBy]
+              properties:
+                kind: { type: string, enum: [integration, sensor, user, unknown] }
+                sensor:
+                  type: [object, "null"]
+                  required: [id, name]
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: [string, "null"] }
+                integration:
+                  type: [object, "null"]
+                  required: [id, name, provider, status, providerEventId]
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: string }
+                    provider: { type: string }
+                    status: { type: string, enum: [active, revoked] }
+                    providerEventId: { type: string }
+                enteredBy: { type: [string, "null"] }
 
     Alert:
       type: object

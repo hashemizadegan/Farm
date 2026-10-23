@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { acknowledgeAlert, findObservationByRequest, getFarm, insertRawObservation, listAlerts, listObservations } from "@metafarm/db";
+import { acknowledgeAlert, findObservationByRequest, getFarm, getObservationDetail, insertRawObservation, listAlerts, listObservations } from "@metafarm/db";
 import { QUEUES, ackAlertSchema, createObservationSchema, uuid } from "@metafarm/domain";
 import { z } from "zod";
 import { idempotencyKey, keyReused, notFound, parse } from "../lib/http";
@@ -21,6 +21,34 @@ export async function observationRoutes(app: FastifyInstance) {
     return app.inTenant(req, "observation:read", async (tx) => ({
       items: (await listObservations(tx, farmId, q)).map(toObservation),
     }));
+  });
+
+  /**
+   * One observation and where it came from: when the raw record was received (and by whom, for user entries), the
+   * sensor, and the registered integration and provider event id for provider data. Ids and names only: no secrets.
+   */
+  app.get("/v1/tenants/:tenantId/farms/:farmId/observations/:observationId", async (req) => {
+    const { farmId, observationId } = parse(farmParams.extend({ observationId: uuid }), req.params);
+    return app.inTenant(req, "observation:read", async (tx) => {
+      const o = await getObservationDetail(tx, farmId, observationId);
+      if (!o) throw notFound("observation");
+      const iso = (v: string | Date | null) => (v === null ? null : new Date(v).toISOString());
+      return {
+        ...toObservation(o),
+        originalValue: o.original_value,
+        originalUnit: o.original_unit,
+        recordedAt: iso(o.created_at),
+        receivedAt: iso(o.received_at),
+        source: {
+          kind: o.integration_id ? "integration" : o.sensor_id ? "sensor" : o.provenance_label === "user-entered" ? "user" : "unknown",
+          sensor: o.sensor_id ? { id: o.sensor_id, name: o.sensor_name } : null,
+          integration: o.integration_id
+            ? { id: o.integration_id, name: o.integration_name!, provider: o.integration_provider!, status: o.integration_status!, providerEventId: o.provider_event_id! }
+            : null,
+          enteredBy: o.provenance_label === "user-entered" ? o.received_by_name : null,
+        },
+      };
+    });
   });
 
   /**

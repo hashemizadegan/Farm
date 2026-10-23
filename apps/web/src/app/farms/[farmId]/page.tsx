@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Notice, ProvenanceBadge } from "@metafarm/ui";
+import { FarmConditions } from "@/components/FarmConditions";
 import { PlanEditor } from "@/components/PlanEditor";
 import { RequireTenant } from "@/components/RequireTenant";
 import { api, unwrap, useQuery } from "@/lib/api";
@@ -53,6 +54,7 @@ function Overview({ tenantId, farmId }: { tenantId: string; farmId: string }) {
           </div>
         </dl>
       </div>
+      <FarmConditions tenantId={tenantId} farmId={farmId} />
       <PlanEditor tenantId={tenantId} farmId={farmId} />
     </>
   );
